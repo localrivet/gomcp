@@ -1,13 +1,12 @@
 ---
+layout: default
+title: Basic Usage
+nav_order: 4 # After Installation
+---
 
-    layout: default
-    title: Basic Usage
-    nav_order: 4 # After Installation
-    ---
+# Basic Usage
 
-    # Basic Usage
-
-    The core logic resides in the root package (`github.com/localrivet/gomcp`).
+The core logic resides in the root package (`github.com/localrivet/gomcp`).
 
     ## Implementing an MCP Server
 
