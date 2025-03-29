@@ -2,7 +2,9 @@
 package mcp
 
 import (
+	// Needed for cancellation
 	// Required for UnmarshalPayload usage within server logic
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,9 +15,10 @@ import (
 
 // ToolHandlerFunc defines the signature for functions that handle tool execution.
 // It receives the arguments provided by the client and should return the result
-// content and a boolean indicating if an error occurred.
+// content and a boolean indicating if an error occurred. It also receives a context.Context
+// which can be used to detect cancellation requests.
 // TODO: Refine this signature further. How to pass structured content? How to detail errors?
-type ToolHandlerFunc func(arguments map[string]interface{}) (content []Content, isError bool)
+type ToolHandlerFunc func(ctx context.Context, arguments map[string]interface{}) (content []Content, isError bool)
 
 // Server represents an MCP server instance. It manages the connection,
 // handles the handshake/initialization, tool registration, and processes incoming messages.
@@ -31,6 +34,10 @@ type Server struct {
 	// For handling client-to-server notifications
 	notificationHandlers map[string]func(params interface{}) // Map method name to handler
 	notificationMu       sync.Mutex                          // Mutex to protect notificationHandlers map
+
+	// For managing cancellation of active requests
+	activeRequests map[string]context.CancelFunc // Map request ID (as string) to its cancel function
+	requestMu      sync.Mutex                    // Mutex to protect activeRequests map
 }
 
 // NewServer creates and initializes a new MCP Server instance using stdio.
@@ -49,13 +56,18 @@ func NewServerWithConnection(serverName string, conn *Connection) *Server {
 		log.Println("Warning: NewServerWithConnection received nil connection, falling back to stdio.")
 		conn = NewStdioConnection()
 	}
-	return &Server{
+	// Assign to variable first
+	srv := &Server{
 		conn:                 conn, // Use provided connection
 		serverName:           serverName,
 		toolRegistry:         make(map[string]Tool), // Use Tool struct
 		toolHandlers:         make(map[string]ToolHandlerFunc),
 		notificationHandlers: make(map[string]func(params interface{})), // Initialize map
+		activeRequests:       make(map[string]context.CancelFunc),       // Initialize map
 	}
+	// Register the built-in handler for cancellation notifications
+	srv.RegisterNotificationHandler(MethodCancelled, srv.handleCancellationNotification)
+	return srv
 }
 
 // RegisterNotificationHandler registers a handler function for a specific client-to-server notification method.
@@ -425,8 +437,29 @@ func (s *Server) handleCallToolRequest(requestID interface{}, params interface{}
 		})
 	}
 
-	// Execute the handler
-	content, isError := handler(requestParams.Arguments)
+	// --- Context Management for Cancellation ---
+	// Create a new context for this request that can be cancelled.
+	// Use context.Background() as the parent.
+	ctx, cancel := context.WithCancel(context.Background())
+	// Store the cancel function, associated with the request ID.
+	// Convert requestID to string for map key.
+	requestIDStr := fmt.Sprintf("%v", requestID)
+	s.requestMu.Lock()
+	s.activeRequests[requestIDStr] = cancel
+	s.requestMu.Unlock()
+	// Ensure the cancel function is removed from the map when the handler finishes.
+	defer func() {
+		s.requestMu.Lock()
+		delete(s.activeRequests, requestIDStr)
+		s.requestMu.Unlock()
+		// Note: We don't call cancel() here automatically. Cancellation is triggered
+		// only by the '$/cancelled' notification. If the handler finishes normally,
+		// the context associated with it effectively becomes irrelevant.
+	}()
+	// --- End Context Management ---
+
+	// Execute the handler, passing the cancellable context
+	content, isError := handler(ctx, requestParams.Arguments) // Pass ctx
 
 	// Construct the CallToolResult payload
 	responsePayload := CallToolResult{
@@ -571,6 +604,39 @@ func (s *Server) handlePing(requestID interface{}, params interface{}) error {
 	log.Println("Handling Ping request")
 	// Ping request has no params and expects an empty result on success
 	return s.conn.SendResponse(requestID, nil) // Send nil result
+}
+
+// handleCancellationNotification handles the '$/cancelled' notification from the client.
+func (s *Server) handleCancellationNotification(params interface{}) {
+	var cancelParams CancelledParams
+	err := UnmarshalPayload(params, &cancelParams)
+	if err != nil {
+		log.Printf("Error unmarshalling $/cancelled params: %v", err)
+		return
+	}
+
+	if cancelParams.ID == nil {
+		log.Printf("Received $/cancelled notification with nil ID.")
+		return
+	}
+
+	requestIDStr := fmt.Sprintf("%v", cancelParams.ID)
+	log.Printf("Received cancellation request for ID: %s", requestIDStr)
+
+	s.requestMu.Lock()
+	cancelFunc, ok := s.activeRequests[requestIDStr]
+	// It's okay if the request is not found, it might have already finished.
+	// Remove it from the map regardless, to prevent potential leaks if cancellation
+	// arrives after the defer in handleCallToolRequest but before it finishes execution.
+	delete(s.activeRequests, requestIDStr)
+	s.requestMu.Unlock()
+
+	if ok {
+		log.Printf("Found active request %s, calling cancel function.", requestIDStr)
+		cancelFunc() // Call the context cancel function
+	} else {
+		log.Printf("No active request found for cancellation ID: %s (might have already completed)", requestIDStr)
+	}
 }
 
 // SendCancellation sends a '$/cancelled' notification to the client.
