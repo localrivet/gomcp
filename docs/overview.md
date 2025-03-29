@@ -1,3 +1,9 @@
+---
+layout: default
+title: Overview
+nav_order: 2 # Appears after Home (nav_order: 1)
+---
+
 # GoMCP Library Overview
 
 This document provides a higher-level overview of the `gomcp` library architecture and core concepts.

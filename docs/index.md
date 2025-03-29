@@ -1,6 +1,6 @@
 ---
-layout: default
-title: GoMCP Documentation
+layout: home # Use 'home' layout for the main page with this theme
+title: Home
 nav_order: 1
 ---
 
