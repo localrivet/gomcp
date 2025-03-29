@@ -165,3 +165,76 @@ kubectl logs deployment/gomcp-server-deployment -f
 kubectl delete -f deployments/kubernetes/service.yaml
 kubectl delete -f deployments/kubernetes/deployment.yaml
 ```
+
+### Running the Multi-Tool Server with systemd (Linux VM)
+
+Files are provided in `deployments/systemd/` to run the multi-tool server as a `systemd` service on a Linux virtual machine (e.g., EC2, DigitalOcean Droplet).
+
+**Prerequisites:**
+
+- A Linux VM with `systemd`.
+- Go installed on the VM (or just the pre-built binary).
+
+**Setup Steps:**
+
+1.  **Build the Executable:** On your development machine or the VM (if Go is installed), build the server executable specifically for Linux:
+    ```bash
+    # From the repository root directory
+    CGO_ENABLED=0 GOOS=linux go build -o ./deployments/systemd/multi-tool-server ./examples/server/*.go
+    ```
+2.  **Create Deployment Directory on VM:**
+    ```bash
+    # On the target VM
+    sudo mkdir -p /opt/gomcp-server
+    sudo chown your_user:your_group /opt/gomcp-server # Or the user who will run the service
+    ```
+    _(Replace `your_user:your_group` appropriately. Consider creating a dedicated user.)_
+3.  **Copy Files to VM:** Copy the built `multi-tool-server` executable and the `start-gomcp-server.sh` script to `/opt/gomcp-server` on the VM.
+    ```bash
+    # On your development machine (using scp example)
+    scp ./deployments/systemd/multi-tool-server user@your_vm_ip:/opt/gomcp-server/
+    scp ./deployments/systemd/start-gomcp-server.sh user@your_vm_ip:/opt/gomcp-server/
+    ```
+4.  **Make Script Executable on VM:**
+    ```bash
+    # On the target VM
+    chmod +x /opt/gomcp-server/start-gomcp-server.sh
+    ```
+5.  **Copy systemd Unit File:** Copy `deployments/systemd/gomcp-server.service` to `/etc/systemd/system/` on the VM.
+    ```bash
+    # On your development machine (using scp example)
+    scp ./deployments/systemd/gomcp-server.service user@your_vm_ip:/tmp/
+    # On the target VM
+    sudo mv /tmp/gomcp-server.service /etc/systemd/system/
+    ```
+6.  **Edit Unit File (IMPORTANT):** Edit `/etc/systemd/system/gomcp-server.service` on the VM.
+    - Ensure `WorkingDirectory` and `ExecStart` paths match your deployment directory (`/opt/gomcp-server` in this example).
+    - Change the `User` and `Group` to an appropriate non-root user if you created one.
+7.  **Enable and Start the Service:**
+    ```bash
+    # On the target VM
+    sudo systemctl daemon-reload
+    sudo systemctl enable gomcp-server.service
+    sudo systemctl start gomcp-server.service
+    ```
+
+**Check Status:**
+
+```bash
+sudo systemctl status gomcp-server.service
+journalctl -u gomcp-server.service -f # View logs
+```
+
+**Interact:**
+
+Since this runs as a background service, direct stdio interaction isn't possible in the same way as the piped `go run` command. You would typically need:
+
+- A client running on the same VM that can interact with the service's process (complex).
+- Or, modify the server/library to use a different transport mechanism like network sockets or WebSockets, which can then be accessed remotely.
+
+**Stop/Disable:**
+
+```bash
+sudo systemctl stop gomcp-server.service
+sudo systemctl disable gomcp-server.service
+```
