@@ -11,7 +11,7 @@ The primary goal of `gomcp` is to provide idiomatic Go tools for building applic
 
 ## Core Components (Root Package)
 
-The main library code resides in the root package (`github.com/localrivert/gomcp`).
+The main library code resides in the root package (`github.com/localrivet/gomcp`).
 
 1.  **`protocol.go`**:
 

@@ -3,8 +3,6 @@
 // and basic client/server logic for establishing connections via the MCP handshake.
 package mcp
 
-// Import needed for json.RawMessage used in comments
-
 // Message represents the base structure for all MCP messages.
 // Specific message types typically embed this struct and define their own
 // payload structure. The Payload field here is often handled as
@@ -72,8 +70,83 @@ type HandshakeResponse struct {
 	Payload HandshakeResponsePayload `json:"payload"`
 }
 
-// TODO: Add structs for other message types (ToolDefinitionRequest, ToolDefinitionResponse, etc.)
-// as we implement them.
+// --- Tool Definition Messages ---
+
+// ToolInputSchema defines the expected input structure for a tool.
+// Uses JSON Schema subset.
+type ToolInputSchema struct {
+	Type       string                    `json:"type"`                 // Typically "object"
+	Properties map[string]PropertyDetail `json:"properties,omitempty"` // Map of parameter names to their details
+	Required   []string                  `json:"required,omitempty"`   // List of required parameter names
+}
+
+// PropertyDetail describes a single parameter within a ToolInputSchema.
+type PropertyDetail struct {
+	Type        string `json:"type"`                  // e.g., "string", "number", "boolean", "integer"
+	Description string `json:"description,omitempty"` // Human-readable description
+	// TODO: Add other JSON schema fields if needed (e.g., enum, format)
+}
+
+// ToolOutputSchema defines the expected output structure of a tool.
+// Uses JSON Schema subset.
+type ToolOutputSchema struct {
+	Type        string `json:"type"`                  // e.g., "string", "object", "number"
+	Description string `json:"description,omitempty"` // Human-readable description of the output
+	// TODO: Add other JSON schema fields if needed (e.g., properties for object type)
+}
+
+// ToolDefinition describes a single tool offered by the server.
+type ToolDefinition struct {
+	Name         string           `json:"name"`                  // Unique name of the tool
+	Description  string           `json:"description,omitempty"` // Human-readable description of what the tool does
+	InputSchema  ToolInputSchema  `json:"input_schema"`          // Schema for the tool's input arguments
+	OutputSchema ToolOutputSchema `json:"output_schema"`         // Schema for the tool's output
+}
+
+// ToolDefinitionRequestPayload is the payload for ToolDefinitionRequest (currently empty).
+type ToolDefinitionRequestPayload struct{} // No payload defined in spec v1.0
+
+// ToolDefinitionRequest asks the server for its available tools.
+type ToolDefinitionRequest struct {
+	Message                              // Embeds base Message fields (MessageType="ToolDefinitionRequest")
+	Payload ToolDefinitionRequestPayload `json:"payload"`
+}
+
+// ToolDefinitionResponsePayload contains the list of tools defined by the server.
+type ToolDefinitionResponsePayload struct {
+	Tools []ToolDefinition `json:"tools"` // List of available tools
+}
+
+// ToolDefinitionResponse is sent by the server listing its available tools.
+type ToolDefinitionResponse struct {
+	Message                               // Embeds base Message fields (MessageType="ToolDefinitionResponse")
+	Payload ToolDefinitionResponsePayload `json:"payload"`
+}
+
+// --- Tool Usage Messages ---
+
+// UseToolRequestPayload contains the details for executing a specific tool.
+type UseToolRequestPayload struct {
+	ToolName  string                 `json:"tool_name"`           // Name of the tool to use
+	Arguments map[string]interface{} `json:"arguments,omitempty"` // Arguments for the tool, matching its input schema
+}
+
+// UseToolRequest asks the server to execute a specific tool with given arguments.
+type UseToolRequest struct {
+	Message                       // Embeds base Message fields (MessageType="UseToolRequest")
+	Payload UseToolRequestPayload `json:"payload"`
+}
+
+// UseToolResponsePayload contains the result of a tool execution.
+type UseToolResponsePayload struct {
+	Result interface{} `json:"result"` // The result returned by the tool, matching its output schema
+}
+
+// UseToolResponse is sent by the server with the result of a tool execution.
+type UseToolResponse struct {
+	Message                        // Embeds base Message fields (MessageType="UseToolResponse")
+	Payload UseToolResponsePayload `json:"payload"`
+}
 
 const (
 	// CurrentProtocolVersion defines the MCP version this library implementation supports.
@@ -87,5 +160,13 @@ const (
 	MessageTypeHandshakeRequest = "HandshakeRequest"
 	// MessageTypeHandshakeResponse identifies a HandshakeResponse message.
 	MessageTypeHandshakeResponse = "HandshakeResponse"
-	// TODO: Add other message type constants (e.g., MessageTypeToolDefinitionRequest)
+	// MessageTypeToolDefinitionRequest identifies a ToolDefinitionRequest message.
+	MessageTypeToolDefinitionRequest = "ToolDefinitionRequest"
+	// MessageTypeToolDefinitionResponse identifies a ToolDefinitionResponse message.
+	MessageTypeToolDefinitionResponse = "ToolDefinitionResponse"
+	// MessageTypeUseToolRequest identifies a UseToolRequest message.
+	MessageTypeUseToolRequest = "UseToolRequest"
+	// MessageTypeUseToolResponse identifies a UseToolResponse message.
+	MessageTypeUseToolResponse = "UseToolResponse"
+	// TODO: Add other message type constants (ResourceAccess, Notification)
 )

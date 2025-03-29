@@ -1,6 +1,6 @@
 # GoMCP - Go Model Context Protocol Library
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/localrivert/gomcp.svg)](https://pkg.go.dev/github.com/localrivert/gomcp)
+[![Go Reference](https://pkg.go.dev/badge/github.com/localrivet/gomcp.svg)](https://pkg.go.dev/github.com/localrivet/gomcp)
 
 <!-- TODO: Add build status badge once CI is set up -->
 <!-- TODO: Add code coverage badge once tests are added -->
@@ -23,12 +23,12 @@ Support for Tool Definitions, Tool Usage, Resource Access, and Notifications is 
 ## Installation
 
 ```bash
-go get github.com/localrivert/gomcp
+go get github.com/localrivet/gomcp
 ```
 
 ## Basic Usage
 
-The core logic resides in the root package (`github.com/localrivert/gomcp`).
+The core logic resides in the root package (`github.com/localrivet/gomcp`).
 
 ### Implementing an MCP Server
 
@@ -39,7 +39,7 @@ import (
 	"log"
 	"os"
 
-	mcp "github.com/localrivert/gomcp"
+	mcp "github.com/localrivet/gomcp"
 )
 
 func main() {
@@ -76,7 +76,7 @@ import (
 	"log"
 	"os"
 
-	mcp "github.com/localrivert/gomcp"
+	mcp "github.com/localrivet/gomcp"
 )
 
 func main() {
@@ -142,8 +142,8 @@ More detailed documentation can be found in the `docs/` directory (TODO: Create 
 
 Go package documentation is available via:
 
-- [pkg.go.dev](https://pkg.go.dev/github.com/localrivert/gomcp)
-- Running `godoc -http=:6060` locally and navigating to `github.com/localrivert/gomcp`.
+- [pkg.go.dev](https://pkg.go.dev/github.com/localrivet/gomcp)
+- Running `godoc -http=:6060` locally and navigating to `github.com/localrivet/gomcp`.
 
 ## Contributing
 

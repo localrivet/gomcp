@@ -1,4 +1,4 @@
-module github.com/localrivert/gomcp
+module github.com/localrivet/gomcp
 
 go 1.24.0
 

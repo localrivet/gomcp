@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	mcp "github.com/localrivert/gomcp" // Import the root package
+	mcp "github.com/localrivet/gomcp" // Import the root package
 )
 
 func main() {
