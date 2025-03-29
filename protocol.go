@@ -242,16 +242,51 @@ type Content interface {
 	GetType() string
 }
 
+// ContentAnnotations defines optional metadata for content parts.
+type ContentAnnotations struct {
+	Title *string `json:"title,omitempty"`
+	// Add other potential common annotations here
+}
+
 // TextContent represents textual content.
 type TextContent struct {
-	Type string `json:"type"` // Should always be "text"
-	Text string `json:"text"`
-	// TODO: Add Annotations
+	Type        string              `json:"type"` // Should always be "text"
+	Text        string              `json:"text"`
+	Annotations *ContentAnnotations `json:"annotations,omitempty"`
 }
 
 func (tc TextContent) GetType() string { return tc.Type }
 
-// TODO: Define ImageContent, AudioContent, EmbeddedResource structs as needed.
+// ImageContent represents image content.
+type ImageContent struct {
+	Type        string              `json:"type"`      // Should always be "image"
+	Source      string              `json:"source"`    // URI or base64 encoded data
+	MediaType   string              `json:"mediaType"` // e.g., "image/png", "image/jpeg"
+	Annotations *ContentAnnotations `json:"annotations,omitempty"`
+}
+
+func (ic ImageContent) GetType() string { return ic.Type }
+
+// AudioContent represents audio content.
+type AudioContent struct {
+	Type        string              `json:"type"`      // Should always be "audio"
+	Source      string              `json:"source"`    // URI or base64 encoded data
+	MediaType   string              `json:"mediaType"` // e.g., "audio/mpeg", "audio/wav"
+	Annotations *ContentAnnotations `json:"annotations,omitempty"`
+}
+
+func (ac AudioContent) GetType() string { return ac.Type }
+
+// EmbeddedResourceContent represents an embedded resource.
+type EmbeddedResourceContent struct {
+	Type        string              `json:"type"` // Should always be "resource"
+	Resource    Resource            `json:"resource"`
+	Annotations *ContentAnnotations `json:"annotations,omitempty"`
+}
+
+func (erc EmbeddedResourceContent) GetType() string { return erc.Type }
+
+// TODO: Add other content types like VideoContent if needed based on spec evolution.
 
 // CallToolResult defines the result payload for a successful 'tools/call' response.
 type CallToolResult struct {
