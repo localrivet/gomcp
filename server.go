@@ -312,6 +312,8 @@ func (s *Server) Run() error {
 			handlerErr = s.handleGetPrompt(baseMessage.ID, baseMessage.Params)
 		case MethodLoggingSetLevel: // Add case for setting log level
 			handlerErr = s.handleLoggingSetLevel(baseMessage.ID, baseMessage.Params)
+		case MethodPing: // Add case for ping
+			handlerErr = s.handlePing(baseMessage.ID, baseMessage.Params)
 		// TODO: Add cases for Resource/Prompt subscription/notifications etc.
 		default:
 			// Handle unknown methods
@@ -530,6 +532,13 @@ func (s *Server) ListRoots(params ListRootsRequestParams) (string, error) {
 	}
 	log.Printf("ListRoots request sent with ID: %s", requestID)
 	return requestID, nil
+}
+
+// handlePing handles the 'ping' request by sending back an empty success response.
+func (s *Server) handlePing(requestID interface{}, params interface{}) error {
+	log.Println("Handling Ping request")
+	// Ping request has no params and expects an empty result on success
+	return s.conn.SendResponse(requestID, nil) // Send nil result
 }
 
 // handleReadResource handles the 'resources/read' request.

@@ -488,6 +488,9 @@ const (
 	MethodRootsList = "roots/list"
 	// TODO: Add roots notification methods
 
+	// Ping
+	MethodPing = "ping"
+
 	// Old Handshake types (REMOVED)
 	// MessageTypeHandshakeRequest  = "HandshakeRequest"
 	// MessageTypeHandshakeResponse = "HandshakeResponse"

@@ -437,6 +437,21 @@ func (c *Client) GetPrompt(params GetPromptRequestParams) (*GetPromptResult, err
 	return &getResult, nil
 }
 
+// Ping sends a 'ping' request and waits for the (empty) response.
+// Returns an error if the ping fails or times out.
+func (c *Client) Ping(timeout time.Duration) error {
+	response, err := c.sendRequestAndWait(MethodPing, nil, timeout) // Ping has nil params
+	if err != nil {
+		return err // Error includes timeout message
+	}
+	// Check for JSON-RPC level error
+	if response.Error != nil {
+		return fmt.Errorf("received MCP Error for Ping: [%d] %s", response.Error.Code, response.Error.Message)
+	}
+	// Success (result should be null or absent, which we don't need to check explicitly here)
+	return nil
+}
+
 // processIncomingMessages runs in a separate goroutine to handle responses and notifications.
 func (c *Client) processIncomingMessages() { // Add missing function signature
 	log.Println("Client message processing loop started.")
@@ -587,3 +602,5 @@ func (c *Client) Close() error {
 	// If using net.Conn, would call c.conn.Close() here.
 	return nil
 }
+
+// Duplicates removed below
