@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	mcp "github.com/localrivet/gomcp"
@@ -25,8 +26,8 @@ var calculatorToolDefinition = mcp.Tool{ // Use new Tool struct
 }
 
 // executeCalculator contains the actual logic for the calculator tool.
-// It now matches the ToolHandlerFunc signature: (map[string]interface{}) -> ([]Content, bool)
-func executeCalculator(args map[string]interface{}) ([]mcp.Content, bool) {
+// It now matches the ToolHandlerFunc signature.
+func executeCalculator(ctx context.Context, progressToken *mcp.ProgressToken, args map[string]interface{}) ([]mcp.Content, bool) {
 	// Helper to create error response content
 	newErrorContent := func(msg string) []mcp.Content {
 		return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}

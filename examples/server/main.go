@@ -9,6 +9,7 @@ package main
 
 import (
 	// Keep fmt for error messages if needed by tool handlers
+	"context"
 	"log"
 	"os"
 
@@ -44,8 +45,13 @@ var echoTool = mcp.Tool{ // Use new Tool struct
 // They take arguments and return ([]Content, isError bool).
 
 // echoHandler implements the logic for the echo tool.
-func echoHandler(arguments map[string]interface{}) (content []mcp.Content, isError bool) {
+func echoHandler(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) (content []mcp.Content, isError bool) {
 	log.Printf("Executing echo tool with args: %v", arguments)
+	// Example: Check for cancellation
+	if ctx.Err() != nil {
+		log.Println("Echo tool cancelled")
+		return []mcp.Content{mcp.TextContent{Type: "text", Text: "Operation cancelled"}}, true
+	}
 	messageArg, ok := arguments["message"]
 	if !ok {
 		// Return error content and isError=true
@@ -64,19 +70,21 @@ func echoHandler(arguments map[string]interface{}) (content []mcp.Content, isErr
 }
 
 // calculatorHandler implements the logic for the calculator tool.
-// It calls the executeCalculator function which now returns ([]Content, bool).
-func calculatorHandler(arguments map[string]interface{}) (content []mcp.Content, isError bool) {
+// It calls the executeCalculator function which now needs to match the ToolHandlerFunc signature.
+func calculatorHandler(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) (content []mcp.Content, isError bool) {
 	log.Printf("Executing calculator tool with args: %v", arguments)
 	// Assumes executeCalculator is defined in calculator.go and matches the new signature
-	return executeCalculator(arguments)
+	// We pass the context and progress token along.
+	return executeCalculator(ctx, progressToken, arguments)
 }
 
 // filesystemHandler implements the logic for the filesystem tool.
-// It calls the executeFileSystem function which now returns ([]Content, bool).
-func filesystemHandler(arguments map[string]interface{}) (content []mcp.Content, isError bool) {
+// It calls the executeFileSystem function which now needs to match the ToolHandlerFunc signature.
+func filesystemHandler(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) (content []mcp.Content, isError bool) {
 	log.Printf("Executing filesystem tool with args: %v", arguments)
 	// Assumes executeFileSystem is defined in filesystem.go and matches the new signature
-	return executeFileSystem(arguments)
+	// We pass the context and progress token along.
+	return executeFileSystem(ctx, progressToken, arguments)
 }
 
 // --- Main Function ---

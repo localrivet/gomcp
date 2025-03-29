@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -92,7 +93,8 @@ func getSafePath(relativePath string) (string, error) {
 // executeFileSystem contains the logic for the filesystem tool.
 // It validates arguments, determines the safe path, performs the requested operation,
 // and returns the result content and isError status.
-func executeFileSystem(args map[string]interface{}) ([]mcp.Content, bool) {
+// It now matches the ToolHandlerFunc signature.
+func executeFileSystem(ctx context.Context, progressToken *mcp.ProgressToken, args map[string]interface{}) ([]mcp.Content, bool) {
 	// Helper to create error response content
 	newErrorContent := func(msg string) []mcp.Content {
 		return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}

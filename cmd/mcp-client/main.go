@@ -25,7 +25,7 @@ func main() {
 
 	log.Println("Client connected successfully!")
 
-	// TODO: Implement logic to send other messages (e.g., ToolDefinitionRequest, UseTool)
+	// TODO: Implement logic to send other messages (e.g., client.ListTools, client.CallTool)
 
 	// Close the client connection when done (optional for stdio)
 	err = client.Close()
