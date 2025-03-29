@@ -56,7 +56,7 @@ func requestToolDefinitions(conn *mcp.Connection) ([]mcp.ToolDefinition, error) 
 	if responseMsg.MessageType == mcp.MessageTypeError {
 		var errPayload mcp.ErrorPayload
 		if err := mcp.UnmarshalPayload(responseMsg.Payload, &errPayload); err == nil {
-			return nil, fmt.Errorf("received MCP Error: [%s] %s", errPayload.Code, errPayload.Message)
+			return nil, fmt.Errorf("received MCP Error: [%d] %s", errPayload.Code, errPayload.Message) // Use %d for int code
 		}
 		// If unmarshalling the error payload itself fails
 		return nil, fmt.Errorf("received MCP Error with unparsable payload")
@@ -119,7 +119,7 @@ func useTool(conn *mcp.Connection, toolName string, args map[string]interface{})
 		var errPayload mcp.ErrorPayload
 		if err := mcp.UnmarshalPayload(responseMsg.Payload, &errPayload); err == nil {
 			// Return a specific error indicating the tool use failed with an MCP error
-			return nil, fmt.Errorf("tool '%s' failed with MCP Error: [%s] %s", toolName, errPayload.Code, errPayload.Message)
+			return nil, fmt.Errorf("tool '%s' failed with MCP Error: [%d] %s", toolName, errPayload.Code, errPayload.Message) // Use %d for int code
 		}
 		return nil, fmt.Errorf("tool '%s' failed with an unparsable MCP Error payload", toolName)
 	}

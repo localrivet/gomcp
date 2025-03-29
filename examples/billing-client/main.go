@@ -36,7 +36,7 @@ func requestToolDefinitions(conn *mcp.Connection) ([]mcp.ToolDefinition, error) 
 	if responseMsg.MessageType == mcp.MessageTypeError {
 		var errPayload mcp.ErrorPayload
 		if err := mcp.UnmarshalPayload(responseMsg.Payload, &errPayload); err == nil {
-			return nil, fmt.Errorf("received MCP Error: [%s] %s", errPayload.Code, errPayload.Message)
+			return nil, fmt.Errorf("received MCP Error: [%d] %s", errPayload.Code, errPayload.Message) // Use %d for int code
 		}
 		return nil, fmt.Errorf("received MCP Error with unparsable payload")
 	}
@@ -76,7 +76,7 @@ func useTool(conn *mcp.Connection, toolName string, args map[string]interface{})
 	if responseMsg.MessageType == mcp.MessageTypeError {
 		var errPayload mcp.ErrorPayload
 		if err := mcp.UnmarshalPayload(responseMsg.Payload, &errPayload); err == nil {
-			return nil, fmt.Errorf("tool '%s' failed with MCP Error: [%s] %s", toolName, errPayload.Code, errPayload.Message)
+			return nil, fmt.Errorf("tool '%s' failed with MCP Error: [%d] %s", toolName, errPayload.Code, errPayload.Message) // Use %d for int code
 		}
 		return nil, fmt.Errorf("tool '%s' failed with an unparsable MCP Error payload", toolName)
 	}
@@ -107,7 +107,7 @@ func runClientLogic(conn *mcp.Connection, clientName string) error {
 	if msg.MessageType == mcp.MessageTypeError {
 		var errPayload mcp.ErrorPayload
 		_ = mcp.UnmarshalPayload(msg.Payload, &errPayload)
-		return fmt.Errorf("handshake failed with MCP Error: [%s] %s", errPayload.Code, errPayload.Message)
+		return fmt.Errorf("handshake failed with MCP Error: [%d] %s", errPayload.Code, errPayload.Message) // Use %d for int code
 	}
 	if msg.MessageType != mcp.MessageTypeHandshakeResponse {
 		return fmt.Errorf("expected HandshakeResponse, got %s", msg.MessageType)

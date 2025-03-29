@@ -42,7 +42,7 @@ func executeCalculator(args map[string]interface{}) (interface{}, *mcp.ErrorPayl
 
 	// Check if all required arguments are present.
 	if !ok1 || !ok2 || !ok3 {
-		return nil, &mcp.ErrorPayload{Code: "InvalidArgument", Message: "Missing required arguments (operand1, operand2, operation)"}
+		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required arguments (operand1, operand2, operation)"}
 	}
 
 	// Validate the types of the arguments.
@@ -64,7 +64,7 @@ func executeCalculator(args map[string]interface{}) (interface{}, *mcp.ErrorPayl
 		if !ok3 {
 			errMsg += " operation must be a string;"
 		}
-		return nil, &mcp.ErrorPayload{Code: "InvalidArgument", Message: errMsg}
+		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: errMsg} // Use MCP code
 	}
 	// --- End Argument Validation ---
 
@@ -80,12 +80,13 @@ func executeCalculator(args map[string]interface{}) (interface{}, *mcp.ErrorPayl
 	case "divide":
 		// Handle division by zero specifically.
 		if op2 == 0 {
-			return nil, &mcp.ErrorPayload{Code: "CalculationError", Message: "Division by zero"}
+			// Use a general execution error code
+			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPToolExecutionError, Message: "Division by zero"}
 		}
 		result = op1 / op2
 	default:
 		// Handle unknown operation strings.
-		return nil, &mcp.ErrorPayload{Code: "InvalidArgument", Message: fmt.Sprintf("Invalid operation '%s'. Use 'add', 'subtract', 'multiply', or 'divide'.", opStr)}
+		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: fmt.Sprintf("Invalid operation '%s'. Use 'add', 'subtract', 'multiply', or 'divide'.", opStr)} // Use MCP code
 	}
 	// --- End Calculation ---
 

@@ -86,7 +86,7 @@ func (s *Server) handleHandshake() (clientName string, err error) {
 	if msg.MessageType != MessageTypeHandshakeRequest {
 		errMsg := fmt.Sprintf("Expected HandshakeRequest, got %s", msg.MessageType)
 		// Attempt to send specific error code
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeInvalidRequest, Message: errMsg})
+		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPHandshakeFailed, Message: errMsg}) // Use MCP code
 		return "", fmt.Errorf("%s", errMsg)
 	}
 
@@ -94,13 +94,13 @@ func (s *Server) handleHandshake() (clientName string, err error) {
 	err = UnmarshalPayload(msg.Payload, &reqPayload)
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to unmarshal HandshakeRequest payload: %v", err)
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeInvalidPayload, Message: errMsg})
+		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPInvalidPayload, Message: errMsg}) // Correct
 		return "", fmt.Errorf("failed to unmarshal HandshakeRequest payload: %w", err)
 	}
 	// Validate required payload field
 	if reqPayload.SupportedProtocolVersions == nil {
 		errMsg := "malformed HandshakeRequest payload: missing supported_protocol_versions"
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeInvalidPayload, Message: errMsg})
+		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPInvalidPayload, Message: errMsg}) // Correct
 		return "", fmt.Errorf(errMsg)
 	}
 
@@ -114,7 +114,7 @@ func (s *Server) handleHandshake() (clientName string, err error) {
 	}
 	if !clientSupportsCurrent {
 		errMsg := fmt.Sprintf("Client does not support protocol version %s", CurrentProtocolVersion)
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeUnsupportedProtocolVersion, Message: fmt.Sprintf("Server requires protocol version %s", CurrentProtocolVersion)})
+		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPUnsupportedProtocolVersion, Message: fmt.Sprintf("Server requires protocol version %s", CurrentProtocolVersion)}) // Use MCP code
 		return "", fmt.Errorf("%s", errMsg)
 	}
 
@@ -171,7 +171,7 @@ func (s *Server) Run() error {
 			// Handle unknown message types
 			log.Printf("Handler not implemented for message type: %s", msg.MessageType)
 			handlerErr = s.conn.SendMessage(MessageTypeError, ErrorPayload{
-				Code:    ErrorCodeNotImplemented,
+				Code:    ErrorCodeMCPNotImplemented, // Use correct MCP code
 				Message: fmt.Sprintf("Message type '%s' not implemented by server", msg.MessageType),
 			})
 		}
@@ -214,7 +214,7 @@ func (s *Server) handleUseToolRequest(requestMsg *Message) error { // Use Messag
 	if err != nil {
 		log.Printf("Error unmarshalling UseToolRequest payload: %v", err)
 		return s.conn.SendMessage(MessageTypeError, ErrorPayload{ // Use ErrorPayload directly
-			Code:    ErrorCodeInvalidPayload,
+			Code:    ErrorCodeMCPInvalidPayload, // Use correct MCP code
 			Message: fmt.Sprintf("Failed to unmarshal UseToolRequest payload: %v", err),
 		})
 	}
@@ -226,7 +226,7 @@ func (s *Server) handleUseToolRequest(requestMsg *Message) error { // Use Messag
 	if !exists {
 		log.Printf("Tool not found or no handler registered: %s", requestPayload.ToolName)
 		return s.conn.SendMessage(MessageTypeError, ErrorPayload{ // Use ErrorPayload directly
-			Code:    ErrorCodeToolNotFound,
+			Code:    ErrorCodeMCPToolNotFound, // Use correct MCP code
 			Message: fmt.Sprintf("Tool '%s' not found or not implemented", requestPayload.ToolName),
 		})
 	}
@@ -239,10 +239,11 @@ func (s *Server) handleUseToolRequest(requestMsg *Message) error { // Use Messag
 	// Send response (either result or error returned by the handler)
 	if execErr != nil {
 		// Ensure the error code is set, default if necessary
-		if execErr.Code == "" {
-			execErr.Code = ErrorCodeToolExecutionError
+		if execErr.Code == 0 { // Check against zero value for int
+			execErr.Code = ErrorCodeMCPToolExecutionError // Use correct MCP code
 		}
-		log.Printf("Tool '%s' execution failed: [%s] %s", requestPayload.ToolName, execErr.Code, execErr.Message)
+		// Log the numeric code
+		log.Printf("Tool '%s' execution failed: [%d] %s", requestPayload.ToolName, execErr.Code, execErr.Message)
 		return s.conn.SendMessage(MessageTypeError, *execErr) // Use ErrorPayload directly
 	}
 

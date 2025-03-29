@@ -55,11 +55,11 @@ func chargeableEchoHandlerFactory(apiKey string) mcp.ToolHandlerFunc {
 		// --- Execute the "chargeable-echo" tool ---
 		messageArg, ok := arguments["message"]
 		if !ok {
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeInvalidArgument, Message: "Missing required argument 'message' for tool 'chargeable-echo'"}
+			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required argument 'message' for tool 'chargeable-echo'"} // Use MCP code
 		}
 		messageStr, ok := messageArg.(string)
 		if !ok {
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeInvalidArgument, Message: "Argument 'message' for tool 'chargeable-echo' must be a string"}
+			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Argument 'message' for tool 'chargeable-echo' must be a string"} // Use MCP code
 		}
 
 		log.Printf("Chargeable Echoing message: %s", messageStr)

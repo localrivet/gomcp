@@ -35,11 +35,11 @@ func secureEchoHandler(arguments map[string]interface{}) (result interface{}, er
 	log.Printf("Executing secure-echo tool with args: %v", arguments)
 	messageArg, ok := arguments["message"]
 	if !ok {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeInvalidArgument, Message: "Missing required argument 'message' for tool 'secure-echo'"}
+		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required argument 'message' for tool 'secure-echo'"} // Use MCP code
 	}
 	messageStr, ok := messageArg.(string)
 	if !ok {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeInvalidArgument, Message: "Argument 'message' for tool 'secure-echo' must be a string"}
+		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Argument 'message' for tool 'secure-echo' must be a string"} // Use MCP code
 	}
 	log.Printf("Securely Echoing message: %s", messageStr)
 	return messageStr, nil // Return result and nil error

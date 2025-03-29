@@ -133,11 +133,13 @@ func TestHandshakeUnsupportedVersionByServer(t *testing.T) {
 			clientErr = fmt.Errorf("simulated client failed to unmarshal error payload: %w", err)
 			return
 		}
-		if errPayload.Code != "UnsupportedProtocolVersion" {
-			clientErr = fmt.Errorf("simulated client expected error code 'UnsupportedProtocolVersion', got '%s'", errPayload.Code)
+		// Check for the numeric code
+		if errPayload.Code != ErrorCodeMCPUnsupportedProtocolVersion {
+			clientErr = fmt.Errorf("simulated client expected error code %d, got %d", ErrorCodeMCPUnsupportedProtocolVersion, errPayload.Code)
 			return
 		}
-		clientErr = fmt.Errorf("received expected MCP Error: [%s] %s", errPayload.Code, errPayload.Message)
+		// Store error with numeric code
+		clientErr = fmt.Errorf("received expected MCP Error: [%d] %s", errPayload.Code, errPayload.Message)
 	}()
 
 	done := make(chan struct{})
@@ -155,8 +157,8 @@ func TestHandshakeUnsupportedVersionByServer(t *testing.T) {
 	}
 	if clientErr == nil {
 		t.Error("Client simulation should have captured an error (version mismatch), but didn't")
-	} else if !strings.Contains(clientErr.Error(), "UnsupportedProtocolVersion") {
-		t.Errorf("Client simulation error message unexpected, should contain 'UnsupportedProtocolVersion': %v", clientErr)
+	} else if !strings.Contains(clientErr.Error(), fmt.Sprintf("[%d]", ErrorCodeMCPUnsupportedProtocolVersion)) { // Check for numeric code in error string
+		t.Errorf("Client simulation error message unexpected, should contain code %d: %v", ErrorCodeMCPUnsupportedProtocolVersion, clientErr)
 	}
 }
 
@@ -190,7 +192,8 @@ func TestHandshakeInvalidSequence(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		// Send an Error message instead of HandshakeRequest
-		invalidFirstMessagePayload := ErrorPayload{Code: "ClientError", Message: "Sending wrong message"}
+		// Use a valid numeric code, e.g., InvalidRequest, although the server should reject based on MessageType anyway.
+		invalidFirstMessagePayload := ErrorPayload{Code: ErrorCodeInvalidRequest, Message: "Sending wrong message (Error instead of HandshakeRequest)"}
 		err := clientConn.SendMessage(MessageTypeError, invalidFirstMessagePayload)
 		if err != nil {
 			// Record the error if sending fails, though the main check is serverErr

@@ -162,7 +162,7 @@ func (c *Connection) ReceiveMessage() (*Message, error) {
 		// Be careful not to cause infinite error loops
 		if tempMsg.MessageType != MessageTypeError { // Avoid sending error in response to an error
 			_ = c.SendMessage(MessageTypeError, ErrorPayload{
-				Code:    "InvalidJSON",
+				Code:    ErrorCodeParseError, // Use standard JSON-RPC code for parse errors
 				Message: fmt.Sprintf("Failed to unmarshal incoming JSON: %v", err),
 			})
 		}
@@ -185,7 +185,7 @@ func (c *Connection) ReceiveMessage() (*Message, error) {
 		log.Println(errMsg)
 		if finalMsg.MessageType != MessageTypeError { // Avoid sending error in response to an error
 			_ = c.SendMessage(MessageTypeError, ErrorPayload{
-				Code:    "InvalidMessage",
+				Code:    ErrorCodeMCPInvalidMessage, // Use numeric code
 				Message: errMsg,
 			})
 		}

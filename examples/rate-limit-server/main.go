@@ -53,7 +53,7 @@ func limitedEchoHandler(arguments map[string]interface{}) (result interface{}, e
 		log.Println("Rate limit exceeded!")
 		// Send a specific MCP error if rate limited.
 		return nil, &mcp.ErrorPayload{
-			Code:    mcp.ErrorCodeRateLimitExceeded, // Use standard code
+			Code:    mcp.ErrorCodeMCPRateLimitExceeded, // Use MCP code
 			Message: fmt.Sprintf("Too many requests. Limit is %d per second (burst %d).", requestsPerSecond, burstLimit),
 		}
 	}
@@ -63,11 +63,11 @@ func limitedEchoHandler(arguments map[string]interface{}) (result interface{}, e
 	// --- Execute the "limited-echo" tool ---
 	messageArg, ok := arguments["message"]
 	if !ok {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeInvalidArgument, Message: "Missing required argument 'message' for tool 'limited-echo'"}
+		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required argument 'message' for tool 'limited-echo'"} // Use MCP code
 	}
 	messageStr, ok := messageArg.(string)
 	if !ok {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeInvalidArgument, Message: "Argument 'message' for tool 'limited-echo' must be a string"}
+		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Argument 'message' for tool 'limited-echo' must be a string"} // Use MCP code
 	}
 
 	log.Printf("Rate-Limited Echoing message: %s", messageStr)
