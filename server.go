@@ -101,7 +101,7 @@ func (s *Server) handleHandshake() (clientName string, err error) {
 	if reqPayload.SupportedProtocolVersions == nil {
 		errMsg := "malformed HandshakeRequest payload: missing supported_protocol_versions"
 		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPInvalidPayload, Message: errMsg}) // Correct
-		return "", fmt.Errorf(errMsg)
+		return "", fmt.Errorf("%s", errMsg)                                                                       // Use %s format specifier
 	}
 
 	log.Printf("Received HandshakeRequest from client: %s", reqPayload.ClientName)

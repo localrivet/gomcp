@@ -127,7 +127,8 @@ func TestExampleClientLogic(t *testing.T) {
 		if !ok {
 			return
 		}
-		calcErr2 := mcp.ErrorPayload{Code: "CalculationError", Message: "Division by zero"}
+		// Use appropriate numeric code
+		calcErr2 := mcp.ErrorPayload{Code: mcp.ErrorCodeMCPToolExecutionError, Message: "Division by zero"}
 		if err := serverConn.SendMessage(mcp.MessageTypeError, calcErr2); err != nil {
 			log.Printf("ERROR (Server simulator): failed to send calc div0 err: %v", err)
 			return
@@ -138,7 +139,7 @@ func TestExampleClientLogic(t *testing.T) {
 		if !ok {
 			return
 		}
-		calcErr3 := mcp.ErrorPayload{Code: "InvalidArgument", Message: "Missing required arguments"}
+		calcErr3 := mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required arguments"} // Use MCP code
 		if err := serverConn.SendMessage(mcp.MessageTypeError, calcErr3); err != nil {
 			log.Printf("ERROR (Server simulator): failed to send calc miss err: %v", err)
 			return
@@ -194,7 +195,7 @@ func TestExampleClientLogic(t *testing.T) {
 		if !ok {
 			return
 		}
-		fsErr5 := mcp.ErrorPayload{Code: "NotFound", Message: "File not found"}
+		fsErr5 := mcp.ErrorPayload{Code: mcp.ErrorCodeMCPResourceNotFound, Message: "File not found"} // Use MCP code
 		if err := serverConn.SendMessage(mcp.MessageTypeError, fsErr5); err != nil {
 			log.Printf("ERROR (Server simulator): failed to send fs read nf err: %v", err)
 			return
@@ -205,7 +206,7 @@ func TestExampleClientLogic(t *testing.T) {
 		if !ok {
 			return
 		}
-		fsErr6 := mcp.ErrorPayload{Code: "SecurityViolation", Message: "escape the sandbox"}
+		fsErr6 := mcp.ErrorPayload{Code: mcp.ErrorCodeMCPSecurityViolation, Message: "escape the sandbox"} // Use MCP code
 		if err := serverConn.SendMessage(mcp.MessageTypeError, fsErr6); err != nil {
 			log.Printf("ERROR (Server simulator): failed to send fs write sec err: %v", err)
 			return

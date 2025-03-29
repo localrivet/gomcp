@@ -71,7 +71,7 @@ func (c *Client) Connect() error {
 			log.Printf("Failed to unmarshal error payload. Raw: %s", string(rawPayload))
 			return fmt.Errorf("received Error message, but failed to unmarshal its payload: %w", unmarshalErr)
 		}
-		return fmt.Errorf("received MCP Error during handshake: [%s] %s", errPayload.Code, errPayload.Message)
+		return fmt.Errorf("received MCP Error during handshake: [%d] %s", errPayload.Code, errPayload.Message) // Use %d for int code
 
 	}
 
