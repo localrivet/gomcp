@@ -40,6 +40,11 @@ type Server struct {
 	// For managing cancellation of active requests
 	activeRequests map[string]context.CancelFunc // Map request ID (as string) to its cancel function
 	requestMu      sync.Mutex                    // Mutex to protect activeRequests map
+
+	// For managing resource subscriptions (URI -> subscribed?)
+	// Note: Assumes one client per server instance for now.
+	resourceSubscriptions map[string]bool // Map resource URI to subscription status
+	subscriptionMu        sync.Mutex      // Mutex to protect resourceSubscriptions map
 }
 
 // NewServer creates and initializes a new MCP Server instance using stdio.
@@ -60,14 +65,15 @@ func NewServerWithConnection(serverName string, conn *Connection) *Server {
 	}
 	// Assign to variable first
 	srv := &Server{
-		conn:                 conn, // Use provided connection
-		serverName:           serverName,
-		toolRegistry:         make(map[string]Tool), // Use Tool struct
-		toolHandlers:         make(map[string]ToolHandlerFunc),
-		resourceRegistry:     make(map[string]Resource),                 // Initialize map
-		promptRegistry:       make(map[string]Prompt),                   // Initialize map
-		notificationHandlers: make(map[string]func(params interface{})), // Initialize map
-		activeRequests:       make(map[string]context.CancelFunc),       // Initialize map
+		conn:                  conn, // Use provided connection
+		serverName:            serverName,
+		toolRegistry:          make(map[string]Tool), // Use Tool struct
+		toolHandlers:          make(map[string]ToolHandlerFunc),
+		resourceRegistry:      make(map[string]Resource),                 // Initialize map
+		promptRegistry:        make(map[string]Prompt),                   // Initialize map
+		notificationHandlers:  make(map[string]func(params interface{})), // Initialize map
+		activeRequests:        make(map[string]context.CancelFunc),       // Initialize map
+		resourceSubscriptions: make(map[string]bool),                     // Initialize map
 	}
 	// Register the built-in handler for cancellation notifications
 	srv.RegisterNotificationHandler(MethodCancelled, srv.handleCancellationNotification)
@@ -787,7 +793,23 @@ func (s *Server) handleSubscribeResource(requestID interface{}, params interface
 		})
 	}
 	log.Printf("Client requested subscription to URIs: %v", requestParams.URIs)
-	// TODO: Store subscription state associated with the client/connection
+
+	s.subscriptionMu.Lock()
+	if len(requestParams.URIs) == 0 {
+		// Empty list means unsubscribe all (clear the map)
+		log.Println("Unsubscribing from all resources.")
+		s.resourceSubscriptions = make(map[string]bool)
+	} else {
+		for _, uri := range requestParams.URIs {
+			// Check if resource actually exists in registry? Spec doesn't explicitly require it.
+			// _, exists := s.resourceRegistry[uri]
+			// if !exists { log.Printf("Warning: Client subscribed to non-existent resource URI: %s", uri) }
+			s.resourceSubscriptions[uri] = true
+			log.Printf("Subscribed to resource: %s", uri)
+		}
+	}
+	s.subscriptionMu.Unlock()
+
 	return s.conn.SendResponse(requestID, SubscribeResourceResult{}) // Empty result
 }
 
@@ -803,8 +825,50 @@ func (s *Server) handleUnsubscribeResource(requestID interface{}, params interfa
 		})
 	}
 	log.Printf("Client requested unsubscription from URIs: %v", requestParams.URIs)
-	// TODO: Remove subscription state associated with the client/connection
+
+	s.subscriptionMu.Lock()
+	if len(requestParams.URIs) == 0 {
+		// Spec doesn't define unsubscribe with empty list, but arguably should do nothing.
+		log.Println("Received unsubscribe request with empty URI list, doing nothing.")
+	} else {
+		for _, uri := range requestParams.URIs {
+			delete(s.resourceSubscriptions, uri)
+			log.Printf("Unsubscribed from resource: %s", uri)
+		}
+	}
+	s.subscriptionMu.Unlock()
+
 	return s.conn.SendResponse(requestID, UnsubscribeResourceResult{}) // Empty result
+}
+
+// NotifyResourceUpdated informs the library that a resource has changed.
+// The library will then send 'notifications/resources/changed' to subscribed clients.
+// The provided 'resource' struct MUST contain the updated version string.
+func (s *Server) NotifyResourceUpdated(resource Resource) {
+	if resource.URI == "" {
+		log.Printf("Warning: NotifyResourceUpdated called with empty URI.")
+		return
+	}
+
+	// Check if the client is actually subscribed to this resource
+	s.subscriptionMu.Lock()
+	subscribed, ok := s.resourceSubscriptions[resource.URI]
+	s.subscriptionMu.Unlock()
+
+	if !ok || !subscribed {
+		// Client is not subscribed, do nothing
+		return
+	}
+
+	// Send the notification
+	log.Printf("Resource %s updated, sending notification.", resource.URI)
+	params := ResourceChangedParams{
+		Resource: resource,
+	}
+	err := s.SendResourceChanged(params)
+	if err != nil {
+		log.Printf("Warning: failed to send resources/changed notification for URI %s: %v", resource.URI, err)
+	}
 }
 
 // SendCancellation sends a '$/cancelled' notification to the client.
