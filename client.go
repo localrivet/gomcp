@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Client represents an MCP client instance. It manages the connection to an
@@ -201,6 +203,14 @@ func (c *Client) Connect() error {
 // if the server did not provide a name.
 func (c *Client) ServerName() string {
 	return c.serverName
+}
+
+// GenerateProgressToken creates a new unique progress token.
+// Currently uses UUIDs.
+func (c *Client) GenerateProgressToken() ProgressToken {
+	// We need to import "github.com/google/uuid"
+	// For simplicity, let's assume it's imported (it should be from transport.go usage)
+	return ProgressToken(uuid.NewString())
 }
 
 // sendRequestAndWait sends a request, registers it, and waits for a response.

@@ -16,9 +16,9 @@ import (
 // ToolHandlerFunc defines the signature for functions that handle tool execution.
 // It receives the arguments provided by the client and should return the result
 // content and a boolean indicating if an error occurred. It also receives a context.Context
-// which can be used to detect cancellation requests.
+// (for cancellation) and an optional ProgressToken (which may be nil).
 // TODO: Refine this signature further. How to pass structured content? How to detail errors?
-type ToolHandlerFunc func(ctx context.Context, arguments map[string]interface{}) (content []Content, isError bool)
+type ToolHandlerFunc func(ctx context.Context, progressToken *ProgressToken, arguments map[string]interface{}) (content []Content, isError bool)
 
 // Server represents an MCP server instance. It manages the connection,
 // handles the handshake/initialization, tool registration, and processes incoming messages.
@@ -484,8 +484,8 @@ func (s *Server) handleCallToolRequest(requestID interface{}, params interface{}
 	}()
 	// --- End Context Management ---
 
-	// Execute the handler, passing the cancellable context
-	content, isError := handler(ctx, requestParams.Arguments) // Pass ctx
+	// Execute the handler, passing the cancellable context and optional progress token
+	content, isError := handler(ctx, progressToken, requestParams.Arguments) // Pass ctx and progressToken
 
 	// Construct the CallToolResult payload
 	responsePayload := CallToolResult{
