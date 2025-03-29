@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
+	"time"
 )
 
 // Client represents an MCP client instance. It manages the connection to an
@@ -18,6 +20,10 @@ type Client struct {
 	// TODO: Store client/server capabilities
 	// clientCapabilities ClientCapabilities
 	// serverCapabilities ServerCapabilities
+
+	// For handling concurrent requests/responses
+	pendingRequests map[string]chan *JSONRPCResponse // Map request ID to a channel for the response
+	pendingMu       sync.Mutex                       // Mutex to protect pendingRequests map
 }
 
 // NewClient creates and initializes a new MCP Client instance.
@@ -29,8 +35,9 @@ func NewClient(clientName string) *Client {
 	log.SetFlags(log.Ltime | log.Lshortfile) // Add timestamp and file/line
 
 	return &Client{
-		conn:       NewStdioConnection(), // Assumes stdio for now
-		clientName: clientName,
+		conn:            NewStdioConnection(), // Assumes stdio for now
+		clientName:      clientName,
+		pendingRequests: make(map[string]chan *JSONRPCResponse), // Initialize map
 	}
 }
 
@@ -146,6 +153,9 @@ func (c *Client) Connect() error {
 		log.Printf("Warning: failed to send InitializedNotification: %v", err)
 	}
 
+	// Start the background message processing loop
+	go c.processIncomingMessages()
+
 	return nil // Success
 }
 
@@ -156,8 +166,163 @@ func (c *Client) ServerName() string {
 	return c.serverName
 }
 
-// TODO: Add methods for sending other client messages (UseTool, RequestToolDefinitions, etc.)
-// TODO: Add a method to run the client's receive loop if needed (e.g., for notifications)
+// sendRequestAndWait sends a request, registers it, and waits for a response.
+// Returns the received JSONRPCResponse or an error (including timeout).
+func (c *Client) sendRequestAndWait(method string, params interface{}, timeout time.Duration) (*JSONRPCResponse, error) {
+	// 1. Create response channel
+	respChan := make(chan *JSONRPCResponse, 1) // Buffered channel
+
+	// 2. Send request and get ID
+	requestID, err := c.conn.SendRequest(method, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request for method %s: %w", method, err)
+	}
+
+	// 3. Register pending request
+	c.pendingMu.Lock()
+	c.pendingRequests[requestID] = respChan
+	c.pendingMu.Unlock()
+
+	// 4. Wait for response or timeout
+	select {
+	case response := <-respChan:
+		if response == nil {
+			// Channel closed by receiver loop due to error
+			return nil, fmt.Errorf("connection closed or error occurred while waiting for response to %s (ID: %s)", method, requestID)
+		}
+		// Received response
+		return response, nil
+	case <-time.After(timeout):
+		// Timeout occurred
+		// Clean up the pending request map
+		c.pendingMu.Lock()
+		delete(c.pendingRequests, requestID)
+		c.pendingMu.Unlock()
+		return nil, fmt.Errorf("timeout waiting for response to %s (ID: %s)", method, requestID)
+	}
+}
+
+// ListTools sends a 'tools/list' request and waits for the response.
+func (c *Client) ListTools(params ListToolsRequestParams) (*ListToolsResult, error) {
+	// Use a default timeout, e.g., 10 seconds
+	timeout := 10 * time.Second
+
+	response, err := c.sendRequestAndWait(MethodListTools, params, timeout)
+	if err != nil {
+		return nil, err // Error includes timeout message
+	}
+
+	// Check for JSON-RPC level error
+	if response.Error != nil {
+		return nil, fmt.Errorf("received MCP Error for ListTools: [%d] %s", response.Error.Code, response.Error.Message)
+	}
+
+	// Unmarshal the result
+	var listResult ListToolsResult
+	if response.Result == nil {
+		return nil, fmt.Errorf("received successful ListTools response but 'result' field was null")
+	}
+	resultBytes, err := json.Marshal(response.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-marshal ListTools 'result' field: %w", err)
+	}
+	err = json.Unmarshal(resultBytes, &listResult)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ListToolsResult from response: %w", err)
+	}
+
+	return &listResult, nil
+} // <-- Add missing closing brace
+
+// TODO: Add CallTool method
+
+// processIncomingMessages runs in a separate goroutine to handle responses and notifications.
+func (c *Client) processIncomingMessages() { // Add missing function signature
+	log.Println("Client message processing loop started.")
+	defer log.Println("Client message processing loop stopped.")
+
+	for {
+		rawJSON, err := c.conn.ReceiveRawMessage()
+		if err != nil {
+			log.Printf("Error receiving message in client loop: %v. Exiting loop.", err)
+			// TODO: How to signal this error back to the main client logic or pending requests?
+			// Maybe close all pending channels with an error?
+			c.closePendingRequests(err)
+			return
+		}
+
+		// Attempt to unmarshal into a generic structure to determine type
+		var baseMessage struct {
+			JSONRPC string        `json:"jsonrpc"`
+			ID      interface{}   `json:"id"`     // Present in responses
+			Method  string        `json:"method"` // Present in notifications/requests
+			Result  interface{}   `json:"result"`
+			Error   *ErrorPayload `json:"error"`
+			Params  interface{}   `json:"params"`
+		}
+		err = json.Unmarshal(rawJSON, &baseMessage)
+		if err != nil {
+			log.Printf("Client failed to unmarshal base JSON-RPC structure: %v. Raw: %s", err, string(rawJSON))
+			// Cannot send error back as we don't know the context/ID
+			continue // Skip malformed message
+		}
+
+		if baseMessage.ID != nil { // It's a Response
+			// Convert ID to string for map lookup
+			idStr := fmt.Sprintf("%v", baseMessage.ID)
+
+			c.pendingMu.Lock()
+			respChan, ok := c.pendingRequests[idStr]
+			if ok {
+				// Found pending request, remove it from map
+				delete(c.pendingRequests, idStr)
+				c.pendingMu.Unlock()
+
+				// Send the full response back to the waiting caller
+				// Re-marshal into JSONRPCResponse to ensure correct structure
+				var jsonrpcResp JSONRPCResponse
+				if err := json.Unmarshal(rawJSON, &jsonrpcResp); err == nil {
+					select {
+					case respChan <- &jsonrpcResp:
+						// Response sent successfully
+					default:
+						// Channel likely closed by timeout on caller side
+						log.Printf("Warning: Response channel for request ID %s closed before response could be sent.", idStr)
+					}
+				} else {
+					log.Printf("Error re-marshalling JSONRPCResponse for ID %s: %v", idStr, err)
+					// How to signal this error back? Close channel?
+					close(respChan) // Signal error by closing channel
+				}
+
+			} else {
+				c.pendingMu.Unlock()
+				log.Printf("Warning: Received response for unknown or timed-out request ID: %v", baseMessage.ID)
+			}
+
+		} else if baseMessage.Method != "" { // It's a Notification or Request from server
+			// TODO: Handle server-to-client requests (e.g., sampling/createMessage)
+			log.Printf("Client received notification/request: Method=%s", baseMessage.Method)
+			// TODO: Dispatch notifications (e.g., $/progress, $/cancel)
+		} else {
+			log.Printf("Warning: Received message with no ID or Method. Raw: %s", string(rawJSON))
+		}
+	}
+}
+
+// closePendingRequests closes all pending request channels, typically with an error.
+// This should be called when the connection is lost.
+func (c *Client) closePendingRequests(err error) {
+	c.pendingMu.Lock()
+	defer c.pendingMu.Unlock()
+	log.Printf("Closing %d pending request channels due to error: %v", len(c.pendingRequests), err)
+	for id, ch := range c.pendingRequests {
+		// Optionally send an error indication through the channel if possible,
+		// but closing is the primary signal.
+		close(ch)
+		delete(c.pendingRequests, id) // Clean up map
+	}
+}
 
 // Close handles the closing of the client connection.
 // For the current stdio implementation, this is mostly a placeholder,

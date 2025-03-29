@@ -23,9 +23,9 @@ type Server struct {
 	serverName   string
 	toolRegistry map[string]Tool            // Stores tool definitions (now using Tool struct)
 	toolHandlers map[string]ToolHandlerFunc // Stores handlers for each tool
-	// TODO: Store client/server capabilities after handshake
-	// clientCapabilities ClientCapabilities
-	// serverCapabilities ServerCapabilities
+	// Store client/server capabilities after handshake
+	clientCapabilities ClientCapabilities // Capabilities supported by the connected client
+	serverCapabilities ServerCapabilities // Capabilities supported by this server
 }
 
 // NewServer creates and initializes a new MCP Server instance using stdio.
@@ -215,8 +215,10 @@ func (s *Server) handleInitialize() (clientInfo Implementation, clientCapabiliti
 	// --- End Initialized Notification ---
 
 	log.Printf("Initialization successful with client: %s", reqParams.ClientInfo.Name)
+	// Store capabilities on the server struct
+	s.clientCapabilities = reqParams.Capabilities
+	s.serverCapabilities = serverCapabilities // Stored from earlier definition
 	// Return the client's info and capabilities, and nil error
-	// TODO: Store these capabilities on the server struct
 	return reqParams.ClientInfo, reqParams.Capabilities, nil
 }
 
@@ -235,7 +237,7 @@ func (s *Server) Run() error {
 		return fmt.Errorf("initialization failed: %w", err)
 	}
 	log.Printf("Initialization successful with client: %s %+v", clientInfo.Name, clientCaps)
-	// TODO: Store clientCaps on s.clientCapabilities
+	// Capabilities are now stored in s.clientCapabilities and s.serverCapabilities
 
 	// 2. Main Message Loop with Dispatch
 	log.Println("Entering main message loop...")
