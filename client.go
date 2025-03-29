@@ -36,6 +36,10 @@ type Client struct {
 	// For handling server-to-client notifications
 	notificationHandlers map[string]func(params interface{}) // Map method name to handler
 	notificationMu       sync.Mutex                          // Mutex to protect notificationHandlers map
+
+	// Client-side state
+	roots   map[string]Root // Stores client-known roots (URI -> Root)
+	rootsMu sync.Mutex      // Mutex to protect roots map
 }
 
 // NewClient creates and initializes a new MCP Client instance.
@@ -52,6 +56,7 @@ func NewClient(clientName string) *Client {
 		pendingRequests:      make(map[string]chan *JSONRPCResponse),                          // Initialize map
 		requestHandlers:      make(map[string]func(id interface{}, params interface{}) error), // Initialize map
 		notificationHandlers: make(map[string]func(params interface{})),                       // Initialize map
+		roots:                make(map[string]Root),                                           // Initialize map
 	}
 }
 
@@ -202,6 +207,54 @@ func (c *Client) Connect() error {
 // if the server did not provide a name.
 func (c *Client) ServerName() string {
 	return c.serverName
+}
+
+// AddRoot adds or updates a root in the client's list and sends a notification if supported.
+func (c *Client) AddRoot(root Root) error {
+	if root.URI == "" {
+		return fmt.Errorf("root URI cannot be empty")
+	}
+	c.rootsMu.Lock()
+	c.roots[root.URI] = root
+	c.rootsMu.Unlock()
+	log.Printf("Added/Updated root: %s", root.URI)
+
+	// Send notification if client supports it
+	// Note: Assumes Connect() has been called and capabilities are populated.
+	if c.clientCapabilities.Roots != nil && c.clientCapabilities.Roots.ListChanged {
+		log.Printf("Sending roots/list_changed notification to server")
+		err := c.SendRootsListChanged()
+		if err != nil {
+			log.Printf("Warning: failed to send roots/list_changed notification: %v", err)
+		}
+	}
+	return nil
+}
+
+// RemoveRoot removes a root from the client's list and sends a notification if supported.
+func (c *Client) RemoveRoot(uri string) error {
+	if uri == "" {
+		return fmt.Errorf("root URI cannot be empty")
+	}
+	c.rootsMu.Lock()
+	_, exists := c.roots[uri]
+	if !exists {
+		c.rootsMu.Unlock()
+		return fmt.Errorf("root '%s' not found", uri)
+	}
+	delete(c.roots, uri)
+	c.rootsMu.Unlock()
+	log.Printf("Removed root: %s", uri)
+
+	// Send notification if client supports it
+	if c.clientCapabilities.Roots != nil && c.clientCapabilities.Roots.ListChanged {
+		log.Printf("Sending roots/list_changed notification to server")
+		err := c.SendRootsListChanged()
+		if err != nil {
+			log.Printf("Warning: failed to send roots/list_changed notification: %v", err)
+		}
+	}
+	return nil
 }
 
 // GenerateProgressToken creates a new unique progress token.
@@ -645,10 +698,17 @@ func (c *Client) processIncomingMessages() { // Add missing function signature
 					// No registered handler, check for built-in handlers or send error
 					switch baseMessage.Method {
 					case MethodRootsList:
-						// Handle roots/list internally for now (return empty list)
+						// Handle roots/list internally by returning the client's known roots.
 						// TODO: Allow overriding this with a registered handler?
-						log.Printf("Received roots/list request from server, sending empty list response.")
-						_ = c.conn.SendResponse(baseMessage.ID, ListRootsResult{Roots: []Root{}})
+						log.Printf("Received roots/list request from server.")
+						c.rootsMu.Lock()
+						roots := make([]Root, 0, len(c.roots))
+						for _, root := range c.roots {
+							roots = append(roots, root)
+						}
+						c.rootsMu.Unlock()
+						log.Printf("Sending roots/list response with %d roots.", len(roots))
+						_ = c.conn.SendResponse(baseMessage.ID, ListRootsResult{Roots: roots})
 						// Note: We don't set handlerErr here as SendResponse handles its own errors internally
 					default:
 						// No handler registered and not a built-in method, send MethodNotFound error
