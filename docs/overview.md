@@ -9,9 +9,9 @@ The primary goal of `gomcp` is to provide idiomatic Go tools for building applic
 - **MCP Servers:** Applications that expose tools or resources to MCP clients (often language models or agents).
 - **MCP Clients:** Applications that connect to MCP servers to utilize their offered tools and resources.
 
-## Core Components (`pkg/mcp`)
+## Core Components (Root Package)
 
-The main library code resides in the `pkg/mcp` package.
+The main library code resides in the root package (`github.com/localrivert/gomcp`).
 
 1.  **`protocol.go`**:
 

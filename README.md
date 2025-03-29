@@ -13,10 +13,10 @@ This library facilitates building MCP clients (applications that consume tools/r
 
 The library currently supports the core MCP handshake process:
 
-- Message Structure Definition (`pkg/mcp/protocol.go`)
-- Stdio Transport (`pkg/mcp/transport.go`)
-- Server Handshake Logic (`pkg/mcp/server.go`)
-- Client Handshake Logic (`pkg/mcp/client.go`)
+- Message Structure Definition (`protocol.go`)
+- Stdio Transport (`transport.go`)
+- Server Handshake Logic (`server.go`)
+- Client Handshake Logic (`client.go`)
 
 Support for Tool Definitions, Tool Usage, Resource Access, and Notifications is planned for future development.
 
@@ -28,7 +28,7 @@ go get github.com/localrivert/gomcp
 
 ## Basic Usage
 
-The core logic resides in the `pkg/mcp` package.
+The core logic resides in the root package (`github.com/localrivert/gomcp`).
 
 ### Implementing an MCP Server
 
@@ -39,7 +39,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/localrivert/gomcp/pkg/mcp"
+	mcp "github.com/localrivert/gomcp"
 )
 
 func main() {
@@ -76,7 +76,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/localrivert/gomcp/pkg/mcp"
+	mcp "github.com/localrivert/gomcp"
 )
 
 func main() {
@@ -143,7 +143,7 @@ More detailed documentation can be found in the `docs/` directory (TODO: Create 
 Go package documentation is available via:
 
 - [pkg.go.dev](https://pkg.go.dev/github.com/localrivert/gomcp)
-- Running `godoc -http=:6060` locally and navigating to `github.com/localrivert/gomcp/pkg/mcp`.
+- Running `godoc -http=:6060` locally and navigating to `github.com/localrivert/gomcp`.
 
 ## Contributing
 
