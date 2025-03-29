@@ -583,6 +583,21 @@ func (s *Server) SendProgress(params ProgressParams) error {
 	return s.conn.SendNotification(MethodProgress, params)
 }
 
+// SendToolsListChanged sends a 'notifications/tools/list_changed' notification.
+func (s *Server) SendToolsListChanged() error {
+	return s.conn.SendNotification(MethodNotifyToolsListChanged, ToolsListChangedParams{})
+}
+
+// SendResourcesListChanged sends a 'notifications/resources/list_changed' notification.
+func (s *Server) SendResourcesListChanged() error {
+	return s.conn.SendNotification(MethodNotifyResourcesListChanged, ResourcesListChangedParams{})
+}
+
+// SendPromptsListChanged sends a 'notifications/prompts/list_changed' notification.
+func (s *Server) SendPromptsListChanged() error {
+	return s.conn.SendNotification(MethodNotifyPromptsListChanged, PromptsListChangedParams{})
+}
+
 // handleReadResource handles the 'resources/read' request.
 // TODO: Implement actual resource reading.
 func (s *Server) handleReadResource(requestID interface{}, params interface{}) error {

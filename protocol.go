@@ -469,6 +469,21 @@ type ProgressParams struct {
 	Value interface{} `json:"value"` // The progress payload (type defined by the request)
 }
 
+// --- List Changed Notification Structures ---
+// These notifications currently have no parameters.
+
+// ToolsListChangedParams defines parameters for 'notifications/tools/list_changed'.
+type ToolsListChangedParams struct{}
+
+// ResourcesListChangedParams defines parameters for 'notifications/resources/list_changed'.
+type ResourcesListChangedParams struct{}
+
+// PromptsListChangedParams defines parameters for 'notifications/prompts/list_changed'.
+type PromptsListChangedParams struct{}
+
+// RootsListChangedParams defines parameters for 'notifications/roots/list_changed'.
+type RootsListChangedParams struct{}
+
 // --- Constants ---
 
 const (
@@ -483,19 +498,20 @@ const (
 	MethodInitialized = "initialized" // Notification
 
 	// Tools
-	MethodListTools = "tools/list"
-	MethodCallTool  = "tools/call"
-	// TODO: Add MethodToolListChanged = "notifications/tools/list_changed"
+	MethodListTools              = "tools/list"
+	MethodCallTool               = "tools/call"
+	MethodNotifyToolsListChanged = "notifications/tools/list_changed" // Notification
 
 	// Resources
-	MethodListResources = "resources/list"
-	MethodReadResource  = "resources/read"
-	// TODO: Add resource notification methods
+	MethodListResources              = "resources/list"
+	MethodReadResource               = "resources/read"
+	MethodNotifyResourcesListChanged = "notifications/resources/list_changed" // Notification
+	// TODO: Add resource subscription methods/notifications
 
 	// Prompts
-	MethodListPrompts = "prompts/list"
-	MethodGetPrompt   = "prompts/get"
-	// TODO: Add prompt notification methods
+	MethodListPrompts              = "prompts/list"
+	MethodGetPrompt                = "prompts/get"
+	MethodNotifyPromptsListChanged = "notifications/prompts/list_changed" // Notification
 
 	// Logging
 	MethodLoggingSetLevel     = "logging/set_level"
@@ -505,8 +521,8 @@ const (
 	MethodSamplingCreateMessage = "sampling/create_message"
 
 	// Roots
-	MethodRootsList = "roots/list"
-	// TODO: Add roots notification methods
+	MethodRootsList              = "roots/list"
+	MethodNotifyRootsListChanged = "notifications/roots/list_changed" // Notification
 
 	// Ping
 	MethodPing = "ping"

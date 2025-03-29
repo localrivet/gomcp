@@ -479,6 +479,11 @@ func (c *Client) SendProgress(params ProgressParams) error {
 	return c.conn.SendNotification(MethodProgress, params)
 }
 
+// SendRootsListChanged sends a 'notifications/roots/list_changed' notification to the server.
+func (c *Client) SendRootsListChanged() error {
+	return c.conn.SendNotification(MethodNotifyRootsListChanged, RootsListChangedParams{})
+}
+
 // processIncomingMessages runs in a separate goroutine to handle responses and notifications.
 func (c *Client) processIncomingMessages() { // Add missing function signature
 	log.Println("Client message processing loop started.")
