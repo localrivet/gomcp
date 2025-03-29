@@ -516,6 +516,20 @@ func (s *Server) CreateMessage(params CreateMessageRequestParams) (string, error
 	return requestID, nil
 }
 
+// ListRoots sends a 'roots/list' request to the client.
+// The response needs to be handled asynchronously by the client's application logic
+// after being received by the client's receive loop and potentially passed back.
+func (s *Server) ListRoots(params ListRootsRequestParams) (string, error) {
+	log.Printf("Server sending ListRoots request...")
+	requestID, err := s.conn.SendRequest(MethodRootsList, params)
+	if err != nil {
+		log.Printf("Error sending ListRoots request: %v", err)
+		return "", err
+	}
+	log.Printf("ListRoots request sent with ID: %s", requestID)
+	return requestID, nil
+}
+
 // handleReadResource handles the 'resources/read' request.
 // TODO: Implement actual resource reading.
 func (s *Server) handleReadResource(requestID interface{}, params interface{}) error {

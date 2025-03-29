@@ -92,7 +92,9 @@ type ClientCapabilities struct {
 	// Experimental capabilities can be added here.
 	Experimental map[string]interface{} `json:"experimental,omitempty"`
 	// Add other known capability fields as needed, e.g.:
-	// Roots *struct { ListChanged bool `json:"listChanged,omitempty"` } `json:"roots,omitempty"`
+	Roots *struct { // Add Roots capability field
+		ListChanged bool `json:"listChanged,omitempty"` // Client supports notifications/roots/list_changed
+	} `json:"roots,omitempty"`
 	Sampling *struct{} `json:"sampling,omitempty"` // Add Sampling capability field
 }
 
@@ -428,9 +430,29 @@ type CreateMessageResult struct {
 	ModelHint *ModelHint      `json:"modelHint,omitempty"` // Optional info about the model used
 }
 
+// --- Roots Structures ---
+
+// Root represents a root context or workspace available on the client.
+type Root struct {
+	URI         string                 `json:"uri"`             // Unique identifier (e.g., "file:///path/to/workspace")
+	Kind        string                 `json:"kind,omitempty"`  // e.g., "workspace", "project"
+	Title       string                 `json:"title,omitempty"` // Human-readable title
+	Description string                 `json:"description,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// ListRootsRequestParams defines parameters for 'roots/list'. (Currently empty)
+type ListRootsRequestParams struct{}
+
+// ListRootsResult defines the result for 'roots/list'.
+type ListRootsResult struct {
+	Roots []Root `json:"roots"`
+}
+
 // --- Constants ---
 
 const (
+	// CurrentProtocolVersion defines the MCP version this library implementation supports.
 	CurrentProtocolVersion = "2025-03-26" // Updated version
 
 	// --- Message Type (Method Name) Constants ---
@@ -461,6 +483,10 @@ const (
 
 	// Sampling
 	MethodSamplingCreateMessage = "sampling/create_message"
+
+	// Roots
+	MethodRootsList = "roots/list"
+	// TODO: Add roots notification methods
 
 	// Old Handshake types (REMOVED)
 	// MessageTypeHandshakeRequest  = "HandshakeRequest"

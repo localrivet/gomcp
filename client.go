@@ -537,6 +537,8 @@ func (c *Client) processIncomingMessages() { // Add missing function signature
 				} else {
 					// No handler registered, send MethodNotFound error
 					log.Printf("No handler registered for server request method: %s", baseMessage.Method)
+					// Send MethodNotFound error only if it's not a standard method the client might handle internally
+					// TODO: Add internal handling for methods like roots/list if desired, otherwise require registration.
 					err := c.conn.SendErrorResponse(baseMessage.ID, ErrorPayload{
 						Code:    ErrorCodeMethodNotFound,
 						Message: fmt.Sprintf("Client does not handle request method: %s", baseMessage.Method),
