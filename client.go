@@ -115,8 +115,7 @@ func (c *Client) Connect() error {
 	if err != nil {
 		return fmt.Errorf("failed to send InitializeRequest: %w", err)
 	}
-	// TODO: Store requestID to match with response ID later in ReceiveMessage/ReceiveResponse
-	_ = requestID // Avoid unused variable error for now
+	// Note: requestID is implicitly handled by sendRequestAndWait and processIncomingMessages
 
 	// --- Wait for InitializeResponse or Error ---
 	log.Println("Waiting for InitializeResponse...")

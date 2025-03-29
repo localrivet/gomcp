@@ -23,10 +23,12 @@ type ToolHandlerFunc func(ctx context.Context, progressToken *ProgressToken, arg
 // Server represents an MCP server instance. It manages the connection,
 // handles the handshake/initialization, tool registration, and processes incoming messages.
 type Server struct {
-	conn         *Connection // The underlying MCP connection handler
-	serverName   string
-	toolRegistry map[string]Tool            // Stores tool definitions (now using Tool struct)
-	toolHandlers map[string]ToolHandlerFunc // Stores handlers for each tool
+	conn             *Connection // The underlying MCP connection handler
+	serverName       string
+	toolRegistry     map[string]Tool            // Stores tool definitions (now using Tool struct)
+	toolHandlers     map[string]ToolHandlerFunc // Stores handlers for each tool
+	resourceRegistry map[string]Resource        // Stores available resources (URI -> Resource)
+	promptRegistry   map[string]Prompt          // Stores available prompts (URI -> Prompt)
 	// Store client/server capabilities after handshake
 	clientCapabilities ClientCapabilities // Capabilities supported by the connected client
 	serverCapabilities ServerCapabilities // Capabilities supported by this server
@@ -62,6 +64,8 @@ func NewServerWithConnection(serverName string, conn *Connection) *Server {
 		serverName:           serverName,
 		toolRegistry:         make(map[string]Tool), // Use Tool struct
 		toolHandlers:         make(map[string]ToolHandlerFunc),
+		resourceRegistry:     make(map[string]Resource),                 // Initialize map
+		promptRegistry:       make(map[string]Prompt),                   // Initialize map
 		notificationHandlers: make(map[string]func(params interface{})), // Initialize map
 		activeRequests:       make(map[string]context.CancelFunc),       // Initialize map
 	}
@@ -110,6 +114,98 @@ func (s *Server) RegisterTool(tool Tool, handler ToolHandlerFunc) error { // Acc
 		}
 	}
 
+	return nil
+}
+
+// RegisterResource adds or updates a resource in the server's registry.
+// It sends a resources/list_changed notification if supported.
+func (s *Server) RegisterResource(resource Resource) error {
+	if resource.URI == "" {
+		return fmt.Errorf("resource URI cannot be empty")
+	}
+	// TODO: Add locking if registry access needs to be thread-safe
+	s.resourceRegistry[resource.URI] = resource
+	log.Printf("Registered/Updated resource: %s", resource.URI)
+
+	// Send notification if server supports it
+	if s.serverCapabilities.Resources != nil && s.serverCapabilities.Resources.ListChanged {
+		log.Printf("Sending resources/list_changed notification to client")
+		err := s.SendResourcesListChanged()
+		if err != nil {
+			log.Printf("Warning: failed to send resources/list_changed notification: %v", err)
+		}
+	}
+	return nil
+}
+
+// UnregisterResource removes a resource from the server's registry.
+// It sends a resources/list_changed notification if supported.
+func (s *Server) UnregisterResource(uri string) error {
+	if uri == "" {
+		return fmt.Errorf("resource URI cannot be empty")
+	}
+	// TODO: Add locking if registry access needs to be thread-safe
+	_, exists := s.resourceRegistry[uri]
+	if !exists {
+		return fmt.Errorf("resource '%s' not found", uri)
+	}
+	delete(s.resourceRegistry, uri)
+	log.Printf("Unregistered resource: %s", uri)
+
+	// Send notification if server supports it
+	if s.serverCapabilities.Resources != nil && s.serverCapabilities.Resources.ListChanged {
+		log.Printf("Sending resources/list_changed notification to client")
+		err := s.SendResourcesListChanged()
+		if err != nil {
+			log.Printf("Warning: failed to send resources/list_changed notification: %v", err)
+		}
+	}
+	return nil
+}
+
+// RegisterPrompt adds or updates a prompt in the server's registry.
+// It sends a prompts/list_changed notification if supported.
+func (s *Server) RegisterPrompt(prompt Prompt) error {
+	if prompt.URI == "" {
+		return fmt.Errorf("prompt URI cannot be empty")
+	}
+	// TODO: Add locking if registry access needs to be thread-safe
+	s.promptRegistry[prompt.URI] = prompt
+	log.Printf("Registered/Updated prompt: %s", prompt.URI)
+
+	// Send notification if server supports it
+	if s.serverCapabilities.Prompts != nil && s.serverCapabilities.Prompts.ListChanged {
+		log.Printf("Sending prompts/list_changed notification to client")
+		err := s.SendPromptsListChanged()
+		if err != nil {
+			log.Printf("Warning: failed to send prompts/list_changed notification: %v", err)
+		}
+	}
+	return nil
+}
+
+// UnregisterPrompt removes a prompt from the server's registry.
+// It sends a prompts/list_changed notification if supported.
+func (s *Server) UnregisterPrompt(uri string) error {
+	if uri == "" {
+		return fmt.Errorf("prompt URI cannot be empty")
+	}
+	// TODO: Add locking if registry access needs to be thread-safe
+	_, exists := s.promptRegistry[uri]
+	if !exists {
+		return fmt.Errorf("prompt '%s' not found", uri)
+	}
+	delete(s.promptRegistry, uri)
+	log.Printf("Unregistered prompt: %s", uri)
+
+	// Send notification if server supports it
+	if s.serverCapabilities.Prompts != nil && s.serverCapabilities.Prompts.ListChanged {
+		log.Printf("Sending prompts/list_changed notification to client")
+		err := s.SendPromptsListChanged()
+		if err != nil {
+			log.Printf("Warning: failed to send prompts/list_changed notification: %v", err)
+		}
+	}
 	return nil
 }
 
@@ -506,13 +602,20 @@ func (s *Server) handleCallToolRequest(requestID interface{}, params interface{}
 }
 
 // handleListPrompts handles the 'prompts/list' request.
-// TODO: Implement actual prompt listing and pagination.
+// TODO: Implement pagination/filtering based on params.
 func (s *Server) handleListPrompts(requestID interface{}, params interface{}) error {
-	log.Println("Handling ListPromptsRequest (stub)")
-	// TODO: Unmarshal params ListPromptsRequestParams
-	responsePayload := ListPromptsResult{
-		Prompts: []Prompt{}, // Return empty list for now
+	log.Println("Handling ListPromptsRequest")
+	// TODO: Unmarshal params ListPromptsRequestParams for pagination/filtering
+	// TODO: Add locking if registry access needs to be thread-safe
+	prompts := make([]Prompt, 0, len(s.promptRegistry))
+	for _, prompt := range s.promptRegistry {
+		prompts = append(prompts, prompt)
 	}
+	responsePayload := ListPromptsResult{
+		Prompts: prompts,
+		// TODO: Add NextCursor for pagination
+	}
+	log.Printf("Sending ListPromptsResponse with %d prompts", len(prompts))
 	return s.conn.SendResponse(requestID, responsePayload)
 }
 
@@ -550,13 +653,20 @@ func (s *Server) handleGetPrompt(requestID interface{}, params interface{}) erro
 }
 
 // handleListResources handles the 'resources/list' request.
-// TODO: Implement actual resource listing and pagination.
+// TODO: Implement pagination/filtering based on params.
 func (s *Server) handleListResources(requestID interface{}, params interface{}) error {
-	log.Println("Handling ListResourcesRequest (stub)")
-	// TODO: Unmarshal params ListResourcesRequestParams
-	responsePayload := ListResourcesResult{
-		Resources: []Resource{}, // Return empty list for now
+	log.Println("Handling ListResourcesRequest")
+	// TODO: Unmarshal params ListResourcesRequestParams for pagination/filtering
+	// TODO: Add locking if registry access needs to be thread-safe
+	resources := make([]Resource, 0, len(s.resourceRegistry))
+	for _, resource := range s.resourceRegistry {
+		resources = append(resources, resource)
 	}
+	responsePayload := ListResourcesResult{
+		Resources: resources,
+		// TODO: Add NextCursor for pagination
+	}
+	log.Printf("Sending ListResourcesResponse with %d resources", len(resources))
 	return s.conn.SendResponse(requestID, responsePayload)
 }
 
