@@ -21,31 +21,41 @@ The main library code resides in the root package (`github.com/localrivet/gomcp`
 
 1.  **`protocol.go`**:
 
-    - Defines Go structs that map directly to the JSON message types specified by the MCP standard (e.g., `Message`, `HandshakeRequest`, `HandshakeResponse`, `ErrorPayload`).
-    - Includes constants for message type strings (`MessageTypeHandshakeRequest`, etc.) and the supported protocol version (`CurrentProtocolVersion`).
-    - Uses standard Go `encoding/json` tags for serialization/deserialization.
+    - Defines Go structs mapping to MCP concepts (e.g., `Tool`, `Resource`, `Prompt`, `ClientCapabilities`, `ServerCapabilities`).
+    - Defines Go structs for specific request parameters and results (e.g., `InitializeRequestParams`, `InitializeResult`, `CallToolParams`, `CallToolResult`).
+    - Defines Go structs for JSON-RPC 2.0 base messages (`JSONRPCRequest`, `JSONRPCResponse`, `JSONRPCNotification`) and error payloads (`ErrorPayload`).
+    - Includes constants for MCP method names (e.g., `MethodInitialize`, `MethodCallTool`, `MethodCancelled`) and the supported protocol version (`CurrentProtocolVersion`).
+    - Uses standard Go `encoding/json` tags.
 
 2.  **`transport.go`**:
 
-    - Handles the low-level communication mechanics.
-    - Provides a `Connection` struct abstracting the underlying I/O (currently hardcoded to `os.Stdin` and `os.Stdout`).
-    - Implements `SendMessage` which takes a message type and payload struct, marshals it to newline-delimited JSON, and writes it to the output stream. It also handles generating unique `message_id`s.
-    - Implements `ReceiveMessage` which reads a newline-delimited line from the input stream, unmarshals it into a generic `Message` struct (keeping the payload as `json.RawMessage`), and performs basic validation.
-    - Includes a helper `UnmarshalPayload` to decode the `json.RawMessage` payload into a specific target struct based on the message type determined by the caller.
+    - Handles low-level JSON-RPC 2.0 communication mechanics over stdio.
+    - Provides a `Connection` struct abstracting `io.Reader` and `io.Writer`.
+    - Implements methods for sending specific JSON-RPC message types: `SendRequest`, `SendResponse`, `SendErrorResponse`, `SendNotification`. These handle marshalling, unique ID generation (for requests), and writing newline-delimited JSON.
+    - Implements `ReceiveRawMessage` which reads a newline-delimited line and performs basic JSON validation.
+    - Includes a helper `UnmarshalPayload` to decode `interface{}` params/results into specific target structs.
 
 3.  **`server.go`**:
 
-    - Defines the `Server` struct, which orchestrates the server-side logic.
-    - `NewServer` initializes a server instance (currently using the stdio `Connection`).
-    - `Run` is the main entry point. It first calls `handleHandshake` and then enters a loop (currently basic) to receive messages.
-    - `handleHandshake` implements the server's part of the handshake: receiving `HandshakeRequest`, validating the protocol version, and sending either `HandshakeResponse` or an `Error`.
-    - **Future Work:** The `Run` loop needs to be expanded with a dispatcher to route incoming messages (like `ToolDefinitionRequest`, `UseToolRequest`) to appropriate handlers. These handlers would contain the application-specific logic for defining and executing tools.
+    - Defines the `Server` struct, orchestrating server-side logic.
+    - `NewServer` initializes a server instance (using stdio `Connection` by default).
+    - `RegisterTool`, `RegisterResource`, `RegisterPrompt` allow adding capabilities dynamically. These methods trigger `list_changed` notifications if supported.
+    - `RegisterNotificationHandler` allows handling client-sent notifications (e.g., `$/cancelled`).
+    - `Run` is the main entry point. It calls `handleInitialize` and then enters the main message loop.
+    - `handleInitialize` implements the server's part of the initialization sequence.
+    - The `Run` loop receives raw messages, determines if they are requests or notifications, and dispatches them to appropriate internal handlers (e.g., `handleCallToolRequest`, `handleSubscribeResource`) or registered notification handlers.
+    - Internal handlers (`handle...`) are responsible for unmarshalling parameters, performing actions (like calling a registered `ToolHandlerFunc`), and sending responses/errors.
+    - Includes `Send...` methods for server-initiated notifications (`SendProgress`, `SendResourceChanged`, etc.).
 
 4.  **`client.go`**:
     - Defines the `Client` struct for managing the client-side connection.
     - `NewClient` initializes a client instance.
-    - `Connect` implements the client's part of the handshake: sending `HandshakeRequest` and processing the server's `HandshakeResponse` or `Error`. It stores the `serverName` upon success.
-    - **Future Work:** Methods need to be added to send specific requests (e.g., `RequestToolDefinitions()`, `UseTool(name string, args map[string]interface{})`) and handle their corresponding responses or potential errors. A mechanism for handling server-sent notifications might also be needed.
+    - `RegisterRequestHandler`, `RegisterNotificationHandler` allow handling server-sent requests/notifications.
+    - `Connect` implements the client's part of the initialization sequence.
+    - Provides methods for sending specific MCP requests and waiting for responses (e.g., `ListTools`, `CallTool`, `SubscribeResources`, `Ping`). These methods use `sendRequestAndWait`.
+    - `sendRequestAndWait` handles sending the JSON-RPC request, managing pending requests, and waiting for the corresponding response or timeout.
+    - `processIncomingMessages` runs in a background goroutine to receive messages, dispatch responses to waiting callers, and dispatch incoming requests/notifications to registered handlers.
+    - Includes `Send...` methods for client-initiated notifications (`SendCancellation`, `SendProgress`, `SendRootsListChanged`).
 
 ## Communication Flow (Stdio)
 
@@ -66,12 +76,13 @@ The library currently assumes communication over standard input and output:
 
 ## Next Steps & Future Development
 
-- Implement remaining MCP message types in `protocol.go`.
-- Implement server-side handling for tool definitions and execution.
-- Implement client-side methods for requesting definitions and using tools.
-- Add support for resource access messages.
-- Add support for server-sent notifications.
-- Add comprehensive unit and integration tests.
-- Improve error handling and reporting.
-- Consider adding support for alternative transports (e.g., WebSockets, TCP).
-- Enhance documentation (GoDoc comments, more detailed usage guides in `/docs`).
+While the core library implements most features, areas for future work include:
+
+- **Full Dynamic Notification Logic:** Implement the remaining dynamic triggering for `list_changed` (resources, prompts, roots) and `resources/changed`.
+- **Progress Reporting Helpers:** Add server-side utilities to simplify sending progress updates from tool handlers.
+- **Example Updates:** Update all examples in `cmd/` and `examples/` to use the latest refactored library and demonstrate features like cancellation and progress.
+- **Testing:** Add more comprehensive unit and integration tests, especially covering notifications and concurrency.
+- **Protocol Enhancements:** Implement optional fields (e.g., `trace`, `workspaceFolders`, filtering options) and additional content types (`ImageContent`, etc.).
+- **Error Handling:** Refine error reporting and potentially add more specific MCP error codes.
+- **Alternative Transports:** Consider adding support for transports beyond stdio (e.g., WebSockets, TCP).
+- **Documentation:** Enhance GoDoc comments and update `/docs` guides.
