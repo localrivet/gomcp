@@ -1,0 +1,4 @@
+# Basic Jekyll configuration for GitHub Pages
+theme: jekyll-theme-minimal
+title: GoMCP Documentation
+description: Go library for the Model Context Protocol (MCP).
