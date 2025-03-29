@@ -111,3 +111,57 @@ go run ./examples/client/main.go | docker exec -i my_mcp_server sh -c 'cat > /de
 ```
 
 You will see the server logs within the `docker run` terminal, and the client logs in the terminal where you ran the client.
+
+### Running the Multi-Tool Server with Kubernetes
+
+Basic Kubernetes manifests (`Deployment`, headless `Service`) are provided in the `deployments/kubernetes/` directory.
+
+**Prerequisites:**
+
+- A running Kubernetes cluster.
+- `kubectl` configured to interact with your cluster.
+- The `gomcp-server-example:latest` Docker image built (see Docker section above) and pushed to a registry accessible by your cluster (or available locally on cluster nodes if using `imagePullPolicy: IfNotPresent`). You may need to update the `image:` field in `deployment.yaml` to point to your specific registry.
+
+**Deploy:**
+
+```bash
+# From the repository root directory
+kubectl apply -f deployments/kubernetes/deployment.yaml
+kubectl apply -f deployments/kubernetes/service.yaml
+```
+
+**Check Status:**
+
+```bash
+kubectl get deployment gomcp-server-deployment
+kubectl get pods -l app=gomcp-server
+```
+
+**Interact (Requires separate terminal):**
+
+Since the service is headless and the application uses stdio, you need to interact directly with the Pod using `kubectl attach` or `kubectl exec`.
+
+```bash
+# Find the pod name (it will have a random suffix)
+POD_NAME=$(kubectl get pods -l app=gomcp-server -o jsonpath='{.items[0].metadata.name}')
+
+# Option 1: Attach (might require specific terminal settings)
+# kubectl attach -i $POD_NAME
+
+# Option 2: Exec and pipe (similar to Docker, can be tricky)
+# Run the client locally and pipe its output to the pod's stdin
+go run ./examples/client/main.go | kubectl exec -i $POD_NAME -- sh -c 'cat > /dev/stdin'
+```
+
+**View Logs:**
+
+```bash
+kubectl logs deployment/gomcp-server-deployment -f
+```
+
+**Cleanup:**
+
+```bash
+kubectl delete -f deployments/kubernetes/service.yaml
+kubectl delete -f deployments/kubernetes/deployment.yaml
+```

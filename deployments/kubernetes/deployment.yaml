@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gomcp-server-deployment
+  labels:
+    app: gomcp-server
+spec:
+  replicas: 1 # Start with one instance
+  selector:
+    matchLabels:
+      app: gomcp-server
+  template:
+    metadata:
+      labels:
+        app: gomcp-server
+    spec:
+      containers:
+        - name: gomcp-server
+          # Assumes an image 'gomcp-server-example:latest' is built and available
+          # in your cluster's registry or locally on the node.
+          # Replace with your actual image registry path if needed.
+          # Example: image: your-registry/gomcp-server-example:latest
+          image: gomcp-server-example:latest
+          imagePullPolicy: IfNotPresent # Use IfNotPresent for local/cached images, Always for remote latest
+          # Since it uses stdio, we need to ensure stdin is open and TTY is false
+          # This allows attaching or execing with -i.
+          stdin: true
+          tty: false
+          # Define resource requests/limits for better scheduling (optional but recommended)
+          # resources:
+          #   requests:
+          #     memory: "64Mi"
+          #     cpu: "100m"
+          #   limits:
+          #     memory: "128Mi"
+          #     cpu: "250m"
+          # Add volume mount for fs_sandbox if needed (requires PersistentVolume)
+          # This example assumes the sandbox is ephemeral within the container.
+          # For persistent storage:
+          # volumeMounts:
+          # - name: fs-sandbox-storage
+          #   mountPath: /app/fs_sandbox # Match WORKDIR + sandbox name in Dockerfile
+      # volumes:
+      # - name: fs-sandbox-storage
+      #   persistentVolumeClaim:
+      #     claimName: gomcp-fs-sandbox-pvc # Needs a PVC defined elsewhere

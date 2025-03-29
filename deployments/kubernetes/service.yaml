@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gomcp-server-service
+  labels:
+    app: gomcp-server
+spec:
+  selector:
+    app: gomcp-server
+  # No ports are defined because the application uses stdio, not network ports.
+  # Access via 'kubectl attach' or 'kubectl exec'.
+  # Example: kubectl attach -i deployment/gomcp-server-deployment
+  #          kubectl exec -i deployment/gomcp-server-deployment -- sh -c 'cat > /dev/stdin'
+  # Type ClusterIP is the default and suitable here as no external access via port is needed.
+  # Setting clusterIP: None makes it a headless service, which is often used when
+  # direct pod interaction or discovery is needed, rather than load balancing via a virtual IP.
+  type: ClusterIP
+  clusterIP: None
