@@ -29,8 +29,13 @@ go.work.sum
 # Local TODO file
 TODO.md
 
-# Example binaries (ignore files without extensions in example subdirs)
-examples/*/*[!.]
+# Example binaries: Ignore everything in example subdirs...
+examples/*/*
+# ...then explicitly un-ignore source files and READMEs
+!examples/*/*.go
+!examples/*/*.md
+!examples/*/*.json
+# !examples/*/Dockerfile # Uncomment if Dockerfiles should be tracked
 
 # Specific build output if needed (if built in root)
 /kitchen-sink-server
