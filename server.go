@@ -358,7 +358,11 @@ func (s *Server) Run() error {
 			handlerErr = s.handleLoggingSetLevel(baseMessage.ID, baseMessage.Params)
 		case MethodPing: // Add case for ping
 			handlerErr = s.handlePing(baseMessage.ID, baseMessage.Params)
-		// TODO: Add cases for Resource/Prompt subscription/notifications etc.
+		case MethodSubscribeResource: // Add case for resource subscription
+			handlerErr = s.handleSubscribeResource(baseMessage.ID, baseMessage.Params)
+		case MethodUnsubscribeResource: // Add case for resource unsubscription
+			handlerErr = s.handleUnsubscribeResource(baseMessage.ID, baseMessage.Params)
+		// TODO: Add cases for other Resource/Prompt notifications etc.
 		default:
 			// Handle unknown methods
 			log.Printf("Method not implemented: %s", baseMessage.Method)
@@ -648,6 +652,38 @@ func (s *Server) handleCancellationNotification(params interface{}) {
 	}
 }
 
+// handleSubscribeResource handles the 'resources/subscribe' request.
+// TODO: Implement actual subscription logic (store subscriptions).
+func (s *Server) handleSubscribeResource(requestID interface{}, params interface{}) error {
+	log.Println("Handling SubscribeResource request (stub)")
+	var requestParams SubscribeResourceParams
+	err := UnmarshalPayload(params, &requestParams)
+	if err != nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: fmt.Sprintf("Failed to unmarshal SubscribeResource params: %v", err),
+		})
+	}
+	log.Printf("Client requested subscription to URIs: %v", requestParams.URIs)
+	// TODO: Store subscription state associated with the client/connection
+	return s.conn.SendResponse(requestID, SubscribeResourceResult{}) // Empty result
+}
+
+// handleUnsubscribeResource handles the 'resources/unsubscribe' request.
+// TODO: Implement actual unsubscription logic (remove subscriptions).
+func (s *Server) handleUnsubscribeResource(requestID interface{}, params interface{}) error {
+	log.Println("Handling UnsubscribeResource request (stub)")
+	var requestParams UnsubscribeResourceParams
+	err := UnmarshalPayload(params, &requestParams)
+	if err != nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: fmt.Sprintf("Failed to unmarshal UnsubscribeResource params: %v", err),
+		})
+	}
+	log.Printf("Client requested unsubscription from URIs: %v", requestParams.URIs)
+	// TODO: Remove subscription state associated with the client/connection
+	return s.conn.SendResponse(requestID, UnsubscribeResourceResult{}) // Empty result
+}
+
 // SendCancellation sends a '$/cancelled' notification to the client.
 func (s *Server) SendCancellation(params CancelledParams) error {
 	return s.conn.SendNotification(MethodCancelled, params)
@@ -656,6 +692,11 @@ func (s *Server) SendCancellation(params CancelledParams) error {
 // SendProgress sends a '$/progress' notification to the client.
 func (s *Server) SendProgress(params ProgressParams) error {
 	return s.conn.SendNotification(MethodProgress, params)
+}
+
+// SendResourceChanged sends a 'notifications/resources/changed' notification.
+func (s *Server) SendResourceChanged(params ResourceChangedParams) error {
+	return s.conn.SendNotification(MethodNotifyResourceChanged, params)
 }
 
 // SendToolsListChanged sends a 'notifications/tools/list_changed' notification.

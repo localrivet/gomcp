@@ -353,6 +353,34 @@ func (c *Client) ListResources(params ListResourcesRequestParams) (*ListResource
 	return &listResult, nil
 }
 
+// SubscribeResources sends a 'resources/subscribe' request and waits for the response.
+func (c *Client) SubscribeResources(params SubscribeResourceParams) error {
+	timeout := 10 * time.Second // Default timeout
+	response, err := c.sendRequestAndWait(MethodSubscribeResource, params, timeout)
+	if err != nil {
+		return err
+	}
+	if response.Error != nil {
+		return fmt.Errorf("received MCP Error for SubscribeResources: [%d] %s", response.Error.Code, response.Error.Message)
+	}
+	// Success result is empty
+	return nil
+}
+
+// UnsubscribeResources sends a 'resources/unsubscribe' request and waits for the response.
+func (c *Client) UnsubscribeResources(params UnsubscribeResourceParams) error {
+	timeout := 10 * time.Second // Default timeout
+	response, err := c.sendRequestAndWait(MethodUnsubscribeResource, params, timeout)
+	if err != nil {
+		return err
+	}
+	if response.Error != nil {
+		return fmt.Errorf("received MCP Error for UnsubscribeResources: [%d] %s", response.Error.Code, response.Error.Message)
+	}
+	// Success result is empty
+	return nil
+}
+
 // ReadResource sends a 'resources/read' request and waits for the response.
 func (c *Client) ReadResource(params ReadResourceRequestParams) (*ReadResourceResult, error) {
 	timeout := 15 * time.Second // Potentially longer timeout for reading

@@ -492,6 +492,31 @@ type PromptsListChangedParams struct{}
 // RootsListChangedParams defines parameters for 'notifications/roots/list_changed'.
 type RootsListChangedParams struct{}
 
+// --- Resource Subscription Structures ---
+
+// SubscribeResourceParams defines parameters for 'resources/subscribe'.
+// An empty URIs list implies unsubscribing from all.
+type SubscribeResourceParams struct {
+	URIs []string `json:"uris"` // List of resource URIs to subscribe to
+}
+
+// SubscribeResourceResult defines the result for 'resources/subscribe'. (Currently empty)
+type SubscribeResourceResult struct{}
+
+// UnsubscribeResourceParams defines parameters for 'resources/unsubscribe'.
+// Note: This is optional; sending subscribe with an empty list achieves the same.
+type UnsubscribeResourceParams struct {
+	URIs []string `json:"uris"` // List of resource URIs to unsubscribe from
+}
+
+// UnsubscribeResourceResult defines the result for 'resources/unsubscribe'. (Currently empty)
+type UnsubscribeResourceResult struct{}
+
+// ResourceChangedParams defines parameters for 'notifications/resources/changed'.
+type ResourceChangedParams struct {
+	Resource Resource `json:"resource"` // The resource that changed (includes new version)
+}
+
 // --- Constants ---
 
 const (
@@ -513,8 +538,10 @@ const (
 	// Resources
 	MethodListResources              = "resources/list"
 	MethodReadResource               = "resources/read"
+	MethodSubscribeResource          = "resources/subscribe"                  // Request
+	MethodUnsubscribeResource        = "resources/unsubscribe"                // Request (Optional, can use subscribe with empty list)
 	MethodNotifyResourcesListChanged = "notifications/resources/list_changed" // Notification
-	// TODO: Add resource subscription methods/notifications
+	MethodNotifyResourceChanged      = "notifications/resources/changed"      // Notification
 
 	// Prompts
 	MethodListPrompts              = "prompts/list"
