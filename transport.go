@@ -155,15 +155,10 @@ func (c *Connection) SendNotification(method string, params interface{}) error {
 	return c.sendJSON(notif)
 }
 
-// --- Receiving Logic (Needs Refactoring) ---
+// --- Receiving Logic ---
 
-// ReceiveMessage reads the next newline-delimited JSON line from the connection's reader.
-// It attempts to unmarshal the line into a generic Message struct, keeping the
-// payload field as json.RawMessage. This allows the caller to inspect the
-// MessageType before deciding how to unmarshal the specific payload structure
-// using the UnmarshalPayload helper or other means.
-// Basic validation is performed to ensure required fields (ProtocolVersion, MessageID, MessageType) are present.
-// If reading or initial unmarshalling fails, it attempts to send an MCP Error message back.
+// ReceiveRawMessage reads the next newline-delimited JSON line from the connection's reader.
+// It performs basic JSON validation.
 // Returns the raw JSON message bytes and nil error on success, or nil bytes and error on failure.
 // io.EOF is logged but returned as a distinct error to signal graceful closure.
 func (c *Connection) ReceiveRawMessage() ([]byte, error) {

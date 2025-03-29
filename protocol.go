@@ -7,17 +7,8 @@ import "fmt"
 
 // --- Core Message Structures ---
 
-// Message represents the base structure for all MCP messages.
-// Specific message types typically embed this struct and define their own
-// payload structure. The Payload field here is often handled as
-// json.RawMessage during transport to allow for type-specific unmarshalling
-// after the MessageType is identified.
-type Message struct {
-	ProtocolVersion string      `json:"protocol_version"` // MCP Protocol Version (e.g., "2025-03-26")
-	MessageID       string      `json:"message_id"`       // Unique message identifier (UUID)
-	MessageType     string      `json:"message_type"`     // Type of MCP message (e.g., "HandshakeRequest")
-	Payload         interface{} `json:"payload"`          // Message-specific data (often json.RawMessage)
-}
+// NOTE: The base 'Message' struct has been removed to align better with JSON-RPC 2.0.
+// Messages are now directly represented by JSONRPCRequest, JSONRPCResponse, or JSONRPCNotification.
 
 // ErrorPayload defines the structure for the 'error' object within a JSONRPCError response,
 // aligning with the JSON-RPC 2.0 specification used by MCP.
@@ -43,11 +34,13 @@ func (e *MCPError) Error() string {
 // format uses a top-level "error" field instead of "payload". This struct helps bridge
 // the gap for the current SendMessage implementation but might need adjustment for
 // strict JSON-RPC transport layers.
+// This struct is now primarily for conceptual grouping; the actual message
+// sent is a JSONRPCResponse with the 'error' field populated.
 type ErrorMessage struct {
 	// We might need to adjust how this is sent/received later to strictly match JSONRPCError format.
 	// For now, embedding helps fit the existing SendMessage structure.
 	// Ideally, SendMessage would detect ErrorPayload and construct the correct JSONRPCError.
-	Message              // Embeds ProtocolVersion, MessageID
+	// Message              // REMOVED embedded Message
 	Payload ErrorPayload `json:"error"` // Field name MUST be "error" for JSON-RPC compliance
 }
 
@@ -128,8 +121,10 @@ type InitializeRequestParams struct {
 
 // InitializeRequest is sent by the client to start the connection.
 // Replaces the old HandshakeRequest.
+// This struct is now primarily for conceptual grouping; the actual message
+// sent is a JSONRPCRequest with Method="initialize" and Params=InitializeRequestParams.
 type InitializeRequest struct {
-	Message                         // Embeds ProtocolVersion, MessageID, MessageType="initialize"
+	// Message                         // REMOVED embedded Message
 	Payload InitializeRequestParams `json:"params"` // JSON-RPC uses "params"
 }
 
@@ -145,8 +140,10 @@ type InitializeResult struct {
 // This is conceptually similar to the old HandshakeResponse but aligns with JSONRPCResponse structure.
 // Note: For strict JSON-RPC, this shouldn't embed Message, but have top-level id, jsonrpc, result.
 // We'll keep embedding for now to fit the current transport, but use the correct payload structure.
+// This struct is now primarily for conceptual grouping; the actual message
+// sent is a JSONRPCResponse with Result=InitializeResult.
 type InitializeResponse struct {
-	Message                  // Embeds ProtocolVersion, MessageID, MessageType="initializeResponse" (conceptual)
+	// Message                  // REMOVED embedded Message
 	Payload InitializeResult `json:"result"` // JSON-RPC uses "result"
 }
 
@@ -154,8 +151,10 @@ type InitializeResponse struct {
 type InitializedNotificationParams struct{}
 
 // InitializedNotification is sent by the client after receiving InitializeResult.
+// This struct is now primarily for conceptual grouping; the actual message
+// sent is a JSONRPCNotification with Method="initialized" and Params=InitializedNotificationParams.
 type InitializedNotification struct {
-	Message                               // Embeds ProtocolVersion, MessageID, MessageType="initialized"
+	// Message                               // REMOVED embedded Message
 	Payload InitializedNotificationParams `json:"params"` // JSON-RPC uses "params"
 }
 
@@ -200,8 +199,10 @@ type ListToolsRequestParams struct {
 }
 
 // ListToolsRequest asks the server for its available tools.
+// This struct is now primarily for conceptual grouping; the actual message
+// sent is a JSONRPCRequest with Method="tools/list" and Params=ListToolsRequestParams.
 type ListToolsRequest struct {
-	Message                        // Embeds ProtocolVersion, MessageID, MessageType="tools/list"
+	// Message                        // REMOVED embedded Message
 	Payload ListToolsRequestParams `json:"params"` // JSON-RPC uses "params"
 }
 
@@ -212,8 +213,10 @@ type ListToolsResult struct {
 }
 
 // ListToolsResponse represents the successful server response to a ListToolsRequest.
+// This struct is now primarily for conceptual grouping; the actual message
+// sent is a JSONRPCResponse with Result=ListToolsResult.
 type ListToolsResponse struct {
-	Message                 // Embeds ProtocolVersion, MessageID, MessageType="tools/listResponse" (conceptual)
+	// Message                 // REMOVED embedded Message
 	Payload ListToolsResult `json:"result"` // JSON-RPC uses "result"
 }
 
@@ -225,8 +228,10 @@ type CallToolParams struct {
 }
 
 // CallToolRequest asks the server to execute a specific tool.
+// This struct is now primarily for conceptual grouping; the actual message
+// sent is a JSONRPCRequest with Method="tools/call" and Params=CallToolParams.
 type CallToolRequest struct {
-	Message                // Embeds ProtocolVersion, MessageID, MessageType="tools/call"
+	// Message                // REMOVED embedded Message
 	Payload CallToolParams `json:"params"` // JSON-RPC uses "params"
 }
 
@@ -256,8 +261,10 @@ type CallToolResult struct {
 }
 
 // CallToolResponse represents the successful server response to a CallToolRequest.
+// This struct is now primarily for conceptual grouping; the actual message
+// sent is a JSONRPCResponse with Result=CallToolResult.
 type CallToolResponse struct {
-	Message                // Embeds ProtocolVersion, MessageID, MessageType="tools/callResponse" (conceptual)
+	// Message                // REMOVED embedded Message
 	Payload CallToolResult `json:"result"` // JSON-RPC uses "result"
 }
 
