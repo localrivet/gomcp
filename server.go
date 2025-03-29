@@ -291,25 +291,16 @@ func (s *Server) Run() error {
 			log.Printf("Received notification (method: %s), ignoring.", baseMessage.Method)
 			continue
 		}
-
 		log.Printf("Received request: Method=%s, ID=%v", baseMessage.Method, baseMessage.ID)
 		var handlerErr error
-
-		// Re-wrap necessary info into the old Message struct for handler compatibility (TEMPORARY)
-		// This is a HACK until handlers are refactored to accept JSONRPCRequest directly.
-		tempMsg := &Message{
-			MessageID:   fmt.Sprintf("%v", baseMessage.ID), // Convert ID to string for now
-			MessageType: baseMessage.Method,                // Use Method as MessageType
-			Payload:     baseMessage.Params,                // Pass params as payload
-		}
 
 		// Dispatch based on message method
 		switch baseMessage.Method {
 		case MethodListTools:
-			handlerErr = s.handleListToolsRequest(tempMsg) // Pass tempMsg
+			handlerErr = s.handleListToolsRequest(baseMessage.ID, baseMessage.Params)
 		case MethodCallTool:
-			handlerErr = s.handleCallToolRequest(tempMsg) // Pass tempMsg
-		// TODO: Add cases for ResourceAccessRequest etc.
+			handlerErr = s.handleCallToolRequest(baseMessage.ID, baseMessage.Params)
+			// TODO: Add cases for ResourceAccessRequest etc.
 		default:
 			// Handle unknown methods
 			log.Printf("Method not implemented: %s", baseMessage.Method)
@@ -332,27 +323,45 @@ func (s *Server) Run() error {
 }
 
 // handleListToolsRequest handles the 'tools/list' request.
-func (s *Server) handleListToolsRequest(requestMsg *Message) error {
+// Accepts request ID and params directly.
+func (s *Server) handleListToolsRequest(requestID interface{}, params interface{}) error {
 	log.Println("Handling ListToolsRequest")
-	// TODO: Handle pagination params (requestMsg.Payload -> ListToolsRequestParams)
+	// TODO: Unmarshal params into ListToolsRequestParams if pagination is added
+	// var listParams ListToolsRequestParams
+	// if params != nil { ... unmarshal ... }
+
 	tools := make([]Tool, 0, len(s.toolRegistry)) // Use Tool struct
 	for _, tool := range s.toolRegistry {
 		tools = append(tools, tool)
 	}
 	responsePayload := ListToolsResult{Tools: tools} // Use ListToolsResult
 	log.Printf("Sending ListToolsResponse with %d tools", len(tools))
-	// Use SendResponse with the original request ID
-	return s.conn.SendResponse(requestMsg.MessageID, responsePayload)
+	// Use SendResponse with the passed request ID
+	return s.conn.SendResponse(requestID, responsePayload)
 }
 
 // handleCallToolRequest handles the 'tools/call' request.
-func (s *Server) handleCallToolRequest(requestMsg *Message) error {
+// Accepts request ID and params directly.
+func (s *Server) handleCallToolRequest(requestID interface{}, params interface{}) error {
 	log.Println("Handling CallToolRequest")
 	var requestParams CallToolParams // Use CallToolParams
-	err := UnmarshalPayload(requestMsg.Payload, &requestParams)
+
+	// Unmarshal params
+	if params == nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: "Missing params for tools/call",
+		})
+	}
+	paramsBytes, err := json.Marshal(params)
+	if err != nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: fmt.Sprintf("Failed to re-marshal CallTool params: %v", err),
+		})
+	}
+	err = json.Unmarshal(paramsBytes, &requestParams)
 	if err != nil {
 		log.Printf("Error unmarshalling CallTool params: %v", err)
-		return s.conn.SendErrorResponse(requestMsg.MessageID, ErrorPayload{ // Use SendErrorResponse
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{ // Use requestID
 			Code:    ErrorCodeInvalidParams, // Use standard JSON-RPC code
 			Message: fmt.Sprintf("Failed to unmarshal CallTool params: %v", err),
 		})
@@ -364,7 +373,7 @@ func (s *Server) handleCallToolRequest(requestMsg *Message) error {
 	handler, exists := s.toolHandlers[requestParams.Name]
 	if !exists {
 		log.Printf("Tool not found or no handler registered: %s", requestParams.Name)
-		return s.conn.SendErrorResponse(requestMsg.MessageID, ErrorPayload{ // Use SendErrorResponse
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{ // Use requestID
 			Code:    ErrorCodeMCPToolNotFound, // Use MCP specific code
 			Message: fmt.Sprintf("Tool '%s' not found or not implemented", requestParams.Name),
 		})
@@ -388,5 +397,5 @@ func (s *Server) handleCallToolRequest(requestMsg *Message) error {
 
 	// Send the response
 	// Use SendResponse with the original request ID
-	return s.conn.SendResponse(requestMsg.MessageID, responsePayload)
+	return s.conn.SendResponse(requestID, responsePayload) // Use requestID
 }

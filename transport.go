@@ -195,23 +195,29 @@ func (c *Connection) ReceiveRawMessage() ([]byte, error) {
 }
 
 // UnmarshalPayload is a helper function to unmarshal the payload field from a
-// received Message (which should be json.RawMessage as returned by ReceiveMessage)
+// received JSON-RPC params or result field (which is interface{})
 // into a specific Go struct pointed to by 'target'.
-// It returns an error if the payload is not json.RawMessage, is nil, or if
-// json.Unmarshal fails.
+// It handles the case where the payload might be nil or needs re-marshalling.
 func UnmarshalPayload(payload interface{}, target interface{}) error {
-	rawPayload, ok := payload.(json.RawMessage)
-	if !ok {
-		// Check if it's already the target type (e.g., if SendMessage sent a pre-marshalled payload - less common)
-		// This requires reflection and is more complex, stick to RawMessage assumption for now.
-		return fmt.Errorf("payload is not json.RawMessage (type: %T), cannot unmarshal", payload)
-	}
-	if len(rawPayload) == 0 || string(rawPayload) == "null" { // Check for empty or explicit null
+	if payload == nil {
 		// Consider if nil payload is valid for the target type.
 		// Returning an error is safer default.
-		return fmt.Errorf("payload is nil or empty")
+		return fmt.Errorf("payload is nil, cannot unmarshal")
 	}
-	err := json.Unmarshal(rawPayload, target)
+
+	// Re-marshal the interface{} back to JSON bytes
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to re-marshal payload (type %T): %w", payload, err)
+	}
+
+	// Check for empty or explicit null JSON after re-marshalling
+	if len(payloadBytes) == 0 || string(payloadBytes) == "null" {
+		return fmt.Errorf("payload is nil or empty after re-marshalling")
+	}
+
+	// Unmarshal the JSON bytes into the target struct
+	err = json.Unmarshal(payloadBytes, target)
 	if err != nil {
 		// Format the type name separately to avoid vet error with %T and %w
 		typeName := fmt.Sprintf("%T", target)
