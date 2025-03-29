@@ -164,41 +164,36 @@ func handleUseToolRequest(conn *mcp.Connection, requestMsg *mcp.Message) error {
 	return conn.SendMessage(mcp.MessageTypeUseToolResponse, responsePayload)
 }
 
-// --- Main Function ---
-func main() {
-	// Log to stderr so stdout can be used purely for MCP messages
-	log.SetOutput(os.Stderr)
-	log.SetFlags(log.Ltime | log.Lshortfile)
-	log.Println("Starting Example MCP Server...") // Updated name
-
-	serverName := "GoMultiToolServer" // Updated name
-	conn := mcp.NewStdioConnection()  // Use stdio connection
-
+// runServerLogic performs the handshake and runs the main message loop for the server.
+// It takes an established connection and returns an error if one occurs.
+func runServerLogic(conn *mcp.Connection, serverName string) error {
 	// --- Perform Handshake (Manual Implementation) ---
-	// This section manually performs the handshake steps.
-	// Alternatively, one could use the mcp.Server struct from the library,
-	// but that requires integrating the tool handling logic differently (e.g., via callbacks or methods).
 	log.Println("Waiting for HandshakeRequest...")
 	msg, err := conn.ReceiveMessage()
 	if err != nil {
-		log.Fatalf("Failed to receive initial message: %v", err) // Exit on handshake failure
+		// Don't log fatal in a library/testable function
+		log.Printf("Failed to receive initial message: %v", err)
+		return fmt.Errorf("failed to receive initial message: %w", err)
 	}
 	if msg.MessageType != mcp.MessageTypeHandshakeRequest {
-		// Send error back before failing
+		errMsg := fmt.Sprintf("Expected HandshakeRequest, got %s", msg.MessageType)
 		_ = conn.SendMessage(mcp.MessageTypeError, mcp.ErrorPayload{
 			Code:    "HandshakeFailed",
-			Message: fmt.Sprintf("Expected HandshakeRequest, got %s", msg.MessageType),
+			Message: errMsg,
 		})
-		log.Fatalf("Expected HandshakeRequest, got %s", msg.MessageType)
+		log.Println(errMsg)             // Log non-fatal
+		return fmt.Errorf("%s", errMsg) // Use %s format specifier
 	}
 	var reqPayload mcp.HandshakeRequestPayload
 	err = mcp.UnmarshalPayload(msg.Payload, &reqPayload)
 	if err != nil {
+		errMsg := fmt.Sprintf("Failed to unmarshal HandshakeRequest payload: %v", err)
 		_ = conn.SendMessage(mcp.MessageTypeError, mcp.ErrorPayload{
 			Code:    "HandshakeFailed",
-			Message: fmt.Sprintf("Failed to unmarshal HandshakeRequest payload: %v", err),
+			Message: errMsg,
 		})
-		log.Fatalf("Failed to unmarshal HandshakeRequest payload: %v", err)
+		log.Println(errMsg) // Log non-fatal
+		return fmt.Errorf("failed to unmarshal HandshakeRequest payload: %w", err)
 	}
 	log.Printf("Received HandshakeRequest from client: %s", reqPayload.ClientName)
 
@@ -211,11 +206,13 @@ func main() {
 		}
 	}
 	if !clientSupportsCurrent {
+		errMsg := fmt.Sprintf("Client does not support protocol version %s", mcp.CurrentProtocolVersion)
 		_ = conn.SendMessage(mcp.MessageTypeError, mcp.ErrorPayload{
 			Code:    "UnsupportedProtocolVersion",
 			Message: fmt.Sprintf("Server requires protocol version %s", mcp.CurrentProtocolVersion),
 		})
-		log.Fatalf("Client does not support protocol version %s", mcp.CurrentProtocolVersion)
+		log.Println(errMsg)             // Log non-fatal
+		return fmt.Errorf("%s", errMsg) // Use %s format specifier
 	}
 
 	// Send HandshakeResponse
@@ -225,14 +222,13 @@ func main() {
 	}
 	err = conn.SendMessage(mcp.MessageTypeHandshakeResponse, respPayload)
 	if err != nil {
-		// Don't try to send another error if sending response failed
-		log.Fatalf("Failed to send HandshakeResponse: %v", err)
+		log.Printf("Failed to send HandshakeResponse: %v", err) // Log non-fatal
+		return fmt.Errorf("failed to send HandshakeResponse: %w", err)
 	}
 	log.Printf("Handshake successful with client: %s", reqPayload.ClientName)
 	// --- End Handshake ---
 
 	// --- Main Message Loop ---
-	// Continuously receive messages and dispatch them to handlers after successful handshake.
 	log.Println("Entering main message loop...")
 	for {
 		msg, err := conn.ReceiveMessage()
@@ -240,10 +236,10 @@ func main() {
 			// io.EOF is expected when the client disconnects cleanly
 			if err.Error() == "failed to read message line: EOF" || strings.Contains(err.Error(), "EOF") {
 				log.Println("Client disconnected (EOF received). Server shutting down.")
-			} else {
-				log.Printf("Error receiving message: %v. Server shutting down.", err)
+				return nil // Clean exit
 			}
-			break // Exit loop on any receive error
+			log.Printf("Error receiving message: %v. Server shutting down.", err)
+			return err // Return error on other receive issues
 		}
 
 		log.Printf("Received message type: %s", msg.MessageType)
@@ -271,11 +267,34 @@ func main() {
 			// Checking for "write" or "pipe" covers common scenarios.
 			if strings.Contains(handlerErr.Error(), "write") || strings.Contains(handlerErr.Error(), "pipe") {
 				log.Println("Detected write error, assuming client disconnected. Shutting down.")
-				break
+				return handlerErr // Return the write error
 			}
 			// Otherwise, log the error but continue the loop for potentially recoverable errors.
 		}
 	}
+	// Normally unreachable, but added for completeness
+	// return nil
+}
 
-	log.Println("Server finished.")
+// --- Main Function ---
+// Sets up logging and stdio connection, then runs the server logic.
+func main() {
+	// Log to stderr so stdout can be used purely for MCP messages
+	log.SetOutput(os.Stderr)
+	log.SetFlags(log.Ltime | log.Lshortfile)
+	log.Println("Starting Example MCP Server...") // Updated name
+
+	serverName := "GoMultiToolServer" // Updated name
+	conn := mcp.NewStdioConnection()  // Use stdio connection
+
+	// Run the main server logic
+	err := runServerLogic(conn, serverName)
+	if err != nil {
+		// Log the final error before exiting
+		log.Printf("Server exited with error: %v", err)
+		// Optionally exit with non-zero status
+		// os.Exit(1)
+	} else {
+		log.Println("Server finished.")
+	}
 }
