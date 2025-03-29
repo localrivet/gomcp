@@ -498,6 +498,8 @@ func (s *Server) handleLoggingSetLevel(requestID interface{}, params interface{}
 	return s.conn.SendResponse(requestID, nil)
 }
 
+// Note: Duplicate ListRoots removed below
+
 // CreateMessage sends a 'sampling/create_message' request to the client.
 // Note: This sends the request but doesn't wait for the response here.
 // The response would need to be handled asynchronously, likely by the client's

@@ -507,13 +507,14 @@ func (c *Client) processIncomingMessages() { // Add missing function signature
 				log.Printf("Client received notification: Method=%s", baseMessage.Method)
 			} else { // It's a Request from the server
 				log.Printf("Client received request from server: Method=%s, ID=%v", baseMessage.Method, baseMessage.ID)
-				// Dispatch to registered handler
+
+				// --- Dispatch server-to-client requests ---
 				c.handlerMu.Lock()
-				handler, ok := c.requestHandlers[baseMessage.Method]
+				handler, handlerRegistered := c.requestHandlers[baseMessage.Method]
 				c.handlerMu.Unlock()
 
-				if ok {
-					// Run handler in a new goroutine to avoid blocking the receive loop
+				if handlerRegistered {
+					// Run registered handler in a new goroutine
 					go func(id interface{}, params interface{}) {
 						err := handler(id, params)
 						if err != nil {
@@ -532,19 +533,27 @@ func (c *Client) processIncomingMessages() { // Add missing function signature
 								})
 							}
 						}
-						// If handler returns nil, assume it sent the response itself (e.g., for sampling)
+						// If handler returns nil, assume it sent the response itself (e.g., for sampling/roots)
 					}(baseMessage.ID, baseMessage.Params)
 				} else {
-					// No handler registered, send MethodNotFound error
-					log.Printf("No handler registered for server request method: %s", baseMessage.Method)
-					// Send MethodNotFound error only if it's not a standard method the client might handle internally
-					// TODO: Add internal handling for methods like roots/list if desired, otherwise require registration.
-					err := c.conn.SendErrorResponse(baseMessage.ID, ErrorPayload{
-						Code:    ErrorCodeMethodNotFound,
-						Message: fmt.Sprintf("Client does not handle request method: %s", baseMessage.Method),
-					})
-					if err != nil {
-						log.Printf("Error sending MethodNotFound error response to server: %v", err)
+					// No registered handler, check for built-in handlers or send error
+					switch baseMessage.Method {
+					case MethodRootsList:
+						// Handle roots/list internally for now (return empty list)
+						// TODO: Allow overriding this with a registered handler?
+						log.Printf("Received roots/list request from server, sending empty list response.")
+						_ = c.conn.SendResponse(baseMessage.ID, ListRootsResult{Roots: []Root{}})
+						// Note: We don't set handlerErr here as SendResponse handles its own errors internally
+					default:
+						// No handler registered and not a built-in method, send MethodNotFound error
+						log.Printf("No handler registered for server request method: %s", baseMessage.Method)
+						err := c.conn.SendErrorResponse(baseMessage.ID, ErrorPayload{
+							Code:    ErrorCodeMethodNotFound,
+							Message: fmt.Sprintf("Client does not handle request method: %s", baseMessage.Method),
+						})
+						if err != nil {
+							log.Printf("Error sending MethodNotFound error response to server: %v", err)
+						}
 					}
 				}
 			}
