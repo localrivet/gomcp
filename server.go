@@ -302,7 +302,11 @@ func (s *Server) Run() error {
 			handlerErr = s.handleListToolsRequest(baseMessage.ID, baseMessage.Params)
 		case MethodCallTool:
 			handlerErr = s.handleCallToolRequest(baseMessage.ID, baseMessage.Params)
-			// TODO: Add cases for ResourceAccessRequest etc.
+		case MethodListResources: // Add case for listing resources
+			handlerErr = s.handleListResources(baseMessage.ID, baseMessage.Params)
+		case MethodReadResource: // Add case for reading resource
+			handlerErr = s.handleReadResource(baseMessage.ID, baseMessage.Params)
+		// TODO: Add cases for Resource subscription etc.
 		default:
 			// Handle unknown methods
 			log.Printf("Method not implemented: %s", baseMessage.Method)
@@ -400,4 +404,47 @@ func (s *Server) handleCallToolRequest(requestID interface{}, params interface{}
 	// Send the response
 	// Use SendResponse with the original request ID
 	return s.conn.SendResponse(requestID, responsePayload) // Use requestID
+}
+
+// handleListResources handles the 'resources/list' request.
+// TODO: Implement actual resource listing and pagination.
+func (s *Server) handleListResources(requestID interface{}, params interface{}) error {
+	log.Println("Handling ListResourcesRequest (stub)")
+	// TODO: Unmarshal params ListResourcesRequestParams
+	responsePayload := ListResourcesResult{
+		Resources: []Resource{}, // Return empty list for now
+	}
+	return s.conn.SendResponse(requestID, responsePayload)
+}
+
+// handleReadResource handles the 'resources/read' request.
+// TODO: Implement actual resource reading.
+func (s *Server) handleReadResource(requestID interface{}, params interface{}) error {
+	log.Println("Handling ReadResourceRequest (stub)")
+	var requestParams ReadResourceRequestParams
+	// Unmarshal params
+	if params == nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: "Missing params for resources/read",
+		})
+	}
+	paramsBytes, err := json.Marshal(params)
+	if err != nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: fmt.Sprintf("Failed to re-marshal ReadResource params: %v", err),
+		})
+	}
+	err = json.Unmarshal(paramsBytes, &requestParams)
+	if err != nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: fmt.Sprintf("Failed to unmarshal ReadResource params: %v", err),
+		})
+	}
+
+	// For now, always return not found
+	log.Printf("ReadResource requested for URI: %s (returning Not Found)", requestParams.URI)
+	return s.conn.SendErrorResponse(requestID, ErrorPayload{
+		Code:    ErrorCodeMCPResourceNotFound, // Use placeholder code
+		Message: fmt.Sprintf("Resource not found (stub implementation): %s", requestParams.URI),
+	})
 }

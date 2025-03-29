@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -280,8 +281,93 @@ func (c *Client) CallTool(params CallToolParams) (*CallToolResult, error) {
 		// Return the result along with an error to indicate failure
 		return &callResult, fmt.Errorf("%s", errMsg)
 	}
-
 	return &callResult, nil // Success
+}
+
+// ListResources sends a 'resources/list' request and waits for the response.
+func (c *Client) ListResources(params ListResourcesRequestParams) (*ListResourcesResult, error) {
+	timeout := 10 * time.Second // Default timeout
+	response, err := c.sendRequestAndWait(MethodListResources, params, timeout)
+	if err != nil {
+		return nil, err
+	}
+	if response.Error != nil {
+		return nil, fmt.Errorf("received MCP Error for ListResources: [%d] %s", response.Error.Code, response.Error.Message)
+	}
+	var listResult ListResourcesResult
+	if response.Result == nil {
+		return nil, fmt.Errorf("received successful ListResources response but 'result' field was null")
+	}
+	resultBytes, err := json.Marshal(response.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-marshal ListResources 'result' field: %w", err)
+	}
+	err = json.Unmarshal(resultBytes, &listResult)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ListResourcesResult from response: %w", err)
+	}
+	return &listResult, nil
+}
+
+// ReadResource sends a 'resources/read' request and waits for the response.
+func (c *Client) ReadResource(params ReadResourceRequestParams) (*ReadResourceResult, error) {
+	timeout := 15 * time.Second // Potentially longer timeout for reading
+	response, err := c.sendRequestAndWait(MethodReadResource, params, timeout)
+	if err != nil {
+		return nil, err
+	}
+	if response.Error != nil {
+		return nil, fmt.Errorf("received MCP Error for ReadResource (URI: %s): [%d] %s", params.URI, response.Error.Code, response.Error.Message)
+	}
+	var readResult ReadResourceResult
+	if response.Result == nil {
+		return nil, fmt.Errorf("received successful ReadResource response but 'result' field was null")
+	}
+	resultBytes, err := json.Marshal(response.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-marshal ReadResource 'result' field: %w", err)
+	}
+	// Need custom unmarshalling for ResourceContents interface
+	// First, unmarshal into a temporary struct with RawMessage for contents
+	var tempResult struct {
+		Resource Resource        `json:"resource"`
+		Contents json.RawMessage `json:"contents"`
+	}
+	err = json.Unmarshal(resultBytes, &tempResult)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ReadResource temporary result: %w", err)
+	}
+	readResult.Resource = tempResult.Resource
+
+	// Now determine the type of contents based on a field (e.g., contentType)
+	var contentType struct {
+		ContentType string `json:"contentType"`
+	}
+	err = json.Unmarshal(tempResult.Contents, &contentType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal contentType from ReadResource contents: %w", err)
+	}
+
+	// Unmarshal into the correct concrete type based on contentType
+	// This assumes Text or Blob based on common prefixes. A more robust solution
+	// might inspect the 'type' field if MCP adds one to ResourceContents.
+	if strings.HasPrefix(contentType.ContentType, "text/") || strings.Contains(contentType.ContentType, "json") || strings.Contains(contentType.ContentType, "xml") {
+		var textContents TextResourceContents
+		err = json.Unmarshal(tempResult.Contents, &textContents)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal TextResourceContents: %w", err)
+		}
+		readResult.Contents = textContents
+	} else { // Assume blob otherwise
+		var blobContents BlobResourceContents
+		err = json.Unmarshal(tempResult.Contents, &blobContents)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal BlobResourceContents: %w", err)
+		}
+		readResult.Contents = blobContents
+	}
+
+	return &readResult, nil
 }
 
 // processIncomingMessages runs in a separate goroutine to handle responses and notifications.

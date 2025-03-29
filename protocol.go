@@ -92,7 +92,10 @@ type ServerCapabilities struct {
 	// Logging *struct{} `json:"logging,omitempty"`
 	// Completions *struct{} `json:"completions,omitempty"`
 	// Prompts *struct { ListChanged bool `json:"listChanged,omitempty"` } `json:"prompts,omitempty"`
-	// Resources *struct { Subscribe bool `json:"subscribe,omitempty"; ListChanged bool `json:"listChanged,omitempty"` } `json:"resources,omitempty"`
+	Resources *struct { // Add Resources capability field
+		Subscribe   bool `json:"subscribe,omitempty"`   // Server supports resources/subscribe
+		ListChanged bool `json:"listChanged,omitempty"` // Server supports notifications/resources/list_changed
+	} `json:"resources,omitempty"`
 	Tools *struct {
 		ListChanged bool `json:"listChanged,omitempty"`
 	} `json:"tools,omitempty"` // Add Tools capability field
@@ -241,6 +244,64 @@ type CallToolResponse struct {
 	Payload CallToolResult `json:"result"` // JSON-RPC uses "result"
 }
 
+// --- Resource Access Structures ---
+
+// Resource represents a piece of context available from the server.
+type Resource struct {
+	URI         string                 `json:"uri"`                   // Unique identifier (e.g., "file:///path/to/file", "git://...?rev=...")
+	Kind        string                 `json:"kind,omitempty"`        // e.g., "file", "git_commit", "api_spec"
+	Title       string                 `json:"title,omitempty"`       // Human-readable title
+	Description string                 `json:"description,omitempty"` // Longer description
+	Version     string                 `json:"version,omitempty"`     // Opaque version string (changes when content changes)
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`    // Additional arbitrary metadata
+}
+
+// ResourceContents defines the interface for different types of resource content.
+type ResourceContents interface {
+	GetContentType() string
+}
+
+// TextResourceContents holds text-based resource content.
+type TextResourceContents struct {
+	ContentType string `json:"contentType"` // e.g., "text/plain", "application/json"
+	Content     string `json:"content"`
+}
+
+func (trc TextResourceContents) GetContentType() string { return trc.ContentType }
+
+// BlobResourceContents holds binary resource content (base64 encoded).
+type BlobResourceContents struct {
+	ContentType string `json:"contentType"` // e.g., "image/png", "application/octet-stream"
+	Content     string `json:"content"`     // Base64 encoded string
+}
+
+func (brc BlobResourceContents) GetContentType() string { return brc.ContentType }
+
+// ListResourcesRequestParams defines parameters for 'resources/list'.
+type ListResourcesRequestParams struct {
+	// TODO: Add filtering options (kind, query, etc.)
+	Cursor string `json:"cursor,omitempty"`
+}
+
+// ListResourcesResult defines the result for 'resources/list'.
+type ListResourcesResult struct {
+	Resources  []Resource `json:"resources"`
+	NextCursor string     `json:"nextCursor,omitempty"`
+}
+
+// ReadResourceRequestParams defines parameters for 'resources/read'.
+type ReadResourceRequestParams struct {
+	URI     string `json:"uri"`               // URI of the resource to read
+	Version string `json:"version,omitempty"` // Optional specific version to read
+}
+
+// ReadResourceResult defines the result for 'resources/read'.
+// Uses ResourceContents interface for polymorphism.
+type ReadResourceResult struct {
+	Resource Resource         `json:"resource"` // Metadata of the read resource
+	Contents ResourceContents `json:"contents"` // Actual content (Text or Blob)
+}
+
 // --- Constants ---
 
 const (
@@ -258,6 +319,11 @@ const (
 	MethodListTools = "tools/list"
 	MethodCallTool  = "tools/call"
 	// TODO: Add MethodToolListChanged = "notifications/tools/list_changed"
+
+	// Resources
+	MethodListResources = "resources/list"
+	MethodReadResource  = "resources/read"
+	// TODO: Add resource notification methods
 
 	// Old Handshake types (REMOVED)
 	// MessageTypeHandshakeRequest  = "HandshakeRequest"
