@@ -6,21 +6,14 @@ This directory contains example MCP servers and clients demonstrating the usage 
 
 The examples are designed to communicate over standard input/output (stdio). To run them, you typically need two terminals or use shell piping to connect the server's stdout to the client's stdin and vice-versa.
 
-**General Pattern:**
+### Multi-Tool Example (`server/` and `client/`)
+
+This is the main example demonstrating multiple tools.
+
+**Using Piping:**
 
 ```bash
-# In one terminal (or background process):
-go run ./examples/server/*.go
-
-# In another terminal:
-go run ./examples/client/main.go
-```
-
-**Using Piping (Simpler):**
-
-This command runs both the server and client, connecting them directly:
-
-```bash
+# This command runs the multi-tool server and the standard client
 go run ./examples/server/*.go | go run ./examples/client/main.go
 ```
 
@@ -48,8 +41,19 @@ When run successfully, you will see log messages printed to **stderr** from both
 
 ## Examples Included
 
-- **`server/`**: Contains `main.go` which runs an MCP server offering multiple tools:
-  - `echo` (defined in `server/main.go`)
-  - `calculator` (defined in `server/calculator.go`)
-  - `filesystem` (defined in `server/filesystem.go`) - Operates within a `./fs_sandbox` directory created automatically. **Note:** This is a simplified example; real filesystem tools need significant security hardening.
-- **`client/`**: Contains `main.go` which runs an MCP client that connects to the server, requests tool definitions, and then calls each available tool with various arguments to demonstrate success and error handling.
+- **`server/` & `client/`**: The primary example demonstrating a server offering multiple tools (`echo`, `calculator`, `filesystem`) and a client that uses them all. The `filesystem` tool operates within a `./fs_sandbox` directory.
+- **`auth-server/` & `auth-client/`**: Demonstrates a simple API key authentication mechanism. The server requires the `MCP_API_KEY` environment variable to be set to `test-key-123` to start. The client connects and uses the server's `secure-echo` tool.
+
+### Auth Example (`auth-server/` and `auth-client/`)
+
+**Using Piping:**
+
+```bash
+# Set the required API key and run the auth server and client
+export MCP_API_KEY="test-key-123"
+go run ./examples/auth-server/main.go | go run ./examples/auth-client/main.go
+
+# Example of running with the wrong key (server will fail to start)
+export MCP_API_KEY="wrong-key"
+go run ./examples/auth-server/main.go | go run ./examples/auth-client/main.go
+```
