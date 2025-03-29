@@ -272,9 +272,18 @@ func (c *Client) ListTools(params ListToolsRequestParams) (*ListToolsResult, err
 }
 
 // CallTool sends a 'tools/call' request and waits for the response.
-func (c *Client) CallTool(params CallToolParams) (*CallToolResult, error) {
+// It optionally includes a progress token in the request's _meta field.
+func (c *Client) CallTool(params CallToolParams, progressToken *ProgressToken) (*CallToolResult, error) {
 	// Use a default timeout, e.g., 30 seconds (tool calls might take longer)
 	timeout := 30 * time.Second
+
+	// Add progress token to meta if provided
+	if progressToken != nil {
+		if params.Meta == nil {
+			params.Meta = &RequestMeta{}
+		}
+		params.Meta.ProgressToken = progressToken
+	}
 
 	response, err := c.sendRequestAndWait(MethodCallTool, params, timeout)
 	if err != nil {

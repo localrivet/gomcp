@@ -427,6 +427,15 @@ func (s *Server) handleCallToolRequest(requestID interface{}, params interface{}
 
 	log.Printf("Requested tool: %s with args: %v", requestParams.Name, requestParams.Arguments) // Use Name field
 
+	// Check for progress token
+	var progressToken *ProgressToken
+	if requestParams.Meta != nil && requestParams.Meta.ProgressToken != nil {
+		progressToken = requestParams.Meta.ProgressToken
+		log.Printf("Client requested progress reporting with token: %s", *progressToken)
+		// TODO: Pass this token to the handler or use it to wrap the handler
+		//       to automatically send $/progress notifications.
+	}
+
 	// Find the handler
 	handler, exists := s.toolHandlers[requestParams.Name]
 	if !exists {

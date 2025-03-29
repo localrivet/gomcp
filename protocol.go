@@ -224,7 +224,7 @@ type ListToolsResponse struct {
 type CallToolParams struct {
 	Name      string                 `json:"name"` // Renamed from tool_name
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
-	// TODO: Add _meta field if progressToken support is added
+	Meta      *RequestMeta           `json:"_meta,omitempty"` // Optional metadata including progress token
 }
 
 // CallToolRequest asks the server to execute a specific tool.
@@ -255,9 +255,9 @@ func (tc TextContent) GetType() string { return tc.Type }
 
 // CallToolResult defines the result payload for a successful 'tools/call' response.
 type CallToolResult struct {
-	Content []Content `json:"content"`           // Array of content parts (e.g., TextContent)
-	IsError *bool     `json:"isError,omitempty"` // Pointer to boolean for optional field
-	// TODO: Add _meta field
+	Content []Content    `json:"content"`           // Array of content parts (e.g., TextContent)
+	IsError *bool        `json:"isError,omitempty"` // Pointer to boolean for optional field
+	Meta    *RequestMeta `json:"_meta,omitempty"`   // Optional metadata (e.g., for future use)
 }
 
 // CallToolResponse represents the successful server response to a CallToolRequest.
@@ -467,6 +467,14 @@ type CancelledParams struct {
 type ProgressParams struct {
 	Token string      `json:"token"` // The progress token associated with the request
 	Value interface{} `json:"value"` // The progress payload (type defined by the request)
+}
+
+// ProgressToken is an identifier for reporting progress.
+type ProgressToken string
+
+// RequestMeta contains metadata associated with a request, like a progress token.
+type RequestMeta struct {
+	ProgressToken *ProgressToken `json:"progressToken,omitempty"` // Use pointer for optional field
 }
 
 // --- List Changed Notification Structures ---
