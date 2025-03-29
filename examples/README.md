@@ -42,7 +42,8 @@ When run successfully, you will see log messages printed to **stderr** from both
 ## Examples Included
 
 - **`server/` & `client/`**: The primary example demonstrating a server offering multiple tools (`echo`, `calculator`, `filesystem`) and a client that uses them all. The `filesystem` tool operates within a `./fs_sandbox` directory.
-- **`auth-server/` & `auth-client/`**: Demonstrates a simple API key authentication mechanism. The server requires the `MCP_API_KEY` environment variable to be set to `test-key-123` to start. The client connects and uses the server's `secure-echo` tool.
+- **`auth-server/` & `auth-client/`**: Demonstrates a simple API key authentication mechanism (via environment variable `MCP_API_KEY=test-key-123`) required for the server to start.
+- **`rate-limit-server/` & `rate-limit-client/`**: Builds on the auth example, adding simple global rate limiting (2 requests/sec, burst 4) to the server's tool. The client sends requests rapidly to demonstrate hitting the limit.
 
 ### Auth Example (`auth-server/` and `auth-client/`)
 
@@ -56,4 +57,14 @@ go run ./examples/auth-server/main.go | go run ./examples/auth-client/main.go
 # Example of running with the wrong key (server will fail to start)
 export MCP_API_KEY="wrong-key"
 go run ./examples/auth-server/main.go | go run ./examples/auth-client/main.go
+```
+
+### Rate Limit Example (`rate-limit-server/` and `rate-limit-client/`)
+
+**Using Piping:**
+
+```bash
+# Set the required API key and run the rate-limited server and client
+export MCP_API_KEY="test-key-123"
+go run ./examples/rate-limit-server/main.go | go run ./examples/rate-limit-client/main.go
 ```
