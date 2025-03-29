@@ -79,3 +79,35 @@ go run ./examples/rate-limit-server/main.go | go run ./examples/rate-limit-clien
 export MCP_API_KEY="test-key-123"
 go run ./examples/billing-server/main.go | go run ./examples/billing-client/main.go
 ```
+
+### Running the Multi-Tool Server with Docker
+
+A `Dockerfile` is provided in `examples/server/` to build a container image for the multi-tool server. A `docker-compose.yml` file is also provided at the project root primarily for building the image.
+
+**Build the image:**
+
+```bash
+# From the repository root directory
+docker compose build mcp-server
+# Or using docker build directly:
+# docker build -t gomcp-server-example -f examples/server/Dockerfile .
+```
+
+**Run the container interactively:**
+
+Since the server uses stdio, you need to run it interactively.
+
+```bash
+docker run -i --rm --name my_mcp_server gomcp-server-example
+```
+
+**Interact with the container (Requires separate terminal):**
+
+You can run a client locally and pipe its output to the container. _Note: Piping stdio to/from Docker containers can be complex and shell-dependent._
+
+```bash
+# Example: Run the standard client and pipe to the running container
+go run ./examples/client/main.go | docker exec -i my_mcp_server sh -c 'cat > /dev/stdin'
+```
+
+You will see the server logs within the `docker run` terminal, and the client logs in the terminal where you ran the client.
