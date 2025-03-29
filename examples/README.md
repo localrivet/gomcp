@@ -44,6 +44,7 @@ When run successfully, you will see log messages printed to **stderr** from both
 - **`server/` & `client/`**: The primary example demonstrating a server offering multiple tools (`echo`, `calculator`, `filesystem`) and a client that uses them all. The `filesystem` tool operates within a `./fs_sandbox` directory.
 - **`auth-server/` & `auth-client/`**: Demonstrates a simple API key authentication mechanism (via environment variable `MCP_API_KEY=test-key-123`) required for the server to start.
 - **`rate-limit-server/` & `rate-limit-client/`**: Builds on the auth example, adding simple global rate limiting (2 requests/sec, burst 4) to the server's tool. The client sends requests rapidly to demonstrate hitting the limit.
+- **`billing-server/` & `billing-client/`**: Builds on the auth example, simulating billing/tracking by logging a structured event to stderr before executing a tool call.
 
 ### Auth Example (`auth-server/` and `auth-client/`)
 
@@ -67,4 +68,14 @@ go run ./examples/auth-server/main.go | go run ./examples/auth-client/main.go
 # Set the required API key and run the rate-limited server and client
 export MCP_API_KEY="test-key-123"
 go run ./examples/rate-limit-server/main.go | go run ./examples/rate-limit-client/main.go
+```
+
+### Billing/Tracking Simulation Example (`billing-server/` and `billing-client/`)
+
+**Using Piping:**
+
+```bash
+# Set the required API key and run the billing server and client
+export MCP_API_KEY="test-key-123"
+go run ./examples/billing-server/main.go | go run ./examples/billing-client/main.go
 ```
