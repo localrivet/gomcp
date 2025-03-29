@@ -76,13 +76,12 @@ The library currently assumes communication over standard input and output:
 
 ## Next Steps & Future Development
 
-While the core library implements most features, areas for future work include:
+The core library is now compliant with the defined features of the MCP 2025-03-26 specification. Future work includes:
 
-- **Full Dynamic Notification Logic:** Implement the remaining dynamic triggering for `list_changed` (resources, prompts, roots) and `resources/changed`.
-- **Progress Reporting Helpers:** Add server-side utilities to simplify sending progress updates from tool handlers.
-- **Example Updates:** Update all examples in `cmd/` and `examples/` to use the latest refactored library and demonstrate features like cancellation and progress.
-- **Testing:** Add more comprehensive unit and integration tests, especially covering notifications and concurrency.
-- **Protocol Enhancements:** Implement optional fields (e.g., `trace`, `workspaceFolders`, filtering options) and additional content types (`ImageContent`, etc.).
-- **Error Handling:** Refine error reporting and potentially add more specific MCP error codes.
-- **Alternative Transports:** Consider adding support for transports beyond stdio (e.g., WebSockets, TCP).
-- **Documentation:** Enhance GoDoc comments and update `/docs` guides.
+- **Example Updates:** Update all examples in `cmd/` and `examples/` to use the latest refactored library and demonstrate features like cancellation, progress, and subscriptions.
+- **Testing:** Add more comprehensive unit and integration tests, especially covering notifications, subscriptions, cancellation, and concurrency.
+- **Progress Reporting Helpers:** Consider adding server-side utilities to simplify sending progress updates from tool handlers.
+- **Protocol Enhancements:** Implement optional fields mentioned in the spec (e.g., `trace`, `workspaceFolders`, filtering options, content annotations).
+- **Error Handling:** Refine error reporting and potentially add more specific MCP error codes for implementation-defined errors.
+- **Alternative Transports:** Add examples or support for transports beyond stdio (e.g., WebSockets, TCP).
+- **Documentation:** Enhance GoDoc comments and keep `/docs` guides up-to-date.

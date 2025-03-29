@@ -9,25 +9,25 @@
 
 This library facilitates building MCP clients (applications that consume tools/resources) and MCP servers (applications that provide tools/resources). Communication primarily occurs over standard input/output using newline-delimited JSON messages conforming to the JSON-RPC 2.0 specification.
 
-**Current Status:** Alpha - Core Features Implemented (2025-03-26 Spec Alignment)
+**Current Status:** Alpha - Compliant with MCP Specification v2025-03-26
 
-The library implements the core features of the MCP specification (targeting version 2025-03-26):
+The core library (`gomcp` package) implements the features defined in the [MCP Specification version 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26/):
 
 - **JSON-RPC 2.0 Transport:** Handles requests, responses, and notifications over stdio (`transport.go`).
-- **Protocol Structures:** Defines Go structs for all MCP methods and notifications (`protocol.go`).
-- **Initialization:** Full client/server initialization sequence (`client.go`, `server.go`).
+- **Protocol Structures:** Defines Go structs for all specified MCP methods, notifications, and content types (`protocol.go`).
+- **Initialization:** Full client/server initialization sequence (`client.go`, `server.go`), including capability exchange.
 - **Tooling:** `tools/list`, `tools/call` methods and handlers.
-- **Resources:** `resources/list`, `resources/read` methods and handlers. Infrastructure for `resources/subscribe` and `notifications/resources/changed`.
+- **Resources:** `resources/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe` methods and handlers.
 - **Prompts:** `prompts/list`, `prompts/get` methods and handlers.
 - **Logging:** `logging/set_level` method and `notifications/message` infrastructure.
 - **Sampling:** `sampling/create_message` method.
-- **Roots:** `roots/list` method.
+- **Roots:** `roots/list` method and client-side root management.
 - **Ping:** `ping` method.
-- **Cancellation:** Infrastructure for `$/cancelled` notifications and context integration for tool handlers.
-- **Progress:** Infrastructure for `$/progress` notifications and `_meta.progressToken`.
-- **Notifications:** Infrastructure for `list_changed` notifications (tools, resources, prompts, roots), with dynamic triggering implemented for tool registration.
+- **Cancellation:** `$/cancelled` notification handling with `context.Context` integration.
+- **Progress:** `$/progress` notification infrastructure and `_meta.progressToken` support.
+- **Notifications:** Dynamic triggering for `list_changed` (tools, resources, prompts, roots) and `resources/changed` notifications based on library actions and subscriptions.
 
-Full dynamic logic for some notification types (`list_changed` for resources/prompts/roots, `resources/changed`, `progress`) requires further application-level implementation or library helpers.
+_(Note: While the library provides the mechanisms, the specific logic within server-side handlers like `handleReadResource`, `handleGetPrompt`, `handleLoggingSetLevel`, and triggering `NotifyResourceUpdated` is application-dependent.)_
 
 ## Installation
 
