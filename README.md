@@ -151,4 +151,4 @@ Contributions are welcome! Please open an issue or submit a pull request. (TODO:
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE). (TODO: Add LICENSE file)
+This project is licensed under the [MIT License](LICENSE).
