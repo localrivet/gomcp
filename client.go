@@ -18,10 +18,9 @@ import (
 // MCP server, handles the handshake/initialization, and provides methods for interacting
 // with the server (e.g., requesting tool definitions, using tools - to be added).
 type Client struct {
-	conn       *Connection // The underlying MCP connection handler
-	clientName string      // Name announced during initialization
-	serverName string      // Name of the server, discovered during initialization
-	// Store capabilities after handshake
+	conn               *Connection        // The underlying MCP connection handler
+	clientName         string             // Name announced during initialization
+	serverInfo         Implementation     // Info about the connected server
 	clientCapabilities ClientCapabilities // Capabilities announced by this client
 	serverCapabilities ServerCapabilities // Capabilities received from the server
 
@@ -180,11 +179,11 @@ func (c *Client) Connect() error {
 	}
 
 	// Store server info and capabilities
-	c.serverName = initResult.ServerInfo.Name
+	c.serverInfo = initResult.ServerInfo // Store the full struct
 	c.serverCapabilities = initResult.Capabilities
 	c.clientCapabilities = clientCapabilities // Store the capabilities we sent
 
-	log.Printf("Initialization successful with server: %s (Version: %s)", c.serverName, initResult.ServerInfo.Version)
+	log.Printf("Initialization successful with server: %s (Version: %s)", c.serverInfo.Name, c.serverInfo.Version)
 
 	// --- Send Initialized Notification ---
 	log.Println("Sending InitializedNotification...")
@@ -202,11 +201,25 @@ func (c *Client) Connect() error {
 	return nil // Success
 }
 
-// ServerName returns the name of the server as reported during the handshake.
-// Returns an empty string if the handshake has not completed successfully or
-// if the server did not provide a name.
+// ServerName returns the name of the connected server from the stored ServerInfo.
+// Returns an empty string if initialization is not complete or failed.
 func (c *Client) ServerName() string {
-	return c.serverName
+	// Assumes initialization sets this; might need locking if Connect can be called concurrently (unlikely)
+	return c.serverInfo.Name // Access the Name field of the stored serverInfo
+}
+
+// ServerInfo returns the Implementation details received from the server during initialization.
+// Returns an empty struct if initialization is not complete or failed.
+func (c *Client) ServerInfo() Implementation {
+	// Assumes initialization sets this; might need locking if Connect can be called concurrently (unlikely)
+	return c.serverInfo // Access the unexported field
+}
+
+// ServerCapabilities returns the ServerCapabilities received from the server during initialization.
+// Returns an empty struct if initialization is not complete or failed.
+func (c *Client) ServerCapabilities() ServerCapabilities {
+	// Assumes initialization sets this; might need locking if Connect can be called concurrently (unlikely)
+	return c.serverCapabilities // Access the unexported field
 }
 
 // AddRoot adds or updates a root in the client's list and sends a notification if supported.

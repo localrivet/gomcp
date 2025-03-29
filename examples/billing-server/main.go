@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"       // Needed for handler signature
 	"encoding/json" // For logging structured billing event
 	// Needed for handler error messages
 	"log"
@@ -33,9 +34,10 @@ var chargeableEchoTool = mcp.Tool{ // Use new Tool struct
 // This allows the handler to access the validated API key without needing it passed
 // explicitly on every call within the server's Run loop.
 func chargeableEchoHandlerFactory(apiKey string) mcp.ToolHandlerFunc {
-	// Return a function matching the new signature: ([]Content, bool)
-	return func(arguments map[string]interface{}) ([]mcp.Content, bool) {
+	// Return a function matching the ToolHandlerFunc signature
+	return func(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) (content []mcp.Content, isError bool) {
 		log.Printf("Executing chargeable-echo tool with args: %v", arguments)
+		// Could use ctx for cancellation checks if needed
 
 		// Helper to create error response content
 		newErrorContent := func(msg string) []mcp.Content {

@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -42,8 +43,10 @@ var globalLimiter = rate.NewLimiter(rate.Limit(requestsPerSecond), burstLimit)
 
 // limitedEchoHandler implements the logic for the rate-limited echo tool.
 // It checks the rate limit before processing.
-func limitedEchoHandler(arguments map[string]interface{}) ([]mcp.Content, bool) { // Update signature
+// It now matches the ToolHandlerFunc signature.
+func limitedEchoHandler(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) ([]mcp.Content, bool) {
 	log.Printf("Executing limited-echo tool with args: %v", arguments)
+	// Could use ctx for cancellation checks if needed
 
 	// Helper to create error response content
 	newErrorContent := func(msg string) []mcp.Content {

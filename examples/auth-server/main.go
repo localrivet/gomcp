@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -29,8 +30,11 @@ var secureEchoTool = mcp.Tool{ // Use new Tool struct
 }
 
 // secureEchoHandler implements the logic for the secure-echo tool.
-func secureEchoHandler(arguments map[string]interface{}) (content []mcp.Content, isError bool) { // Update signature
+// It now matches the ToolHandlerFunc signature.
+func secureEchoHandler(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) (content []mcp.Content, isError bool) {
 	log.Printf("Executing secure-echo tool with args: %v", arguments)
+	// Note: The API key check is done at server startup in this example.
+	// A real-world scenario might involve checking tokens/credentials passed via arguments or metadata.
 
 	// Helper to create error response content
 	newErrorContent := func(msg string) []mcp.Content {
