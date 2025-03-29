@@ -138,7 +138,7 @@ _(Check the log output on stderr for details)_
 
 ## Documentation
 
-More detailed documentation can be found in the `docs/` directory (TODO: Create docs directory and add content).
+More detailed documentation can be found in the [GitHub Pages site](https://gomcp.dev) (powered by the `/docs` directory).
 
 Go package documentation is available via:
 
@@ -147,7 +147,7 @@ Go package documentation is available via:
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request. (TODO: Add CONTRIBUTING.md)
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
