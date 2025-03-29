@@ -148,6 +148,8 @@ type UseToolResponse struct {
 	Payload UseToolResponsePayload `json:"payload"`
 }
 
+// --- Constants ---
+
 const (
 	// CurrentProtocolVersion defines the MCP version this library implementation supports.
 	CurrentProtocolVersion = "1.0"
@@ -169,4 +171,35 @@ const (
 	// MessageTypeUseToolResponse identifies a UseToolResponse message.
 	MessageTypeUseToolResponse = "UseToolResponse"
 	// TODO: Add other message type constants (ResourceAccess, Notification)
+
+	// --- Standard Error Codes ---
+	// These are common error codes suggested by best practices or implied by the protocol.
+	// Servers/clients can define custom codes as needed.
+
+	// General Errors
+	ErrorCodeInternalError  = "InternalError"  // Unspecified server-side error
+	ErrorCodeNotImplemented = "NotImplemented" // Requested feature/tool/operation is not implemented
+	ErrorCodeInvalidRequest = "InvalidRequest" // General issue with the request format or sequence
+
+	// Handshake Errors
+	ErrorCodeHandshakeFailed            = "HandshakeFailed"            // Generic handshake failure
+	ErrorCodeUnsupportedProtocolVersion = "UnsupportedProtocolVersion" // Protocol version mismatch
+
+	// Message Format/Payload Errors
+	ErrorCodeInvalidJSON    = "InvalidJSON"    // Failed to parse incoming JSON message
+	ErrorCodeInvalidMessage = "InvalidMessage" // Message structure is invalid (e.g., missing fields)
+	ErrorCodeInvalidPayload = "InvalidPayload" // Payload structure is invalid for the given message type
+
+	// Tool Related Errors
+	ErrorCodeToolNotFound       = "ToolNotFound"       // Requested tool name does not exist
+	ErrorCodeInvalidArgument    = "InvalidArgument"    // Invalid arguments provided for a tool
+	ErrorCodeToolExecutionError = "ToolExecutionError" // Error occurred during the tool's execution
+
+	// Auth/Rate Limit Errors (Examples)
+	ErrorCodeAuthenticationFailed = "AuthenticationFailed" // API Key or other auth failed
+	ErrorCodeRateLimitExceeded    = "RateLimitExceeded"    // Client exceeded allowed request rate
+
+	// Resource Errors (Examples - For future Resource Access messages)
+	// ErrorCodeResourceNotFound = "ResourceNotFound"
+	// ErrorCodeAccessDenied     = "AccessDenied"
 )

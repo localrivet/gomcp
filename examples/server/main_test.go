@@ -1,20 +1,21 @@
+// examples/server/main_test.go (Refactored)
 package main
 
 import (
-	"fmt"
+	"fmt" // Needed for test setup error formatting
 	"io"
 	"log"
 	"os"
 	"strings" // Needed for error check
 	"sync"
 	"testing"
-	"time"
+
+	// "time" // No longer needed directly in test
 
 	mcp "github.com/localrivet/gomcp"
 )
 
-// createTestConnections is a helper from the library tests, duplicated here for simplicity
-// or could be exposed from the library if desired.
+// createTestConnections (copied for test setup)
 func createTestConnections() (*mcp.Connection, *mcp.Connection) {
 	serverReader, clientWriter := io.Pipe()
 	clientReader, serverWriter := io.Pipe()
@@ -23,7 +24,8 @@ func createTestConnections() (*mcp.Connection, *mcp.Connection) {
 	return serverConn, clientConn
 }
 
-// TestExampleServerLogic runs the server logic and simulates a basic client interaction.
+// TestExampleServerLogic runs the server logic using the refactored mcp.Server
+// and simulates a basic client interaction.
 func TestExampleServerLogic(t *testing.T) {
 	originalOutput := log.Writer()
 	log.SetOutput(io.Discard) // Discard logs during test run
@@ -31,7 +33,7 @@ func TestExampleServerLogic(t *testing.T) {
 
 	serverConn, clientConn := createTestConnections()
 	defer serverConn.Close()
-	// Note: We explicitly close clientConn writer in the simulator goroutine
+	// Note: Client simulation closes its connection
 
 	testServerName := "TestServerLogicServer"
 	testClientName := "TestServerLogicClient"
@@ -50,10 +52,34 @@ func TestExampleServerLogic(t *testing.T) {
 
 	wg.Add(1) // Only waiting for the server now
 
-	// Run server logic in a goroutine
+	// Run server logic in a goroutine using the mcp.Server
 	go func() {
 		defer wg.Done()
-		serverErr = runServerLogic(serverConn, testServerName)
+		// Create server instance using the new constructor with the test connection
+		server := mcp.NewServerWithConnection(testServerName, serverConn)
+
+		// Register tools (using definitions and handlers from other files in package main)
+		// These variables (echoTool, calculatorToolDefinition, fileSystemToolDefinition)
+		// and functions (echoHandler, calculatorHandler, filesystemHandler)
+		// must be defined in the *.go files within this 'main' package (examples/server/).
+		if err := server.RegisterTool(echoTool, echoHandler); err != nil {
+			serverErr = fmt.Errorf("test setup: failed to register echo tool: %w", err)
+			serverConn.Close() // Close conn if setup fails
+			return
+		}
+		if err := server.RegisterTool(calculatorToolDefinition, calculatorHandler); err != nil {
+			serverErr = fmt.Errorf("test setup: failed to register calculator tool: %w", err)
+			serverConn.Close()
+			return
+		}
+		if err := server.RegisterTool(fileSystemToolDefinition, filesystemHandler); err != nil {
+			serverErr = fmt.Errorf("test setup: failed to register filesystem tool: %w", err)
+			serverConn.Close()
+			return
+		}
+
+		// Run the server's main loop
+		serverErr = server.Run()
 		// Close connection from server side if it finishes early (e.g., error)
 		serverConn.Close()
 	}()
@@ -72,7 +98,6 @@ func TestExampleServerLogic(t *testing.T) {
 		if msg.MessageType != mcp.MessageTypeHandshakeResponse {
 			return fmt.Errorf("client expected hs resp, got %s", msg.MessageType)
 		}
-		// log.Println("Client simulator: Handshake OK") // Keep logs discarded
 
 		// 2. Get Tool Definitions
 		tdReq := mcp.ToolDefinitionRequestPayload{}
@@ -86,7 +111,6 @@ func TestExampleServerLogic(t *testing.T) {
 		if msg.MessageType != mcp.MessageTypeToolDefinitionResponse {
 			return fmt.Errorf("client expected td resp, got %s", msg.MessageType)
 		}
-		// log.Println("Client simulator: Tool Def OK")
 
 		// 3. Use Echo Tool
 		echoArgs := map[string]interface{}{"message": "hello server"}
@@ -101,11 +125,9 @@ func TestExampleServerLogic(t *testing.T) {
 		if msg.MessageType != mcp.MessageTypeUseToolResponse {
 			return fmt.Errorf("client expected echo resp, got %s", msg.MessageType)
 		}
-		// log.Println("Client simulator: Echo OK")
 
 		// 4. Close client connection to signal EOF to server
-		// The Close method on the Connection will attempt to close the underlying pipe writer.
-		log.Println("Client simulator closing connection...")
+		// log.Println("Client simulator closing connection...") // Keep logs discarded
 		if err := clientConn.Close(); err != nil {
 			// Log warning, but proceed as the primary check is server behavior
 			log.Printf("Client simulator warning: error closing connection: %v", err)
@@ -115,19 +137,7 @@ func TestExampleServerLogic(t *testing.T) {
 	}() // Execute the client simulation immediately
 
 	// Wait for server to finish (should happen after client closes pipe) or timeout
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Server completed
-	case <-time.After(10 * time.Second): // Timeout
-		serverConn.Close() // Attempt to unblock
-		t.Fatal("Server logic test timed out")
-	}
+	wg.Wait() // Wait directly for the server goroutine
 
 	// Assert results
 	if clientErr != nil {
