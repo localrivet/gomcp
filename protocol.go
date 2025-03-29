@@ -449,6 +449,19 @@ type ListRootsResult struct {
 	Roots []Root `json:"roots"`
 }
 
+// --- Cancellation and Progress Structures ---
+
+// CancelledParams defines the parameters for the '$/cancelled' notification.
+type CancelledParams struct {
+	ID interface{} `json:"id"` // ID of the request to be cancelled
+}
+
+// ProgressParams defines the parameters for the '$/progress' notification.
+type ProgressParams struct {
+	Token string      `json:"token"` // The progress token associated with the request
+	Value interface{} `json:"value"` // The progress payload (type defined by the request)
+}
+
 // --- Constants ---
 
 const (
@@ -490,6 +503,10 @@ const (
 
 	// Ping
 	MethodPing = "ping"
+
+	// Cancellation & Progress (Notifications)
+	MethodCancelled = "$/cancelled"
+	MethodProgress  = "$/progress"
 
 	// Old Handshake types (REMOVED)
 	// MessageTypeHandshakeRequest  = "HandshakeRequest"

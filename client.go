@@ -30,6 +30,10 @@ type Client struct {
 	// For handling server-to-client requests
 	requestHandlers map[string]func(id interface{}, params interface{}) error // Map method name to handler
 	handlerMu       sync.Mutex                                                // Mutex to protect requestHandlers map
+
+	// For handling server-to-client notifications
+	notificationHandlers map[string]func(params interface{}) // Map method name to handler
+	notificationMu       sync.Mutex                          // Mutex to protect notificationHandlers map
 }
 
 // NewClient creates and initializes a new MCP Client instance.
@@ -41,11 +45,24 @@ func NewClient(clientName string) *Client {
 	log.SetFlags(log.Ltime | log.Lshortfile) // Add timestamp and file/line
 
 	return &Client{
-		conn:            NewStdioConnection(), // Assumes stdio for now
-		clientName:      clientName,
-		pendingRequests: make(map[string]chan *JSONRPCResponse),                          // Initialize map
-		requestHandlers: make(map[string]func(id interface{}, params interface{}) error), // Initialize map
+		conn:                 NewStdioConnection(), // Assumes stdio for now
+		clientName:           clientName,
+		pendingRequests:      make(map[string]chan *JSONRPCResponse),                          // Initialize map
+		requestHandlers:      make(map[string]func(id interface{}, params interface{}) error), // Initialize map
+		notificationHandlers: make(map[string]func(params interface{})),                       // Initialize map
 	}
+}
+
+// RegisterNotificationHandler registers a handler function for a specific server-to-client notification method.
+func (c *Client) RegisterNotificationHandler(method string, handler func(params interface{})) error {
+	c.notificationMu.Lock()
+	defer c.notificationMu.Unlock()
+	if _, exists := c.notificationHandlers[method]; exists {
+		return fmt.Errorf("notification handler already registered for method: %s", method)
+	}
+	c.notificationHandlers[method] = handler
+	log.Printf("Registered notification handler for method: %s", method)
+	return nil
 }
 
 // RegisterRequestHandler registers a handler function for a specific server-to-client request method.
@@ -452,6 +469,16 @@ func (c *Client) Ping(timeout time.Duration) error {
 	return nil
 }
 
+// SendCancellation sends a '$/cancelled' notification to the server.
+func (c *Client) SendCancellation(params CancelledParams) error {
+	return c.conn.SendNotification(MethodCancelled, params)
+}
+
+// SendProgress sends a '$/progress' notification to the server.
+func (c *Client) SendProgress(params ProgressParams) error {
+	return c.conn.SendNotification(MethodProgress, params)
+}
+
 // processIncomingMessages runs in a separate goroutine to handle responses and notifications.
 func (c *Client) processIncomingMessages() { // Add missing function signature
 	log.Println("Client message processing loop started.")
@@ -518,8 +545,21 @@ func (c *Client) processIncomingMessages() { // Add missing function signature
 
 		} else if baseMessage.Method != "" { // It's a Notification or a Request from server
 			if baseMessage.ID == nil { // It's a Notification
-				// TODO: Dispatch notifications (e.g., $/progress, $/cancel)
 				log.Printf("Client received notification: Method=%s", baseMessage.Method)
+				// --- Dispatch server-to-client notifications ---
+				c.notificationMu.Lock()
+				handler, ok := c.notificationHandlers[baseMessage.Method]
+				c.notificationMu.Unlock()
+
+				if ok {
+					// Run handler in a new goroutine to avoid blocking the receive loop
+					go func(params interface{}) {
+						// TODO: Consider adding error handling/logging for notification handlers
+						handler(params)
+					}(baseMessage.Params)
+				} else {
+					log.Printf("No handler registered for notification method: %s", baseMessage.Method)
+				}
 			} else { // It's a Request from the server
 				log.Printf("Client received request from server: Method=%s, ID=%v", baseMessage.Method, baseMessage.ID)
 
@@ -603,4 +643,5 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// Duplicates removed below
 // Duplicates removed below

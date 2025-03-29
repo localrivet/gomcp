@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strings" // Needed for error check in loop
+	"sync"
 )
 
 // ToolHandlerFunc defines the signature for functions that handle tool execution.
@@ -26,6 +27,10 @@ type Server struct {
 	// Store client/server capabilities after handshake
 	clientCapabilities ClientCapabilities // Capabilities supported by the connected client
 	serverCapabilities ServerCapabilities // Capabilities supported by this server
+
+	// For handling client-to-server notifications
+	notificationHandlers map[string]func(params interface{}) // Map method name to handler
+	notificationMu       sync.Mutex                          // Mutex to protect notificationHandlers map
 }
 
 // NewServer creates and initializes a new MCP Server instance using stdio.
@@ -45,11 +50,24 @@ func NewServerWithConnection(serverName string, conn *Connection) *Server {
 		conn = NewStdioConnection()
 	}
 	return &Server{
-		conn:         conn, // Use provided connection
-		serverName:   serverName,
-		toolRegistry: make(map[string]Tool), // Use Tool struct
-		toolHandlers: make(map[string]ToolHandlerFunc),
+		conn:                 conn, // Use provided connection
+		serverName:           serverName,
+		toolRegistry:         make(map[string]Tool), // Use Tool struct
+		toolHandlers:         make(map[string]ToolHandlerFunc),
+		notificationHandlers: make(map[string]func(params interface{})), // Initialize map
 	}
+}
+
+// RegisterNotificationHandler registers a handler function for a specific client-to-server notification method.
+func (s *Server) RegisterNotificationHandler(method string, handler func(params interface{})) error {
+	s.notificationMu.Lock()
+	defer s.notificationMu.Unlock()
+	if _, exists := s.notificationHandlers[method]; exists {
+		return fmt.Errorf("notification handler already registered for method: %s", method)
+	}
+	s.notificationHandlers[method] = handler
+	log.Printf("Registered notification handler for method: %s", method)
+	return nil
 }
 
 // RegisterTool adds a tool definition and its corresponding handler function to the server.
@@ -287,13 +305,27 @@ func (s *Server) Run() error {
 			continue
 		}
 
-		// We only handle Requests in this loop for now (dispatching based on Method)
-		// TODO: Handle notifications separately if needed
-		if !isRequest {
-			log.Printf("Received notification (method: %s), ignoring.", baseMessage.Method)
-			continue
+		if isNotification {
+			// --- Dispatch client-to-server notifications ---
+			log.Printf("Server received notification: Method=%s", baseMessage.Method)
+			s.notificationMu.Lock()
+			handler, ok := s.notificationHandlers[baseMessage.Method]
+			s.notificationMu.Unlock()
+
+			if ok {
+				// Run handler in a new goroutine to avoid blocking the main loop
+				go func(params interface{}) {
+					// TODO: Consider adding error handling/logging for notification handlers
+					handler(params)
+				}(baseMessage.Params)
+			} else {
+				log.Printf("No handler registered for notification method: %s", baseMessage.Method)
+			}
+			continue // Don't process notifications further in the request dispatch below
 		}
-		log.Printf("Received request: Method=%s, ID=%v", baseMessage.Method, baseMessage.ID)
+
+		// --- Dispatch client-to-server requests ---
+		log.Printf("Server received request: Method=%s, ID=%v", baseMessage.Method, baseMessage.ID)
 		var handlerErr error
 
 		// Dispatch based on message method
@@ -539,6 +571,16 @@ func (s *Server) handlePing(requestID interface{}, params interface{}) error {
 	log.Println("Handling Ping request")
 	// Ping request has no params and expects an empty result on success
 	return s.conn.SendResponse(requestID, nil) // Send nil result
+}
+
+// SendCancellation sends a '$/cancelled' notification to the client.
+func (s *Server) SendCancellation(params CancelledParams) error {
+	return s.conn.SendNotification(MethodCancelled, params)
+}
+
+// SendProgress sends a '$/progress' notification to the client.
+func (s *Server) SendProgress(params ProgressParams) error {
+	return s.conn.SendNotification(MethodProgress, params)
 }
 
 // handleReadResource handles the 'resources/read' request.
