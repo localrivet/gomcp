@@ -5,6 +5,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -20,7 +21,7 @@ import (
 const fileSystemSandbox = "./fs_sandbox"
 
 // fileSystemToolDefinition defines the structure and schema for the filesystem tool.
-var fileSystemToolDefinition = mcp.ToolDefinition{
+var fileSystemToolDefinition = mcp.Tool{ // Use new Tool struct
 	Name:        "filesystem",
 	Description: fmt.Sprintf("Performs file operations (list, read, write) within the '%s' sandbox directory.", fileSystemSandbox),
 	InputSchema: mcp.ToolInputSchema{
@@ -30,14 +31,10 @@ var fileSystemToolDefinition = mcp.ToolDefinition{
 			"path":      {Type: "string", Description: "The relative path within the sandbox directory (e.g., 'mydir/myfile.txt', '.')."},
 			"content":   {Type: "string", Description: "The content to write (only required for 'write_file')."},
 		},
-		Required: []string{"operation", "path"}, // Content requirement depends on operation, checked in executeFileSystem
+		Required: []string{"operation", "path"},
 	},
-	OutputSchema: mcp.ToolOutputSchema{
-		Type:        "object", // Output structure varies based on the operation
-		Description: "The result of the file operation. For 'list_files', contains a 'files' array. For 'read_file', contains 'content'. For 'write_file', contains 'status' and 'message'.",
-		// Note: A more precise output schema could use oneOf/anyOf based on the operation,
-		// but this simpler schema is sufficient for demonstration.
-	},
+	// OutputSchema removed
+	// Annotations: mcp.ToolAnnotations{}, // Optional
 }
 
 // getSafePath resolves the user-provided relative path against the sandbox directory,
@@ -94,21 +91,26 @@ func getSafePath(relativePath string) (string, error) {
 
 // executeFileSystem contains the logic for the filesystem tool.
 // It validates arguments, determines the safe path, performs the requested operation,
-// and returns the result or an error payload.
-func executeFileSystem(args map[string]interface{}) (interface{}, *mcp.ErrorPayload) {
+// and returns the result content and isError status.
+func executeFileSystem(args map[string]interface{}) ([]mcp.Content, bool) {
+	// Helper to create error response content
+	newErrorContent := func(msg string) []mcp.Content {
+		return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}
+	}
+
 	// --- Argument Extraction and Basic Validation ---
 	opArg, okOp := args["operation"]
 	pathArg, okPath := args["path"]
 
 	if !okOp || !okPath {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required arguments (operation, path)"} // Use MCP code
+		return newErrorContent("Missing required arguments (operation, path)"), true // isError = true
 	}
 
 	operation, okOp := opArg.(string)
 	relativePath, okPath := pathArg.(string)
 
 	if !okOp || !okPath {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Invalid argument types (operation and path must be strings)"} // Use MCP code
+		return newErrorContent("Invalid argument types (operation and path must be strings)"), true // isError = true
 	}
 	// --- End Argument Extraction ---
 
@@ -118,7 +120,7 @@ func executeFileSystem(args map[string]interface{}) (interface{}, *mcp.ErrorPayl
 	if err != nil {
 		log.Printf("Path validation failed for relative path '%s': %v", relativePath, err)
 		// Return the validation error directly to the client.
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPSecurityViolation, Message: err.Error()} // Use MCP code
+		return newErrorContent(err.Error()), true // isError = true
 	}
 	log.Printf("Operating on safe path: %s (relative: %s)", safePath, relativePath)
 	// --- End Path Validation ---
@@ -130,7 +132,7 @@ func executeFileSystem(args map[string]interface{}) (interface{}, *mcp.ErrorPayl
 		files, err := os.ReadDir(safePath)
 		if err != nil {
 			log.Printf("Error listing files in '%s': %v", safePath, err)
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPOperationFailed, Message: fmt.Sprintf("Failed to list files at path '%s': %v", relativePath, err)} // Use MCP code
+			return newErrorContent(fmt.Sprintf("Failed to list files at path '%s': %v", relativePath, err)), true // isError = true
 		}
 		// Format the output as a list of file information maps.
 		var fileInfos []map[string]interface{}
@@ -148,8 +150,10 @@ func executeFileSystem(args map[string]interface{}) (interface{}, *mcp.ErrorPayl
 				"mod_time": info.ModTime().Format(time.RFC3339), // Use standard time format
 			})
 		}
-		// Return the list wrapped in a map under the "files" key.
-		return map[string]interface{}{"files": fileInfos}, nil
+		// Return the list wrapped in TextContent (JSON encoded) for simplicity.
+		// A better approach might define a specific FileListContent type.
+		resultBytes, _ := json.Marshal(map[string]interface{}{"files": fileInfos})            // Ignore marshal error for example
+		return []mcp.Content{mcp.TextContent{Type: "text", Text: string(resultBytes)}}, false // isError = false
 
 	case "read_file":
 		// First, check if the path exists and is actually a file.
@@ -158,33 +162,33 @@ func executeFileSystem(args map[string]interface{}) (interface{}, *mcp.ErrorPayl
 			log.Printf("Error stating file '%s': %v", safePath, err)
 			// Handle file not found or other access errors.
 			if os.IsNotExist(err) {
-				return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPResourceNotFound, Message: fmt.Sprintf("File not found at path '%s'", relativePath)} // Use MCP code
+				return newErrorContent(fmt.Sprintf("File not found at path '%s'", relativePath)), true // isError = true
 			}
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPOperationFailed, Message: fmt.Sprintf("Failed to access path '%s': %v", relativePath, err)} // Use MCP code
+			return newErrorContent(fmt.Sprintf("Failed to access path '%s': %v", relativePath, err)), true // isError = true
 		}
 		// Ensure it's not a directory.
 		if info.IsDir() {
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPOperationFailed, Message: fmt.Sprintf("Path '%s' is a directory, cannot read", relativePath)} // Use MCP code
+			return newErrorContent(fmt.Sprintf("Path '%s' is a directory, cannot read", relativePath)), true // isError = true
 		}
 
 		// Read the file content. Consider adding size limits for large files in real apps.
 		contentBytes, err := os.ReadFile(safePath)
 		if err != nil {
 			log.Printf("Error reading file '%s': %v", safePath, err)
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPOperationFailed, Message: fmt.Sprintf("Failed to read file '%s': %v", relativePath, err)} // Use MCP code
+			return newErrorContent(fmt.Sprintf("Failed to read file '%s': %v", relativePath, err)), true // isError = true
 		}
-		// Return content as a string within a map.
-		return map[string]interface{}{"content": string(contentBytes)}, nil
+		// Return content as TextContent
+		return []mcp.Content{mcp.TextContent{Type: "text", Text: string(contentBytes)}}, false // isError = false
 
 	case "write_file":
 		// Extract and validate the 'content' argument specifically for write.
 		contentArg, okContent := args["content"]
 		if !okContent {
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required argument 'content' for write_file operation"} // Use MCP code
+			return newErrorContent("Missing required argument 'content' for write_file operation"), true // isError = true
 		}
 		content, okContent := contentArg.(string)
 		if !okContent {
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Invalid argument type for 'content' (must be string)"} // Use MCP code
+			return newErrorContent("Invalid argument type for 'content' (must be string)"), true // isError = true
 		}
 
 		// Ensure parent directory exists within the sandbox.
@@ -192,30 +196,32 @@ func executeFileSystem(args map[string]interface{}) (interface{}, *mcp.ErrorPayl
 		// Check parent is still within sandbox *before* creating it (defense in depth)
 		sandboxAbsForWrite, _ := filepath.Abs(fileSystemSandbox) // Error already checked in getSafePath
 		if !strings.HasPrefix(parentDir, sandboxAbsForWrite) {
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPSecurityViolation, Message: fmt.Sprintf("Cannot create parent directory outside sandbox for path '%s'", relativePath)} // Use MCP code
+			return newErrorContent(fmt.Sprintf("Cannot create parent directory outside sandbox for path '%s'", relativePath)), true // isError = true
 		}
 		if err := os.MkdirAll(parentDir, 0755); err != nil {
 			log.Printf("Error creating parent directory '%s': %v", parentDir, err)
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPOperationFailed, Message: fmt.Sprintf("Failed to create directory structure for path '%s': %v", relativePath, err)} // Use MCP code
+			return newErrorContent(fmt.Sprintf("Failed to create directory structure for path '%s': %v", relativePath, err)), true // isError = true
 		}
 
 		// Prevent writing directly to the sandbox root itself.
 		if safePath == sandboxAbsForWrite {
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPOperationFailed, Message: "Cannot write directly to the sandbox root directory"} // Use MCP code
+			return newErrorContent("Cannot write directly to the sandbox root directory"), true // isError = true
 		}
 
 		// Write the file content.
 		err := os.WriteFile(safePath, []byte(content), 0644) // Use standard file permissions
 		if err != nil {
 			log.Printf("Error writing file '%s': %v", safePath, err)
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPOperationFailed, Message: fmt.Sprintf("Failed to write file '%s': %v", relativePath, err)} // Use MCP code
+			return newErrorContent(fmt.Sprintf("Failed to write file '%s': %v", relativePath, err)), true // isError = true
 		}
-		// Return a success status message.
-		return map[string]interface{}{"status": "success", "message": fmt.Sprintf("Successfully wrote %d bytes to '%s'", len(content), relativePath)}, nil
+		// Return a success status message as TextContent (JSON encoded).
+		resultMap := map[string]interface{}{"status": "success", "message": fmt.Sprintf("Successfully wrote %d bytes to '%s'", len(content), relativePath)}
+		resultBytes, _ := json.Marshal(resultMap)                                             // Ignore marshal error for example
+		return []mcp.Content{mcp.TextContent{Type: "text", Text: string(resultBytes)}}, false // isError = false
 
 	default:
 		// Handle unknown operation strings.
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: fmt.Sprintf("Invalid operation '%s'. Use 'list_files', 'read_file', or 'write_file'.", operation)} // Use MCP code
+		return newErrorContent(fmt.Sprintf("Invalid operation '%s'. Use 'list_files', 'read_file', or 'write_file'.", operation)), true // isError = true
 	}
 	// --- End Operation Dispatch ---
 }

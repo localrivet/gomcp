@@ -11,16 +11,16 @@ import (
 	mcp "github.com/localrivet/gomcp"
 )
 
-// Helper function to request tool definitions (same as other client)
-func requestToolDefinitions(conn *mcp.Connection) ([]mcp.ToolDefinition, error) {
-	log.Println("Sending ToolDefinitionRequest...")
-	reqPayload := mcp.ToolDefinitionRequestPayload{}
-	err := conn.SendMessage(mcp.MessageTypeToolDefinitionRequest, reqPayload)
+// requestToolDefinitions sends a ListToolsRequest and processes the response.
+func requestToolDefinitions(conn *mcp.Connection) ([]mcp.Tool, error) { // Return []mcp.Tool
+	log.Println("Sending ListToolsRequest...")
+	reqPayload := mcp.ListToolsRequestParams{}               // Use new params struct (empty for now)
+	err := conn.SendMessage(mcp.MethodListTools, reqPayload) // Use new method name
 	if err != nil {
-		return nil, fmt.Errorf("failed to send ToolDefinitionRequest: %w", err)
+		return nil, fmt.Errorf("failed to send ListToolsRequest: %w", err)
 	}
 
-	log.Println("Waiting for ToolDefinitionResponse...")
+	log.Println("Waiting for ListToolsResponse...")
 	var responseMsg *mcp.Message
 	var receiveErr error
 	done := make(chan struct{})
@@ -28,39 +28,44 @@ func requestToolDefinitions(conn *mcp.Connection) ([]mcp.ToolDefinition, error) 
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		return nil, fmt.Errorf("timeout waiting for ToolDefinitionResponse")
+		return nil, fmt.Errorf("timeout waiting for ListToolsResponse") // Update error message
 	}
 	if receiveErr != nil {
-		return nil, fmt.Errorf("failed to receive ToolDefinitionResponse: %w", receiveErr)
+		return nil, fmt.Errorf("failed to receive ListToolsResponse: %w", receiveErr) // Update error message
 	}
 	if responseMsg.MessageType == mcp.MessageTypeError {
 		var errPayload mcp.ErrorPayload
 		if err := mcp.UnmarshalPayload(responseMsg.Payload, &errPayload); err == nil {
-			return nil, fmt.Errorf("received MCP Error: [%d] %s", errPayload.Code, errPayload.Message) // Use %d for int code
+			return nil, fmt.Errorf("received MCP Error: [%d] %s", errPayload.Code, errPayload.Message)
 		}
 		return nil, fmt.Errorf("received MCP Error with unparsable payload")
 	}
-	if responseMsg.MessageType != mcp.MessageTypeToolDefinitionResponse {
-		return nil, fmt.Errorf("expected ToolDefinitionResponse, got %s", responseMsg.MessageType)
+	// TODO: Update this check when transport handles JSON-RPC responses properly
+	if responseMsg.MessageType != "ListToolsResponse" {
+		return nil, fmt.Errorf("expected ListToolsResponse, got %s", responseMsg.MessageType)
 	}
-	var responsePayload mcp.ToolDefinitionResponsePayload
+	var responsePayload mcp.ListToolsResult // Use new result struct
 	err = mcp.UnmarshalPayload(responseMsg.Payload, &responsePayload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal ToolDefinitionResponse payload: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal ListToolsResult payload: %w", err) // Update error message
 	}
+	// TODO: Handle pagination (responsePayload.NextCursor)
 	return responsePayload.Tools, nil
 }
 
-// Helper function to use a tool (same as other client)
-func useTool(conn *mcp.Connection, toolName string, args map[string]interface{}) (interface{}, error) {
-	log.Printf("Sending UseToolRequest for tool '%s'...", toolName)
-	reqPayload := mcp.UseToolRequestPayload{ToolName: toolName, Arguments: args}
-	err := conn.SendMessage(mcp.MessageTypeUseToolRequest, reqPayload)
+// useTool sends a CallToolRequest and processes the response.
+func useTool(conn *mcp.Connection, toolName string, args map[string]interface{}) ([]mcp.Content, error) { // Return []Content
+	log.Printf("Sending CallToolRequest for tool '%s'...", toolName)
+	reqPayload := mcp.CallToolParams{ // Use new params struct
+		Name:      toolName, // Use 'Name' field
+		Arguments: args,
+	}
+	err := conn.SendMessage(mcp.MethodCallTool, reqPayload) // Use new method name
 	if err != nil {
-		return nil, fmt.Errorf("failed to send UseToolRequest for '%s': %w", toolName, err)
+		return nil, fmt.Errorf("failed to send CallToolRequest for '%s': %w", toolName, err)
 	}
 
-	log.Println("Waiting for UseToolResponse...")
+	log.Println("Waiting for CallToolResponse...")
 	var responseMsg *mcp.Message
 	var receiveErr error
 	done := make(chan struct{})
@@ -68,30 +73,43 @@ func useTool(conn *mcp.Connection, toolName string, args map[string]interface{})
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		return nil, fmt.Errorf("timeout waiting for UseToolResponse for '%s'", toolName)
+		return nil, fmt.Errorf("timeout waiting for CallToolResponse for '%s'", toolName) // Update error message
 	}
 	if receiveErr != nil {
-		return nil, fmt.Errorf("failed to receive UseToolResponse for '%s': %w", toolName, receiveErr)
+		return nil, fmt.Errorf("failed to receive CallToolResponse for '%s': %w", toolName, receiveErr) // Update error message
 	}
 	if responseMsg.MessageType == mcp.MessageTypeError {
 		var errPayload mcp.ErrorPayload
 		if err := mcp.UnmarshalPayload(responseMsg.Payload, &errPayload); err == nil {
-			return nil, fmt.Errorf("tool '%s' failed with MCP Error: [%d] %s", toolName, errPayload.Code, errPayload.Message) // Use %d for int code
+			return nil, fmt.Errorf("tool '%s' failed with MCP Error: [%d] %s", toolName, errPayload.Code, errPayload.Message)
 		}
 		return nil, fmt.Errorf("tool '%s' failed with an unparsable MCP Error payload", toolName)
 	}
-	if responseMsg.MessageType != mcp.MessageTypeUseToolResponse {
-		return nil, fmt.Errorf("expected UseToolResponse for '%s', got %s", toolName, responseMsg.MessageType)
+	// TODO: Update this check when transport handles JSON-RPC responses properly
+	if responseMsg.MessageType != "CallToolResponse" {
+		return nil, fmt.Errorf("expected CallToolResponse for '%s', got %s", toolName, responseMsg.MessageType)
 	}
-	var responsePayload mcp.UseToolResponsePayload
+	var responsePayload mcp.CallToolResult // Use new result struct
 	err = mcp.UnmarshalPayload(responseMsg.Payload, &responsePayload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal UseToolResponse payload for '%s': %w", toolName, err)
+		return nil, fmt.Errorf("failed to unmarshal CallToolResult payload for '%s': %w", toolName, err) // Update error message
 	}
-	return responsePayload.Result, nil
+	// Check if the result itself indicates an error
+	if responsePayload.IsError != nil && *responsePayload.IsError {
+		errMsg := fmt.Sprintf("Tool '%s' execution reported an error", toolName)
+		if len(responsePayload.Content) > 0 {
+			if textContent, ok := responsePayload.Content[0].(mcp.TextContent); ok {
+				errMsg = fmt.Sprintf("Tool '%s' failed: %s", toolName, textContent.Text)
+			} else {
+				errMsg = fmt.Sprintf("Tool '%s' failed with non-text error content: %T", toolName, responsePayload.Content[0])
+			}
+		}
+		return responsePayload.Content, fmt.Errorf("%s", errMsg) // Return content and an error, use %s
+	}
+	return responsePayload.Content, nil
 }
 
-// runClientLogic performs the handshake and executes the example tool calls sequence.
+// runClientLogic performs the initialization and executes the example tool calls sequence.
 func runClientLogic(conn *mcp.Connection, clientName string) error {
 	// --- Perform Initialization ---
 	log.Println("Sending InitializeRequest...")
@@ -170,12 +188,19 @@ func runClientLogic(conn *mcp.Connection, clientName string) error {
 		} else {
 			log.Printf("Successfully used 'secure-echo' tool.")
 			log.Printf("  Sent: %s", echoMessage)
-			log.Printf("  Received: %v (Type: %T)", result, result)
-			resultStr, ok := result.(string)
-			if !ok {
-				log.Printf("WARNING: Secure Echo result was not a string!")
-			} else if resultStr != echoMessage {
-				log.Printf("WARNING: Secure Echo result '%s' did not match sent message '%s'", resultStr, echoMessage)
+			log.Printf("  Received Content: %+v", result) // Log the content slice
+			// Extract text from the first TextContent element
+			if len(result) > 0 {
+				if textContent, ok := result[0].(mcp.TextContent); ok {
+					log.Printf("  Extracted Text: %s", textContent.Text)
+					if textContent.Text != echoMessage {
+						log.Printf("WARNING: Secure Echo result '%s' did not match sent message '%s'", textContent.Text, echoMessage)
+					}
+				} else {
+					log.Printf("WARNING: Secure Echo result content[0] was not TextContent: %T", result[0])
+				}
+			} else {
+				log.Printf("WARNING: Secure Echo result content was empty!")
 			}
 		}
 	} else {

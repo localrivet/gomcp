@@ -13,15 +13,18 @@ import (
 
 // Helper function to use a tool (copied from other client example)
 // Includes basic error checking for MCP errors.
-func useTool(conn *mcp.Connection, toolName string, args map[string]interface{}) (interface{}, error) {
-	log.Printf("Sending UseToolRequest for tool '%s'...", toolName)
-	reqPayload := mcp.UseToolRequestPayload{ToolName: toolName, Arguments: args}
-	err := conn.SendMessage(mcp.MessageTypeUseToolRequest, reqPayload)
+func useTool(conn *mcp.Connection, toolName string, args map[string]interface{}) ([]mcp.Content, error) { // Return []Content
+	log.Printf("Sending CallToolRequest for tool '%s'...", toolName)
+	reqPayload := mcp.CallToolParams{ // Use new params struct
+		Name:      toolName, // Use 'Name' field
+		Arguments: args,
+	}
+	err := conn.SendMessage(mcp.MethodCallTool, reqPayload) // Use new method name
 	if err != nil {
-		return nil, fmt.Errorf("failed to send UseToolRequest for '%s': %w", toolName, err)
+		return nil, fmt.Errorf("failed to send CallToolRequest for '%s': %w", toolName, err)
 	}
 
-	// log.Println("Waiting for UseToolResponse...") // Reduce log noise for rapid requests
+	// log.Println("Waiting for CallToolResponse...") // Reduce log noise for rapid requests
 	var responseMsg *mcp.Message
 	var receiveErr error
 	done := make(chan struct{})
@@ -29,27 +32,40 @@ func useTool(conn *mcp.Connection, toolName string, args map[string]interface{})
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		return nil, fmt.Errorf("timeout waiting for UseToolResponse for '%s'", toolName)
+		return nil, fmt.Errorf("timeout waiting for CallToolResponse for '%s'", toolName) // Update error message
 	}
 	if receiveErr != nil {
-		return nil, fmt.Errorf("failed to receive UseToolResponse for '%s': %w", toolName, receiveErr)
+		return nil, fmt.Errorf("failed to receive CallToolResponse for '%s': %w", toolName, receiveErr) // Update error message
 	}
 	if responseMsg.MessageType == mcp.MessageTypeError {
 		var errPayload mcp.ErrorPayload
 		if err := mcp.UnmarshalPayload(responseMsg.Payload, &errPayload); err == nil {
-			return nil, fmt.Errorf("tool '%s' failed with MCP Error: [%d] %s", toolName, errPayload.Code, errPayload.Message) // Use %d for int code
+			return nil, fmt.Errorf("tool '%s' failed with MCP Error: [%d] %s", toolName, errPayload.Code, errPayload.Message)
 		}
 		return nil, fmt.Errorf("tool '%s' failed with an unparsable MCP Error payload", toolName)
 	}
-	if responseMsg.MessageType != mcp.MessageTypeUseToolResponse {
-		return nil, fmt.Errorf("expected UseToolResponse for '%s', got %s", toolName, responseMsg.MessageType)
+	// TODO: Update this check when transport handles JSON-RPC responses properly
+	if responseMsg.MessageType != "CallToolResponse" {
+		return nil, fmt.Errorf("expected CallToolResponse for '%s', got %s", toolName, responseMsg.MessageType)
 	}
-	var responsePayload mcp.UseToolResponsePayload
+	var responsePayload mcp.CallToolResult // Use new result struct
 	err = mcp.UnmarshalPayload(responseMsg.Payload, &responsePayload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal UseToolResponse payload for '%s': %w", toolName, err)
+		return nil, fmt.Errorf("failed to unmarshal CallToolResult payload for '%s': %w", toolName, err) // Update error message
 	}
-	return responsePayload.Result, nil
+	// Check if the result itself indicates an error
+	if responsePayload.IsError != nil && *responsePayload.IsError {
+		errMsg := fmt.Sprintf("Tool '%s' execution reported an error", toolName)
+		if len(responsePayload.Content) > 0 {
+			if textContent, ok := responsePayload.Content[0].(mcp.TextContent); ok {
+				errMsg = fmt.Sprintf("Tool '%s' failed: %s", toolName, textContent.Text)
+			} else {
+				errMsg = fmt.Sprintf("Tool '%s' failed with non-text error content: %T", toolName, responsePayload.Content[0])
+			}
+		}
+		return responsePayload.Content, fmt.Errorf("%s", errMsg) // Return content and an error, use %s
+	}
+	return responsePayload.Content, nil
 }
 
 // runClientLogic performs handshake and tests the rate limited tool.

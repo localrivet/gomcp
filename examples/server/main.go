@@ -22,20 +22,18 @@ import (
 // See calculator.go and filesystem.go for the other definitions.
 
 // Define the echo tool (simple tool defined directly in main)
-var echoTool = mcp.ToolDefinition{
+var echoTool = mcp.Tool{ // Use new Tool struct
 	Name:        "echo",
 	Description: "Echoes back the provided message.",
-	InputSchema: mcp.ToolInputSchema{
+	InputSchema: mcp.ToolInputSchema{ // InputSchema remains similar
 		Type: "object",
 		Properties: map[string]mcp.PropertyDetail{
 			"message": {Type: "string", Description: "The message to echo."},
 		},
 		Required: []string{"message"},
 	},
-	OutputSchema: mcp.ToolOutputSchema{
-		Type:        "string",
-		Description: "The original message.",
-	},
+	// OutputSchema is removed in the new spec for Tool definition
+	// Annotations: mcp.ToolAnnotations{}, // Optional annotations
 }
 
 // calculatorToolDefinition is defined in calculator.go
@@ -43,37 +41,41 @@ var echoTool = mcp.ToolDefinition{
 
 // --- Tool Handler Functions ---
 // These functions now match the mcp.ToolHandlerFunc signature.
-// They take arguments and return (result, *ErrorPayload).
+// They take arguments and return ([]Content, isError bool).
 
 // echoHandler implements the logic for the echo tool.
-func echoHandler(arguments map[string]interface{}) (result interface{}, errorPayload *mcp.ErrorPayload) {
+func echoHandler(arguments map[string]interface{}) (content []mcp.Content, isError bool) {
 	log.Printf("Executing echo tool with args: %v", arguments)
 	messageArg, ok := arguments["message"]
 	if !ok {
-		// Use standard error codes from the library
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required argument 'message' for tool 'echo'"} // Use MCP code
+		// Return error content and isError=true
+		errorContent := mcp.TextContent{Type: "text", Text: "Missing required argument 'message' for tool 'echo'"}
+		return []mcp.Content{errorContent}, true
 	}
 	messageStr, ok := messageArg.(string)
 	if !ok {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Argument 'message' for tool 'echo' must be a string"} // Use MCP code
+		errorContent := mcp.TextContent{Type: "text", Text: "Argument 'message' for tool 'echo' must be a string"}
+		return []mcp.Content{errorContent}, true
 	}
 	log.Printf("Echoing message: %s", messageStr)
-	return messageStr, nil // Return result and nil error
+	// Return success content and isError=false
+	successContent := mcp.TextContent{Type: "text", Text: messageStr}
+	return []mcp.Content{successContent}, false
 }
 
 // calculatorHandler implements the logic for the calculator tool.
-// It calls the existing executeCalculator function (which already returns the correct types).
-func calculatorHandler(arguments map[string]interface{}) (result interface{}, errorPayload *mcp.ErrorPayload) {
+// It calls the executeCalculator function which now returns ([]Content, bool).
+func calculatorHandler(arguments map[string]interface{}) (content []mcp.Content, isError bool) {
 	log.Printf("Executing calculator tool with args: %v", arguments)
-	// Assumes executeCalculator is defined in calculator.go and matches the required signature
+	// Assumes executeCalculator is defined in calculator.go and matches the new signature
 	return executeCalculator(arguments)
 }
 
 // filesystemHandler implements the logic for the filesystem tool.
-// It calls the existing executeFileSystem function.
-func filesystemHandler(arguments map[string]interface{}) (result interface{}, errorPayload *mcp.ErrorPayload) {
+// It calls the executeFileSystem function which now returns ([]Content, bool).
+func filesystemHandler(arguments map[string]interface{}) (content []mcp.Content, isError bool) {
 	log.Printf("Executing filesystem tool with args: %v", arguments)
-	// Assumes executeFileSystem is defined in filesystem.go and matches the required signature
+	// Assumes executeFileSystem is defined in filesystem.go and matches the new signature
 	return executeFileSystem(arguments)
 }
 

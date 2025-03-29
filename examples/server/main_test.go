@@ -118,31 +118,34 @@ func TestExampleServerLogic(t *testing.T) {
 		}
 
 		// 2. Get Tool Definitions
-		tdReq := mcp.ToolDefinitionRequestPayload{}
-		if err := clientConn.SendMessage(mcp.MessageTypeToolDefinitionRequest, tdReq); err != nil {
-			return fmt.Errorf("client send td req failed: %w", err)
+		tdReq := mcp.ListToolsRequestParams{}                                      // Use new params
+		if err := clientConn.SendMessage(mcp.MethodListTools, tdReq); err != nil { // Use new method
+			return fmt.Errorf("client send list tools req failed: %w", err)
 		}
-		msg, err = clientConn.ReceiveMessage() // Expect ToolDefinitionResponse
+		msg, err = clientConn.ReceiveMessage() // Expect ListToolsResponse
 		if err != nil {
-			return fmt.Errorf("client recv td resp failed: %w", err)
+			return fmt.Errorf("client recv list tools resp failed: %w", err)
 		}
-		if msg.MessageType != mcp.MessageTypeToolDefinitionResponse {
-			return fmt.Errorf("client expected td resp, got %s", msg.MessageType)
+		// TODO: Update check for conceptual response type
+		if msg.MessageType != "ListToolsResponse" {
+			return fmt.Errorf("client expected list tools resp, got %s", msg.MessageType)
 		}
 
 		// 3. Use Echo Tool
 		echoArgs := map[string]interface{}{"message": "hello server"}
-		utReqEcho := mcp.UseToolRequestPayload{ToolName: "echo", Arguments: echoArgs}
-		if err := clientConn.SendMessage(mcp.MessageTypeUseToolRequest, utReqEcho); err != nil {
-			return fmt.Errorf("client send echo req failed: %w", err)
+		utReqEcho := mcp.CallToolParams{Name: "echo", Arguments: echoArgs}            // Use new params, name field
+		if err := clientConn.SendMessage(mcp.MethodCallTool, utReqEcho); err != nil { // Use new method
+			return fmt.Errorf("client send call tool(echo) req failed: %w", err)
 		}
-		msg, err = clientConn.ReceiveMessage() // Expect UseToolResponse
+		msg, err = clientConn.ReceiveMessage() // Expect CallToolResponse
 		if err != nil {
-			return fmt.Errorf("client recv echo resp failed: %w", err)
+			return fmt.Errorf("client recv call tool(echo) resp failed: %w", err)
 		}
-		if msg.MessageType != mcp.MessageTypeUseToolResponse {
-			return fmt.Errorf("client expected echo resp, got %s", msg.MessageType)
+		// TODO: Update check for conceptual response type
+		if msg.MessageType != "CallToolResponse" {
+			return fmt.Errorf("client expected call tool(echo) resp, got %s", msg.MessageType)
 		}
+		// TODO: Add check for CallToolResult content/isError
 
 		// 4. Close client connection to signal EOF to server
 		// log.Println("Client simulator closing connection...") // Keep logs discarded

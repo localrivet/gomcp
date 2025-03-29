@@ -14,7 +14,7 @@ import (
 const expectedApiKey = "test-key-123"
 
 // Define the secure echo tool
-var secureEchoTool = mcp.ToolDefinition{
+var secureEchoTool = mcp.Tool{ // Use new Tool struct
 	Name:        "secure-echo",
 	Description: "Echoes back the provided message (Requires API Key Auth).",
 	InputSchema: mcp.ToolInputSchema{
@@ -24,25 +24,30 @@ var secureEchoTool = mcp.ToolDefinition{
 		},
 		Required: []string{"message"},
 	},
-	OutputSchema: mcp.ToolOutputSchema{
-		Type:        "string",
-		Description: "The original message.",
-	},
+	// OutputSchema removed
+	// Annotations: mcp.ToolAnnotations{}, // Optional
 }
 
 // secureEchoHandler implements the logic for the secure-echo tool.
-func secureEchoHandler(arguments map[string]interface{}) (result interface{}, errorPayload *mcp.ErrorPayload) {
+func secureEchoHandler(arguments map[string]interface{}) (content []mcp.Content, isError bool) { // Update signature
 	log.Printf("Executing secure-echo tool with args: %v", arguments)
+
+	// Helper to create error response content
+	newErrorContent := func(msg string) []mcp.Content {
+		return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}
+	}
+
 	messageArg, ok := arguments["message"]
 	if !ok {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required argument 'message' for tool 'secure-echo'"} // Use MCP code
+		return newErrorContent("Missing required argument 'message' for tool 'secure-echo'"), true // isError = true
 	}
 	messageStr, ok := messageArg.(string)
 	if !ok {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Argument 'message' for tool 'secure-echo' must be a string"} // Use MCP code
+		return newErrorContent("Argument 'message' for tool 'secure-echo' must be a string"), true // isError = true
 	}
 	log.Printf("Securely Echoing message: %s", messageStr)
-	return messageStr, nil // Return result and nil error
+	successContent := mcp.TextContent{Type: "text", Text: messageStr}
+	return []mcp.Content{successContent}, false // isError = false
 }
 
 func main() {
@@ -69,7 +74,7 @@ func main() {
 	server := mcp.NewServer(serverName) // Uses stdio connection
 
 	// Register the secure echo tool and its handler
-	err := server.RegisterTool(secureEchoTool, secureEchoHandler)
+	err := server.RegisterTool(secureEchoTool, secureEchoHandler) // Pass the updated tool struct
 	if err != nil {
 		log.Fatalf("Failed to register secure-echo tool: %v", err)
 	}

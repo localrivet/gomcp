@@ -2,6 +2,8 @@ package main
 
 import (
 	// Keep fmt for error formatting
+	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 
@@ -97,140 +99,185 @@ func TestExampleClientLogic(t *testing.T) {
 			log.Printf("Server simulator: Received Initialized notification.")
 		}
 
-		// 2. Expect ToolDefinitionRequest, send ToolDefinitionResponse
-		msg, ok = expectReceive(mcp.MessageTypeToolDefinitionRequest)
+		// 2. Expect ListToolsRequest, send ListToolsResponse
+		msg, ok = expectReceive(mcp.MethodListTools) // Use new method
 		if !ok {
 			return
 		}
 		// Use simplified/dummy tool definitions for the test simulation
-		tools := []mcp.ToolDefinition{
-			{Name: "echo", Description: "Test Echo", InputSchema: mcp.ToolInputSchema{Type: "object"}, OutputSchema: mcp.ToolOutputSchema{Type: "string"}},
-			{Name: "calculator", Description: "Test Calc", InputSchema: mcp.ToolInputSchema{Type: "object"}, OutputSchema: mcp.ToolOutputSchema{Type: "number"}},
-			{Name: "filesystem", Description: "Test FS", InputSchema: mcp.ToolInputSchema{Type: "object"}, OutputSchema: mcp.ToolOutputSchema{Type: "object"}},
+		tools := []mcp.Tool{ // Use new Tool struct, remove OutputSchema
+			{Name: "echo", Description: "Test Echo", InputSchema: mcp.ToolInputSchema{Type: "object"}},
+			{Name: "calculator", Description: "Test Calc", InputSchema: mcp.ToolInputSchema{Type: "object"}},
+			{Name: "filesystem", Description: "Test FS", InputSchema: mcp.ToolInputSchema{Type: "object"}},
 		}
-		tdResp := mcp.ToolDefinitionResponsePayload{Tools: tools}
-		if err := serverConn.SendMessage(mcp.MessageTypeToolDefinitionResponse, tdResp); err != nil {
-			log.Printf("ERROR (Server simulator): failed to send td resp: %v", err)
+		tdResp := mcp.ListToolsResult{Tools: tools} // Use new result struct
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("ListToolsResponse", tdResp); err != nil { // Conceptual type
+			log.Printf("ERROR (Server simulator): failed to send list tools resp: %v", err)
 			return
 		}
 
-		// 3. Expect UseToolRequest (echo), send UseToolResponse
-		msg, ok = expectReceive(mcp.MessageTypeUseToolRequest)
+		// 3. Expect CallToolRequest (echo), send CallToolResponse
+		msg, ok = expectReceive(mcp.MethodCallTool) // Use new method
 		if !ok {
 			return
 		}
-		var utReqEcho mcp.UseToolRequestPayload
-		if err := mcp.UnmarshalPayload(msg.Payload, &utReqEcho); err != nil {
+		var ctReqEcho mcp.CallToolParams // Use new params struct
+		if err := mcp.UnmarshalPayload(msg.Payload, &ctReqEcho); err != nil {
 			log.Printf("ERROR (Server simulator): failed to unmarshal echo req: %v", err)
 			return
 		}
-		echoResp := mcp.UseToolResponsePayload{Result: utReqEcho.Arguments["message"]} // Echo back
-		if err := serverConn.SendMessage(mcp.MessageTypeUseToolResponse, echoResp); err != nil {
+		// Construct CallToolResult with TextContent
+		echoResp := mcp.CallToolResult{ // Use new result struct
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: ctReqEcho.Arguments["message"].(string)}},
+		}
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("CallToolResponse", echoResp); err != nil { // Conceptual type
 			log.Printf("ERROR (Server simulator): failed to send echo resp: %v", err)
 			return
 		}
 
-		// 4. Expect UseToolRequest (calculator add), send UseToolResponse
-		msg, ok = expectReceive(mcp.MessageTypeUseToolRequest)
+		// 4. Expect CallToolRequest (calculator add), send CallToolResponse
+		msg, ok = expectReceive(mcp.MethodCallTool) // Use new method
 		if !ok {
 			return
 		}
-		calcResp1 := mcp.UseToolResponsePayload{Result: 12.0} // Simulate 5+7
-		if err := serverConn.SendMessage(mcp.MessageTypeUseToolResponse, calcResp1); err != nil {
+		// Construct CallToolResult with TextContent (result formatted as string)
+		calcResp1 := mcp.CallToolResult{ // Use new result struct
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("%f", 12.0)}},
+		}
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("CallToolResponse", calcResp1); err != nil { // Conceptual type
 			log.Printf("ERROR (Server simulator): failed to send calc add resp: %v", err)
 			return
 		}
 
-		// 5. Expect UseToolRequest (calculator divide by zero), send Error
-		msg, ok = expectReceive(mcp.MessageTypeUseToolRequest)
+		// 5. Expect CallToolRequest (calculator divide by zero), send CallToolResponse with error
+		msg, ok = expectReceive(mcp.MethodCallTool) // Use new method
 		if !ok {
 			return
 		}
-		// Use appropriate numeric code
-		calcErr2 := mcp.ErrorPayload{Code: mcp.ErrorCodeMCPToolExecutionError, Message: "Division by zero"}
-		if err := serverConn.SendMessage(mcp.MessageTypeError, calcErr2); err != nil {
-			log.Printf("ERROR (Server simulator): failed to send calc div0 err: %v", err)
+		// Construct CallToolResult with error content and IsError=true
+		isErrTrue := true
+		calcErr2 := mcp.CallToolResult{ // Use new result struct
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: "Division by zero"}},
+			IsError: &isErrTrue,
+		}
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("CallToolResponse", calcErr2); err != nil { // Conceptual type
+			log.Printf("ERROR (Server simulator): failed to send calc div0 err resp: %v", err)
 			return
 		}
 
-		// 6. Expect UseToolRequest (calculator missing arg), send Error
-		msg, ok = expectReceive(mcp.MessageTypeUseToolRequest)
+		// 6. Expect CallToolRequest (calculator missing arg), send CallToolResponse with error
+		msg, ok = expectReceive(mcp.MethodCallTool) // Use new method
 		if !ok {
 			return
 		}
-		calcErr3 := mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required arguments"} // Use MCP code
-		if err := serverConn.SendMessage(mcp.MessageTypeError, calcErr3); err != nil {
-			log.Printf("ERROR (Server simulator): failed to send calc miss err: %v", err)
+		calcErr3 := mcp.CallToolResult{ // Use new result struct
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: "Missing required arguments"}},
+			IsError: &isErrTrue,
+		}
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("CallToolResponse", calcErr3); err != nil { // Conceptual type
+			log.Printf("ERROR (Server simulator): failed to send calc miss err resp: %v", err)
 			return
 		}
 
-		// 7. Expect UseToolRequest (filesystem list), send Response
-		msg, ok = expectReceive(mcp.MessageTypeUseToolRequest)
+		// 7. Expect CallToolRequest (filesystem list), send CallToolResponse
+		msg, ok = expectReceive(mcp.MethodCallTool) // Use new method
 		if !ok {
 			return
 		}
-		fsResp1 := mcp.UseToolResponsePayload{Result: map[string]interface{}{"files": []interface{}{}}} // Empty list
-		if err := serverConn.SendMessage(mcp.MessageTypeUseToolResponse, fsResp1); err != nil {
+		// JSON encode the map result into TextContent
+		fsResultMap1 := map[string]interface{}{"files": []interface{}{}}
+		fsResultBytes1, _ := json.Marshal(fsResultMap1)
+		fsResp1 := mcp.CallToolResult{ // Use new result struct
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: string(fsResultBytes1)}},
+		}
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("CallToolResponse", fsResp1); err != nil { // Conceptual type
 			log.Printf("ERROR (Server simulator): failed to send fs list resp: %v", err)
 			return
 		}
 
-		// 8. Expect UseToolRequest (filesystem write), send Response
-		msg, ok = expectReceive(mcp.MessageTypeUseToolRequest)
+		// 8. Expect CallToolRequest (filesystem write), send CallToolResponse
+		msg, ok = expectReceive(mcp.MethodCallTool) // Use new method
 		if !ok {
 			return
 		}
-		fsResp2 := mcp.UseToolResponsePayload{Result: map[string]interface{}{"status": "success"}}
-		if err := serverConn.SendMessage(mcp.MessageTypeUseToolResponse, fsResp2); err != nil {
+		fsResultMap2 := map[string]interface{}{"status": "success"}
+		fsResultBytes2, _ := json.Marshal(fsResultMap2)
+		fsResp2 := mcp.CallToolResult{ // Use new result struct
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: string(fsResultBytes2)}},
+		}
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("CallToolResponse", fsResp2); err != nil { // Conceptual type
 			log.Printf("ERROR (Server simulator): failed to send fs write resp: %v", err)
 			return
 		}
 
-		// 9. Expect UseToolRequest (filesystem read), send Response
-		msg, ok = expectReceive(mcp.MessageTypeUseToolRequest)
+		// 9. Expect CallToolRequest (filesystem read), send CallToolResponse
+		msg, ok = expectReceive(mcp.MethodCallTool) // Use new method
 		if !ok {
 			return
 		}
-		// Simulate reading back the expected content
-		fsResp3 := mcp.UseToolResponsePayload{Result: map[string]interface{}{"content": "This is the content of the test file.\nIt has multiple lines."}}
-		if err := serverConn.SendMessage(mcp.MessageTypeUseToolResponse, fsResp3); err != nil {
+		fsResultMap3 := map[string]interface{}{"content": "This is the content of the test file.\nIt has multiple lines."}
+		fsResultBytes3, _ := json.Marshal(fsResultMap3)
+		fsResp3 := mcp.CallToolResult{ // Use new result struct
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: string(fsResultBytes3)}},
+		}
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("CallToolResponse", fsResp3); err != nil { // Conceptual type
 			log.Printf("ERROR (Server simulator): failed to send fs read resp: %v", err)
 			return
 		}
 
-		// 10. Expect UseToolRequest (filesystem list dir), send Response
-		msg, ok = expectReceive(mcp.MessageTypeUseToolRequest)
+		// 10. Expect CallToolRequest (filesystem list dir), send CallToolResponse
+		msg, ok = expectReceive(mcp.MethodCallTool) // Use new method
 		if !ok {
 			return
 		}
-		fsResp4 := mcp.UseToolResponsePayload{Result: map[string]interface{}{"files": []interface{}{map[string]interface{}{"name": "my_file.txt", "is_dir": false}}}} // Simulate file exists
-		if err := serverConn.SendMessage(mcp.MessageTypeUseToolResponse, fsResp4); err != nil {
+		fsResultMap4 := map[string]interface{}{"files": []interface{}{map[string]interface{}{"name": "my_file.txt", "is_dir": false}}}
+		fsResultBytes4, _ := json.Marshal(fsResultMap4)
+		fsResp4 := mcp.CallToolResult{ // Use new result struct
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: string(fsResultBytes4)}},
+		}
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("CallToolResponse", fsResp4); err != nil { // Conceptual type
 			log.Printf("ERROR (Server simulator): failed to send fs list dir resp: %v", err)
 			return
 		}
 
-		// 11. Expect UseToolRequest (filesystem read non-existent), send Error
-		msg, ok = expectReceive(mcp.MessageTypeUseToolRequest)
+		// 11. Expect CallToolRequest (filesystem read non-existent), send CallToolResponse with error
+		msg, ok = expectReceive(mcp.MethodCallTool) // Use new method
 		if !ok {
 			return
 		}
-		fsErr5 := mcp.ErrorPayload{Code: mcp.ErrorCodeMCPResourceNotFound, Message: "File not found"} // Use MCP code
-		if err := serverConn.SendMessage(mcp.MessageTypeError, fsErr5); err != nil {
-			log.Printf("ERROR (Server simulator): failed to send fs read nf err: %v", err)
+		fsErr5 := mcp.CallToolResult{ // Use new result struct
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: "File not found"}},
+			IsError: &isErrTrue,
+		}
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("CallToolResponse", fsErr5); err != nil { // Conceptual type
+			log.Printf("ERROR (Server simulator): failed to send fs read nf err resp: %v", err)
 			return
 		}
 
-		// 12. Expect UseToolRequest (filesystem write outside), send Error
-		msg, ok = expectReceive(mcp.MessageTypeUseToolRequest)
+		// 12. Expect CallToolRequest (filesystem write outside), send CallToolResponse with error
+		msg, ok = expectReceive(mcp.MethodCallTool) // Use new method
 		if !ok {
 			return
 		}
-		fsErr6 := mcp.ErrorPayload{Code: mcp.ErrorCodeMCPSecurityViolation, Message: "escape the sandbox"} // Use MCP code
-		if err := serverConn.SendMessage(mcp.MessageTypeError, fsErr6); err != nil {
-			log.Printf("ERROR (Server simulator): failed to send fs write sec err: %v", err)
+		fsErr6 := mcp.CallToolResult{ // Use new result struct
+			Content: []mcp.Content{mcp.TextContent{Type: "text", Text: "escape the sandbox"}},
+			IsError: &isErrTrue,
+		}
+		// TODO: Update SendMessage for JSON-RPC response
+		if err := serverConn.SendMessage("CallToolResponse", fsErr6); err != nil { // Conceptual type
+			log.Printf("ERROR (Server simulator): failed to send fs write sec err resp: %v", err)
 			return
 		}
-
 		// Server simulator done
 		// log.Println("Server simulator finished.") // Keep logs discarded
 

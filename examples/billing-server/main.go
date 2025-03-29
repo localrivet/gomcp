@@ -3,10 +3,9 @@ package main
 
 import (
 	"encoding/json" // For logging structured billing event
+	// Needed for handler error messages
 	"log"
 	"os"
-
-	// "strings" // No longer needed
 	"time" // For timestamp
 
 	mcp "github.com/localrivet/gomcp"
@@ -16,7 +15,7 @@ import (
 const expectedApiKey = "test-key-123"
 
 // Define the chargeable echo tool
-var chargeableEchoTool = mcp.ToolDefinition{
+var chargeableEchoTool = mcp.Tool{ // Use new Tool struct
 	Name:        "chargeable-echo",
 	Description: "Echoes back the provided message (Simulates Billing/Tracking).",
 	InputSchema: mcp.ToolInputSchema{
@@ -26,18 +25,22 @@ var chargeableEchoTool = mcp.ToolDefinition{
 		},
 		Required: []string{"message"},
 	},
-	OutputSchema: mcp.ToolOutputSchema{
-		Type:        "string",
-		Description: "The original message.",
-	},
+	// OutputSchema removed
+	// Annotations: mcp.ToolAnnotations{}, // Optional
 }
 
 // chargeableEchoHandlerFactory creates a handler closure that captures the apiKey.
 // This allows the handler to access the validated API key without needing it passed
 // explicitly on every call within the server's Run loop.
 func chargeableEchoHandlerFactory(apiKey string) mcp.ToolHandlerFunc {
-	return func(arguments map[string]interface{}) (result interface{}, errorPayload *mcp.ErrorPayload) {
+	// Return a function matching the new signature: ([]Content, bool)
+	return func(arguments map[string]interface{}) ([]mcp.Content, bool) {
 		log.Printf("Executing chargeable-echo tool with args: %v", arguments)
+
+		// Helper to create error response content
+		newErrorContent := func(msg string) []mcp.Content {
+			return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}
+		}
 
 		// --- Simulate Billing/Tracking Event ---
 		// In a real system, this would record to a database or billing service.
@@ -55,15 +58,16 @@ func chargeableEchoHandlerFactory(apiKey string) mcp.ToolHandlerFunc {
 		// --- Execute the "chargeable-echo" tool ---
 		messageArg, ok := arguments["message"]
 		if !ok {
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required argument 'message' for tool 'chargeable-echo'"} // Use MCP code
+			return newErrorContent("Missing required argument 'message' for tool 'chargeable-echo'"), true // isError = true
 		}
 		messageStr, ok := messageArg.(string)
 		if !ok {
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Argument 'message' for tool 'chargeable-echo' must be a string"} // Use MCP code
+			return newErrorContent("Argument 'message' for tool 'chargeable-echo' must be a string"), true // isError = true
 		}
 
 		log.Printf("Chargeable Echoing message: %s", messageStr)
-		return messageStr, nil // Return result and nil error
+		successContent := mcp.TextContent{Type: "text", Text: messageStr}
+		return []mcp.Content{successContent}, false // isError = false
 		// --- End chargeable-echo tool execution ---
 	}
 }
@@ -73,8 +77,6 @@ func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 
 	// --- API Key Check ---
-	// This check happens *before* starting the MCP server loop.
-	// If the key is invalid, the server exits immediately.
 	apiKey := os.Getenv("MCP_API_KEY")
 	if apiKey == "" {
 		log.Fatal("FATAL: MCP_API_KEY environment variable not set.")
@@ -95,7 +97,7 @@ func main() {
 	handler := chargeableEchoHandlerFactory(apiKey)
 
 	// Register the tool and its handler
-	err := server.RegisterTool(chargeableEchoTool, handler)
+	err := server.RegisterTool(chargeableEchoTool, handler) // Pass updated tool struct
 	if err != nil {
 		log.Fatalf("Failed to register chargeable-echo tool: %v", err)
 	}

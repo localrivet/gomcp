@@ -22,7 +22,7 @@ const requestsPerSecond = 2
 const burstLimit = 4
 
 // Define the limited echo tool
-var limitedEchoTool = mcp.ToolDefinition{
+var limitedEchoTool = mcp.Tool{ // Use new Tool struct
 	Name:        "limited-echo",
 	Description: "Echoes back the provided message, but is rate limited.",
 	InputSchema: mcp.ToolInputSchema{
@@ -32,10 +32,8 @@ var limitedEchoTool = mcp.ToolDefinition{
 		},
 		Required: []string{"message"},
 	},
-	OutputSchema: mcp.ToolOutputSchema{
-		Type:        "string",
-		Description: "The original message.",
-	},
+	// OutputSchema removed
+	// Annotations: mcp.ToolAnnotations{}, // Optional
 }
 
 // Global rate limiter (for simplicity in this example)
@@ -44,18 +42,20 @@ var globalLimiter = rate.NewLimiter(rate.Limit(requestsPerSecond), burstLimit)
 
 // limitedEchoHandler implements the logic for the rate-limited echo tool.
 // It checks the rate limit before processing.
-func limitedEchoHandler(arguments map[string]interface{}) (result interface{}, errorPayload *mcp.ErrorPayload) {
+func limitedEchoHandler(arguments map[string]interface{}) ([]mcp.Content, bool) { // Update signature
 	log.Printf("Executing limited-echo tool with args: %v", arguments)
+
+	// Helper to create error response content
+	newErrorContent := func(msg string) []mcp.Content {
+		return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}
+	}
 
 	// --- Rate Limit Check ---
 	// Check if the request is allowed according to the limiter.
 	if !globalLimiter.Allow() {
 		log.Println("Rate limit exceeded!")
 		// Send a specific MCP error if rate limited.
-		return nil, &mcp.ErrorPayload{
-			Code:    mcp.ErrorCodeMCPRateLimitExceeded, // Use MCP code
-			Message: fmt.Sprintf("Too many requests. Limit is %d per second (burst %d).", requestsPerSecond, burstLimit),
-		}
+		return newErrorContent(fmt.Sprintf("Too many requests. Limit is %d per second (burst %d).", requestsPerSecond, burstLimit)), true // isError = true
 	}
 	log.Println("Rate limit check passed.")
 	// --- End Rate Limit Check ---
@@ -63,15 +63,16 @@ func limitedEchoHandler(arguments map[string]interface{}) (result interface{}, e
 	// --- Execute the "limited-echo" tool ---
 	messageArg, ok := arguments["message"]
 	if !ok {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required argument 'message' for tool 'limited-echo'"} // Use MCP code
+		return newErrorContent("Missing required argument 'message' for tool 'limited-echo'"), true // isError = true
 	}
 	messageStr, ok := messageArg.(string)
 	if !ok {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Argument 'message' for tool 'limited-echo' must be a string"} // Use MCP code
+		return newErrorContent("Argument 'message' for tool 'limited-echo' must be a string"), true // isError = true
 	}
 
 	log.Printf("Rate-Limited Echoing message: %s", messageStr)
-	return messageStr, nil // Return result and nil error
+	successContent := mcp.TextContent{Type: "text", Text: messageStr}
+	return []mcp.Content{successContent}, false // isError = false
 	// --- End limited-echo tool execution ---
 }
 

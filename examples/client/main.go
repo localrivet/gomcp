@@ -20,17 +20,17 @@ import (
 
 // --- Helper Functions ---
 
-// requestToolDefinitions sends a ToolDefinitionRequest and processes the response.
+// requestToolDefinitions sends a ListToolsRequest and processes the response.
 // It returns the list of tools defined by the server or an error.
-func requestToolDefinitions(conn *mcp.Connection) ([]mcp.ToolDefinition, error) {
-	log.Println("Sending ToolDefinitionRequest...")
-	reqPayload := mcp.ToolDefinitionRequestPayload{} // Payload is empty for this request type
-	err := conn.SendMessage(mcp.MessageTypeToolDefinitionRequest, reqPayload)
+func requestToolDefinitions(conn *mcp.Connection) ([]mcp.Tool, error) { // Return []mcp.Tool
+	log.Println("Sending ListToolsRequest...")
+	reqPayload := mcp.ListToolsRequestParams{}               // Use new params struct (empty for now)
+	err := conn.SendMessage(mcp.MethodListTools, reqPayload) // Use new method name
 	if err != nil {
-		return nil, fmt.Errorf("failed to send ToolDefinitionRequest: %w", err)
+		return nil, fmt.Errorf("failed to send ListToolsRequest: %w", err)
 	}
 
-	log.Println("Waiting for ToolDefinitionResponse...")
+	log.Println("Waiting for ListToolsResponse...")
 	// Use a timeout mechanism for receiving the response to prevent hangs.
 	var responseMsg *mcp.Message
 	var receiveErr error
@@ -44,55 +44,57 @@ func requestToolDefinitions(conn *mcp.Connection) ([]mcp.ToolDefinition, error) 
 	case <-done:
 		// Received message or error within the timeout
 	case <-time.After(5 * time.Second): // 5-second timeout
-		return nil, fmt.Errorf("timeout waiting for ToolDefinitionResponse")
+		return nil, fmt.Errorf("timeout waiting for ListToolsResponse") // Update error message
 	}
 
 	// Check for errors during receive
 	if receiveErr != nil {
-		return nil, fmt.Errorf("failed to receive ToolDefinitionResponse: %w", receiveErr)
+		return nil, fmt.Errorf("failed to receive ListToolsResponse: %w", receiveErr) // Update error message
 	}
 
 	// Check if the server sent back an MCP Error message
 	if responseMsg.MessageType == mcp.MessageTypeError {
 		var errPayload mcp.ErrorPayload
 		if err := mcp.UnmarshalPayload(responseMsg.Payload, &errPayload); err == nil {
-			return nil, fmt.Errorf("received MCP Error: [%d] %s", errPayload.Code, errPayload.Message) // Corrected
+			return nil, fmt.Errorf("received MCP Error: [%d] %s", errPayload.Code, errPayload.Message)
 		}
-		// If unmarshalling the error payload itself fails
 		return nil, fmt.Errorf("received MCP Error with unparsable payload")
 	}
 
-	// Ensure the received message is the expected type
-	if responseMsg.MessageType != mcp.MessageTypeToolDefinitionResponse {
-		return nil, fmt.Errorf("expected ToolDefinitionResponse, got %s", responseMsg.MessageType)
+	// Ensure the received message is the expected type (conceptual for now)
+	// TODO: Update this check when transport handles JSON-RPC responses properly
+	if responseMsg.MessageType != "ListToolsResponse" {
+		return nil, fmt.Errorf("expected ListToolsResponse, got %s", responseMsg.MessageType)
 	}
 
-	// Unmarshal the actual payload
-	var responsePayload mcp.ToolDefinitionResponsePayload
+	// Unmarshal the actual payload (which should be ListToolsResult)
+	var responsePayload mcp.ListToolsResult // Use new result struct
 	err = mcp.UnmarshalPayload(responseMsg.Payload, &responsePayload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal ToolDefinitionResponse payload: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal ListToolsResult payload: %w", err) // Update error message
 	}
 
 	// Return the list of tools
+	// TODO: Handle pagination (responsePayload.NextCursor)
 	return responsePayload.Tools, nil
 }
 
-// useTool sends a UseToolRequest for the specified tool and arguments,
+// useTool sends a CallToolRequest for the specified tool and arguments,
 // then processes the response.
-// It returns the tool's result (as interface{}) or an error.
-func useTool(conn *mcp.Connection, toolName string, args map[string]interface{}) (interface{}, error) {
-	log.Printf("Sending UseToolRequest for tool '%s'...", toolName)
-	reqPayload := mcp.UseToolRequestPayload{
-		ToolName:  toolName,
+// It returns the result Content slice or an error.
+// TODO: Refine error handling and return value based on CallToolResult structure.
+func useTool(conn *mcp.Connection, toolName string, args map[string]interface{}) ([]mcp.Content, error) { // Return []Content
+	log.Printf("Sending CallToolRequest for tool '%s'...", toolName)
+	reqPayload := mcp.CallToolParams{ // Use new params struct
+		Name:      toolName, // Use 'Name' field
 		Arguments: args,
 	}
-	err := conn.SendMessage(mcp.MessageTypeUseToolRequest, reqPayload)
+	err := conn.SendMessage(mcp.MethodCallTool, reqPayload) // Use new method name
 	if err != nil {
-		return nil, fmt.Errorf("failed to send UseToolRequest for '%s': %w", toolName, err)
+		return nil, fmt.Errorf("failed to send CallToolRequest for '%s': %w", toolName, err)
 	}
 
-	log.Println("Waiting for UseToolResponse...")
+	log.Println("Waiting for CallToolResponse...")
 	// Use a timeout mechanism for receiving the response.
 	var responseMsg *mcp.Message
 	var receiveErr error
@@ -106,38 +108,53 @@ func useTool(conn *mcp.Connection, toolName string, args map[string]interface{})
 	case <-done:
 		// Received message or error within the timeout
 	case <-time.After(5 * time.Second): // 5-second timeout
-		return nil, fmt.Errorf("timeout waiting for UseToolResponse for '%s'", toolName)
+		return nil, fmt.Errorf("timeout waiting for CallToolResponse for '%s'", toolName) // Update error message
 	}
 
 	// Check for errors during receive
 	if receiveErr != nil {
-		return nil, fmt.Errorf("failed to receive UseToolResponse for '%s': %w", toolName, receiveErr)
+		return nil, fmt.Errorf("failed to receive CallToolResponse for '%s': %w", toolName, receiveErr) // Update error message
 	}
 
 	// Check if the server sent back an MCP Error message
 	if responseMsg.MessageType == mcp.MessageTypeError {
 		var errPayload mcp.ErrorPayload
 		if err := mcp.UnmarshalPayload(responseMsg.Payload, &errPayload); err == nil {
-			// Return a specific error indicating the tool use failed with an MCP error
-			return nil, fmt.Errorf("tool '%s' failed with MCP Error: [%d] %s", toolName, errPayload.Code, errPayload.Message) // Corrected
+			return nil, fmt.Errorf("tool '%s' failed with MCP Error: [%d] %s", toolName, errPayload.Code, errPayload.Message)
 		}
 		return nil, fmt.Errorf("tool '%s' failed with an unparsable MCP Error payload", toolName)
 	}
 
-	// Ensure the received message is the expected type
-	if responseMsg.MessageType != mcp.MessageTypeUseToolResponse {
-		return nil, fmt.Errorf("expected UseToolResponse for '%s', got %s", toolName, responseMsg.MessageType)
+	// Ensure the received message is the expected type (conceptual for now)
+	// TODO: Update this check when transport handles JSON-RPC responses properly
+	if responseMsg.MessageType != "CallToolResponse" {
+		return nil, fmt.Errorf("expected CallToolResponse for '%s', got %s", toolName, responseMsg.MessageType)
 	}
 
-	// Unmarshal the actual payload
-	var responsePayload mcp.UseToolResponsePayload
+	// Unmarshal the actual payload (which should be CallToolResult)
+	var responsePayload mcp.CallToolResult // Use new result struct
 	err = mcp.UnmarshalPayload(responseMsg.Payload, &responsePayload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal UseToolResponse payload for '%s': %w", toolName, err)
+		return nil, fmt.Errorf("failed to unmarshal CallToolResult payload for '%s': %w", toolName, err) // Update error message
 	}
 
-	// Return the result from the tool execution
-	return responsePayload.Result, nil
+	// Check if the result itself indicates an error
+	if responsePayload.IsError != nil && *responsePayload.IsError {
+		// Extract error message from content (assuming first text content)
+		errMsg := fmt.Sprintf("Tool '%s' execution reported an error", toolName)
+		if len(responsePayload.Content) > 0 {
+			if textContent, ok := responsePayload.Content[0].(mcp.TextContent); ok {
+				errMsg = fmt.Sprintf("Tool '%s' failed: %s", toolName, textContent.Text)
+			} else {
+				// Handle cases where error content isn't simple text if necessary
+				errMsg = fmt.Sprintf("Tool '%s' failed with non-text error content: %T", toolName, responsePayload.Content[0])
+			}
+		}
+		return responsePayload.Content, fmt.Errorf("%s", errMsg) // Return content and an error, use %s
+	}
+
+	// Return the successful result content
+	return responsePayload.Content, nil
 }
 
 // runClientLogic performs the handshake and executes the example tool calls sequence.
@@ -222,12 +239,19 @@ func runClientLogic(conn *mcp.Connection, clientName string) error {
 		} else {
 			log.Printf("Successfully used 'echo' tool.")
 			log.Printf("  Sent: %s", echoMessage)
-			log.Printf("  Received: %v (Type: %T)", result, result)
-			resultStr, ok := result.(string)
-			if !ok {
-				log.Printf("WARNING: Echo result was not a string!")
-			} else if resultStr != echoMessage {
-				log.Printf("WARNING: Echo result '%s' did not match sent message '%s'", resultStr, echoMessage)
+			log.Printf("  Received Content: %+v", result) // Log the content slice
+			// Extract text from the first TextContent element
+			if len(result) > 0 {
+				if textContent, ok := result[0].(mcp.TextContent); ok {
+					log.Printf("  Extracted Text: %s", textContent.Text)
+					if textContent.Text != echoMessage {
+						log.Printf("WARNING: Echo result '%s' did not match sent message '%s'", textContent.Text, echoMessage)
+					}
+				} else {
+					log.Printf("WARNING: Echo result content[0] was not TextContent: %T", result[0])
+				}
+			} else {
+				log.Printf("WARNING: Echo result content was empty!")
 			}
 		}
 	} else {
@@ -251,9 +275,21 @@ func runClientLogic(conn *mcp.Connection, clientName string) error {
 		if err1 != nil {
 			log.Printf("ERROR: Failed to use 'calculator' tool (add): %v", err1)
 		} else {
-			log.Printf("Calculator(add) Result: %v (Type: %T)", result1, result1)
-			if resNum, ok := result1.(float64); !ok || resNum != 12.0 {
-				log.Printf("WARNING: Calculator(add) result unexpected: %v", result1)
+			log.Printf("Calculator(add) Content: %+v", result1)
+			// Extract text, parse as float
+			if len(result1) > 0 {
+				if textContent, ok := result1[0].(mcp.TextContent); ok { // Use type assertion on result1[0]
+					var resNum float64
+					if _, err := fmt.Sscan(textContent.Text, &resNum); err != nil || resNum != 12.0 {
+						log.Printf("WARNING: Calculator(add) result unexpected or failed parse: %s", textContent.Text)
+					} else {
+						log.Printf("  Parsed Result: %f", resNum)
+					}
+				} else {
+					log.Printf("WARNING: Calculator(add) result content[0] was not TextContent: %T", result1[0])
+				}
+			} else {
+				log.Printf("WARNING: Calculator(add) result content was empty!")
 			}
 		}
 		// Example 2: Divide by zero
@@ -318,19 +354,28 @@ func runClientLogic(conn *mcp.Connection, clientName string) error {
 		if fsErr3 != nil {
 			log.Printf("ERROR: Failed to use '%s' tool (read_file): %v", fsToolName, fsErr3)
 		} else {
-			log.Printf("Filesystem(read) Result: [content length=%d]", len(fmt.Sprintf("%v", fsResult3)))
-			if resultMap, ok := fsResult3.(map[string]interface{}); ok {
-				if content, ok := resultMap["content"].(string); ok {
-					if content != testFileContent {
-						log.Printf("WARNING: Filesystem read content mismatch!")
+			log.Printf("Filesystem(read) Content: %+v", fsResult3)
+			// Extract text, unmarshal JSON, check content field
+			if len(fsResult3) > 0 {
+				if textContent, ok := fsResult3[0].(mcp.TextContent); ok { // Use type assertion on fsResult3[0]
+					var resultMap map[string]interface{}
+					if err := json.Unmarshal([]byte(textContent.Text), &resultMap); err != nil {
+						log.Printf("WARNING: Filesystem read result failed to unmarshal JSON: %v", err)
+					} else if content, ok := resultMap["content"].(string); ok {
+						log.Printf("  Extracted Content Length: %d", len(content))
+						if content != testFileContent {
+							log.Printf("WARNING: Filesystem read content mismatch!")
+						} else {
+							log.Println("  Read content matches written content.")
+						}
 					} else {
-						log.Println("  Read content matches written content.")
+						log.Printf("WARNING: Filesystem read result JSON missing 'content' string field.")
 					}
 				} else {
-					log.Printf("WARNING: Filesystem read result content is not a string: %T", resultMap["content"])
+					log.Printf("WARNING: Filesystem read result content[0] was not TextContent: %T", fsResult3[0])
 				}
 			} else {
-				log.Printf("WARNING: Filesystem read result is not a map: %T", fsResult3)
+				log.Printf("WARNING: Filesystem read result content was empty!")
 			}
 		}
 		// Example 4: List dir

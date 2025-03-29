@@ -7,42 +7,39 @@ import (
 	mcp "github.com/localrivet/gomcp"
 )
 
-// calculatorToolDefinition defines the structure and schema for the calculator tool
-// according to the MCP specification.
-var calculatorToolDefinition = mcp.ToolDefinition{
+// calculatorToolDefinition defines the structure and schema for the calculator tool.
+var calculatorToolDefinition = mcp.Tool{ // Use new Tool struct
 	Name:        "calculator",
 	Description: "Performs basic arithmetic operations (add, subtract, multiply, divide).",
 	InputSchema: mcp.ToolInputSchema{
-		Type: "object", // Input is expected to be a JSON object
+		Type: "object",
 		Properties: map[string]mcp.PropertyDetail{
-			// Defines the expected parameters, their types, and descriptions
 			"operand1":  {Type: "number", Description: "The first number."},
 			"operand2":  {Type: "number", Description: "The second number."},
 			"operation": {Type: "string", Description: "The operation ('add', 'subtract', 'multiply', 'divide')."},
 		},
-		Required: []string{"operand1", "operand2", "operation"}, // All parameters are mandatory
+		Required: []string{"operand1", "operand2", "operation"},
 	},
-	OutputSchema: mcp.ToolOutputSchema{
-		Type:        "number", // The tool returns a single number
-		Description: "The result of the calculation.",
-	},
+	// OutputSchema removed
+	// Annotations: mcp.ToolAnnotations{}, // Optional
 }
 
 // executeCalculator contains the actual logic for the calculator tool.
-// It takes the arguments received from the client (as map[string]interface{})
-// and performs validation and the calculation.
-// It returns the result (interface{}, typically float64 here) and an optional *mcp.ErrorPayload.
-// If a non-nil ErrorPayload is returned, the server handler will send an MCP Error message.
-func executeCalculator(args map[string]interface{}) (interface{}, *mcp.ErrorPayload) {
+// It now matches the ToolHandlerFunc signature: (map[string]interface{}) -> ([]Content, bool)
+func executeCalculator(args map[string]interface{}) ([]mcp.Content, bool) {
+	// Helper to create error response content
+	newErrorContent := func(msg string) []mcp.Content {
+		return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}
+	}
+
 	// --- Argument Extraction and Type Validation ---
-	// Safely extract arguments from the map.
 	op1Arg, ok1 := args["operand1"]
 	op2Arg, ok2 := args["operand2"]
 	opStrArg, ok3 := args["operation"]
 
 	// Check if all required arguments are present.
 	if !ok1 || !ok2 || !ok3 {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required arguments (operand1, operand2, operation)"}
+		return newErrorContent("Missing required arguments (operand1, operand2, operation)"), true // isError = true
 	}
 
 	// Validate the types of the arguments.
@@ -64,7 +61,7 @@ func executeCalculator(args map[string]interface{}) (interface{}, *mcp.ErrorPayl
 		if !ok3 {
 			errMsg += " operation must be a string;"
 		}
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: errMsg} // Use MCP code
+		return newErrorContent(errMsg), true // isError = true
 	}
 	// --- End Argument Validation ---
 
@@ -80,16 +77,18 @@ func executeCalculator(args map[string]interface{}) (interface{}, *mcp.ErrorPayl
 	case "divide":
 		// Handle division by zero specifically.
 		if op2 == 0 {
-			// Use a general execution error code
-			return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPToolExecutionError, Message: "Division by zero"}
+			return newErrorContent("Division by zero"), true // isError = true
 		}
 		result = op1 / op2
 	default:
 		// Handle unknown operation strings.
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: fmt.Sprintf("Invalid operation '%s'. Use 'add', 'subtract', 'multiply', or 'divide'.", opStr)} // Use MCP code
+		return newErrorContent(fmt.Sprintf("Invalid operation '%s'. Use 'add', 'subtract', 'multiply', or 'divide'.", opStr)), true // isError = true
 	}
 	// --- End Calculation ---
 
-	// Return the successful result and a nil error payload.
-	return result, nil
+	// Return the successful result wrapped in TextContent and isError=false
+	// Note: The schema technically expects a number, but CallToolResult content allows text.
+	// A stricter implementation might require a NumberContent type or similar.
+	resultContent := mcp.TextContent{Type: "text", Text: fmt.Sprintf("%f", result)}
+	return []mcp.Content{resultContent}, false
 }

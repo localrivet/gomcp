@@ -113,59 +113,106 @@ type InitializedNotification struct {
 	Payload InitializedNotificationParams `json:"params"` // JSON-RPC uses "params"
 }
 
-// --- Tool Definition Messages ---
+// --- Tooling Structures and Messages ---
 
+// ToolInputSchema defines the expected input structure for a tool (JSON Schema subset).
 type ToolInputSchema struct {
-	Type       string                    `json:"type"`
+	Type       string                    `json:"type"` // Typically "object"
 	Properties map[string]PropertyDetail `json:"properties,omitempty"`
 	Required   []string                  `json:"required,omitempty"`
 }
+
+// PropertyDetail describes a single parameter within a ToolInputSchema.
 type PropertyDetail struct {
 	Type        string `json:"type"`
 	Description string `json:"description,omitempty"`
-	// TODO: Add other JSON schema fields
-}
-type ToolOutputSchema struct {
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
-	// TODO: Add other JSON schema fields
-}
-type ToolDefinition struct { // To be renamed Tool later
-	Name         string           `json:"name"`
-	Description  string           `json:"description,omitempty"`
-	InputSchema  ToolInputSchema  `json:"input_schema"`
-	OutputSchema ToolOutputSchema `json:"output_schema"`
-	// TODO: Add Annotations field later based on 'Tool' schema
-}
-type ToolDefinitionRequestPayload struct{} // To be removed (use ListToolsRequest)
-type ToolDefinitionRequest struct {        // To be renamed ListToolsRequest
-	Message
-	Payload ToolDefinitionRequestPayload `json:"payload"`
-}
-type ToolDefinitionResponsePayload struct { // To be renamed ListToolsResult
-	Tools []ToolDefinition `json:"tools"`
-}
-type ToolDefinitionResponse struct { // To be renamed ListToolsResponse (JSONRPCResponse wrapper)
-	Message
-	Payload ToolDefinitionResponsePayload `json:"payload"`
+	// TODO: Add other JSON schema fields (enum, format, etc.)
 }
 
-// --- Tool Usage Messages ---
+// ToolAnnotations provides optional hints about tool behavior.
+type ToolAnnotations struct {
+	Title           string `json:"title,omitempty"`
+	ReadOnlyHint    *bool  `json:"readOnlyHint,omitempty"`    // Use pointer for optional boolean
+	DestructiveHint *bool  `json:"destructiveHint,omitempty"` // Use pointer for optional boolean
+	IdempotentHint  *bool  `json:"idempotentHint,omitempty"`  // Use pointer for optional boolean
+	OpenWorldHint   *bool  `json:"openWorldHint,omitempty"`   // Use pointer for optional boolean
+}
 
-type UseToolRequestPayload struct { // To be renamed CallToolParams
-	ToolName  string                 `json:"tool_name"` // To be renamed 'name'
+// Tool defines a tool offered by the server (replaces ToolDefinition).
+type Tool struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	InputSchema ToolInputSchema `json:"inputSchema"` // Note camelCase
+	Annotations ToolAnnotations `json:"annotations,omitempty"`
+	// Note: OutputSchema is removed from Tool definition in 2025-03-26 spec,
+	// the output structure is defined by CallToolResult.
+}
+
+// ListToolsRequestParams defines the parameters for a 'tools/list' request (includes pagination).
+type ListToolsRequestParams struct {
+	Cursor string `json:"cursor,omitempty"` // Opaque pagination cursor
+}
+
+// ListToolsRequest asks the server for its available tools.
+type ListToolsRequest struct {
+	Message                        // Embeds ProtocolVersion, MessageID, MessageType="tools/list"
+	Payload ListToolsRequestParams `json:"params"` // JSON-RPC uses "params"
+}
+
+// ListToolsResult defines the result payload for a successful 'tools/list' response.
+type ListToolsResult struct {
+	Tools      []Tool `json:"tools"`
+	NextCursor string `json:"nextCursor,omitempty"` // Opaque pagination cursor
+}
+
+// ListToolsResponse represents the successful server response to a ListToolsRequest.
+type ListToolsResponse struct {
+	Message                 // Embeds ProtocolVersion, MessageID, MessageType="tools/listResponse" (conceptual)
+	Payload ListToolsResult `json:"result"` // JSON-RPC uses "result"
+}
+
+// CallToolParams defines the parameters for a 'tools/call' request.
+type CallToolParams struct {
+	Name      string                 `json:"name"` // Renamed from tool_name
 	Arguments map[string]interface{} `json:"arguments,omitempty"`
+	// TODO: Add _meta field if progressToken support is added
 }
-type UseToolRequest struct { // To be renamed CallToolRequest
-	Message
-	Payload UseToolRequestPayload `json:"payload"`
+
+// CallToolRequest asks the server to execute a specific tool.
+type CallToolRequest struct {
+	Message                // Embeds ProtocolVersion, MessageID, MessageType="tools/call"
+	Payload CallToolParams `json:"params"` // JSON-RPC uses "params"
 }
-type UseToolResponsePayload struct { // To be renamed CallToolResult
-	Result interface{} `json:"result"` // To be changed to 'content' array + 'isError' bool
+
+// Content defines the interface for different types of content in results/prompts.
+// Using an interface requires type assertions or switches when processing.
+// Alternatively, use a struct with one field per type and 'omitempty'.
+type Content interface {
+	GetType() string
 }
-type UseToolResponse struct { // To be renamed CallToolResponse (JSONRPCResponse wrapper)
-	Message
-	Payload UseToolResponsePayload `json:"payload"`
+
+// TextContent represents textual content.
+type TextContent struct {
+	Type string `json:"type"` // Should always be "text"
+	Text string `json:"text"`
+	// TODO: Add Annotations
+}
+
+func (tc TextContent) GetType() string { return tc.Type }
+
+// TODO: Define ImageContent, AudioContent, EmbeddedResource structs as needed.
+
+// CallToolResult defines the result payload for a successful 'tools/call' response.
+type CallToolResult struct {
+	Content []Content `json:"content"`           // Array of content parts (e.g., TextContent)
+	IsError *bool     `json:"isError,omitempty"` // Pointer to boolean for optional field
+	// TODO: Add _meta field
+}
+
+// CallToolResponse represents the successful server response to a CallToolRequest.
+type CallToolResponse struct {
+	Message                // Embeds ProtocolVersion, MessageID, MessageType="tools/callResponse" (conceptual)
+	Payload CallToolResult `json:"result"` // JSON-RPC uses "result"
 }
 
 // --- Constants ---
@@ -181,24 +228,22 @@ const (
 	MethodInitialize  = "initialize"
 	MethodInitialized = "initialized" // Notification
 
-	// Tools (Examples - will likely change based on spec updates for tools/call etc.)
-	// TODO: Update these when refactoring Tool messages
-	MethodListTools = "tools/list" // Replaces ToolDefinitionRequest
-	MethodCallTool  = "tools/call" // Replaces UseToolRequest
+	// Tools
+	MethodListTools = "tools/list"
+	MethodCallTool  = "tools/call"
+	// TODO: Add MethodToolListChanged = "notifications/tools/list_changed"
 
-	// Old Handshake types (to be removed after refactor)
-	MessageTypeHandshakeRequest  = "HandshakeRequest"
-	MessageTypeHandshakeResponse = "HandshakeResponse"
-	// Old Tool types (to be removed after refactor)
-	MessageTypeToolDefinitionRequest  = "ToolDefinitionRequest"
-	MessageTypeToolDefinitionResponse = "ToolDefinitionResponse"
-	MessageTypeUseToolRequest         = "UseToolRequest"
-	MessageTypeUseToolResponse        = "UseToolResponse"
+	// Old Handshake types (REMOVED)
+	// MessageTypeHandshakeRequest  = "HandshakeRequest"
+	// MessageTypeHandshakeResponse = "HandshakeResponse"
+	// Old Tool types (REMOVED)
+	// MessageTypeToolDefinitionRequest  = "ToolDefinitionRequest"
+	// MessageTypeToolDefinitionResponse = "ToolDefinitionResponse"
+	// MessageTypeUseToolRequest         = "UseToolRequest"
+	// MessageTypeUseToolResponse        = "UseToolResponse"
 
 	// MessageTypeError identifies an Error message (conceptually).
 	MessageTypeError = "Error" // This might become irrelevant
-
-	// TODO: Add constants for other methods (ping, resources/*, prompts/*, etc.)
 
 	// --- Standard JSON-RPC Error Codes ---
 	ErrorCodeParseError     = -32700

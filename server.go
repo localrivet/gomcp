@@ -11,15 +11,16 @@ import (
 
 // ToolHandlerFunc defines the signature for functions that handle tool execution.
 // It receives the arguments provided by the client and should return the result
-// or an ErrorPayload if execution fails.
-type ToolHandlerFunc func(arguments map[string]interface{}) (result interface{}, errorPayload *ErrorPayload)
+// content and a boolean indicating if an error occurred.
+// TODO: Refine this signature further. How to pass structured content? How to detail errors?
+type ToolHandlerFunc func(arguments map[string]interface{}) (content []Content, isError bool)
 
 // Server represents an MCP server instance. It manages the connection,
 // handles the handshake/initialization, tool registration, and processes incoming messages.
 type Server struct {
 	conn         *Connection // The underlying MCP connection handler
 	serverName   string
-	toolRegistry map[string]ToolDefinition  // Stores tool definitions
+	toolRegistry map[string]Tool            // Stores tool definitions (now using Tool struct)
 	toolHandlers map[string]ToolHandlerFunc // Stores handlers for each tool
 	// TODO: Store client/server capabilities after handshake
 	// clientCapabilities ClientCapabilities
@@ -42,30 +43,29 @@ func NewServerWithConnection(serverName string, conn *Connection) *Server {
 		log.Println("Warning: NewServerWithConnection received nil connection, falling back to stdio.")
 		conn = NewStdioConnection()
 	}
-
 	return &Server{
 		conn:         conn, // Use provided connection
 		serverName:   serverName,
-		toolRegistry: make(map[string]ToolDefinition),
+		toolRegistry: make(map[string]Tool), // Use Tool struct
 		toolHandlers: make(map[string]ToolHandlerFunc),
 	}
 }
 
 // RegisterTool adds a tool definition and its corresponding handler function to the server.
 // It returns an error if a tool with the same name is already registered or handler is nil.
-func (s *Server) RegisterTool(definition ToolDefinition, handler ToolHandlerFunc) error {
-	if definition.Name == "" {
+func (s *Server) RegisterTool(tool Tool, handler ToolHandlerFunc) error { // Accept Tool struct
+	if tool.Name == "" {
 		return fmt.Errorf("tool name cannot be empty")
 	}
-	if _, exists := s.toolRegistry[definition.Name]; exists {
-		return fmt.Errorf("tool '%s' already registered", definition.Name)
+	if _, exists := s.toolRegistry[tool.Name]; exists {
+		return fmt.Errorf("tool '%s' already registered", tool.Name)
 	}
 	if handler == nil {
-		return fmt.Errorf("handler for tool '%s' cannot be nil", definition.Name)
+		return fmt.Errorf("handler for tool '%s' cannot be nil", tool.Name)
 	}
-	s.toolRegistry[definition.Name] = definition
-	s.toolHandlers[definition.Name] = handler
-	log.Printf("Registered tool: %s", definition.Name)
+	s.toolRegistry[tool.Name] = tool
+	s.toolHandlers[tool.Name] = handler
+	log.Printf("Registered tool: %s", tool.Name)
 	return nil
 }
 
@@ -226,13 +226,12 @@ func (s *Server) Run() error {
 		log.Printf("Received message type: %s", msg.MessageType)
 		var handlerErr error
 
-		// Dispatch based on message type
-		// TODO: Update these case statements to use Method constants (e.g., MethodListTools)
+		// Dispatch based on message type (using new Method constants)
 		switch msg.MessageType {
-		case MessageTypeToolDefinitionRequest: // To become MethodListTools
-			handlerErr = s.handleToolDefinitionRequest(msg) // Call internal handler
-		case MessageTypeUseToolRequest: // To become MethodCallTool
-			handlerErr = s.handleUseToolRequest(msg) // Call internal handler
+		case MethodListTools: // Use new method name
+			handlerErr = s.handleListToolsRequest(msg) // Call renamed handler
+		case MethodCallTool: // Use new method name
+			handlerErr = s.handleCallToolRequest(msg) // Call renamed handler
 		// TODO: Add cases for ResourceAccessRequest etc.
 		default:
 			// Handle unknown message types
@@ -255,58 +254,62 @@ func (s *Server) Run() error {
 	}
 }
 
-// handleToolDefinitionRequest needs renaming to handleListToolsRequest
-// ... (implementation remains similar for now) ...
-func (s *Server) handleToolDefinitionRequest(requestMsg *Message) error {
-	log.Println("Handling ToolDefinitionRequest (soon ListToolsRequest)")
-	tools := make([]ToolDefinition, 0, len(s.toolRegistry))
+// handleListToolsRequest handles the 'tools/list' request.
+func (s *Server) handleListToolsRequest(requestMsg *Message) error {
+	log.Println("Handling ListToolsRequest")
+	// TODO: Handle pagination params (requestMsg.Payload -> ListToolsRequestParams)
+	tools := make([]Tool, 0, len(s.toolRegistry)) // Use Tool struct
 	for _, tool := range s.toolRegistry {
 		tools = append(tools, tool)
 	}
-	responsePayload := ToolDefinitionResponsePayload{Tools: tools}
-	log.Printf("Sending ToolDefinitionResponse with %d tools", len(tools))
-	// TODO: Update MessageType when renaming is done
-	return s.conn.SendMessage(MessageTypeToolDefinitionResponse, responsePayload)
+	responsePayload := ListToolsResult{Tools: tools} // Use ListToolsResult
+	log.Printf("Sending ListToolsResponse with %d tools", len(tools))
+	// TODO: Refactor SendMessage for proper JSON-RPC response (id, jsonrpc, result)
+	return s.conn.SendMessage("ListToolsResponse", responsePayload) // Conceptual type
 }
 
-// handleUseToolRequest needs renaming to handleCallToolRequest
-// ... (implementation needs changes for CallToolResult structure) ...
-func (s *Server) handleUseToolRequest(requestMsg *Message) error {
-	log.Println("Handling UseToolRequest (soon CallToolRequest)")
-	var requestPayload UseToolRequestPayload
-	err := UnmarshalPayload(requestMsg.Payload, &requestPayload)
+// handleCallToolRequest handles the 'tools/call' request.
+func (s *Server) handleCallToolRequest(requestMsg *Message) error {
+	log.Println("Handling CallToolRequest")
+	var requestParams CallToolParams // Use CallToolParams
+	err := UnmarshalPayload(requestMsg.Payload, &requestParams)
 	if err != nil {
-		log.Printf("Error unmarshalling UseToolRequest payload: %v", err)
+		log.Printf("Error unmarshalling CallTool params: %v", err)
 		return s.conn.SendMessage(MessageTypeError, ErrorPayload{
-			Code:    ErrorCodeMCPInvalidPayload,
-			Message: fmt.Sprintf("Failed to unmarshal UseToolRequest payload: %v", err),
+			Code:    ErrorCodeInvalidParams, // Use standard JSON-RPC code
+			Message: fmt.Sprintf("Failed to unmarshal CallTool params: %v", err),
 		})
 	}
 
-	log.Printf("Requested tool: %s with args: %v", requestPayload.ToolName, requestPayload.Arguments)
+	log.Printf("Requested tool: %s with args: %v", requestParams.Name, requestParams.Arguments) // Use Name field
 
-	handler, exists := s.toolHandlers[requestPayload.ToolName]
+	// Find the handler
+	handler, exists := s.toolHandlers[requestParams.Name]
 	if !exists {
-		log.Printf("Tool not found or no handler registered: %s", requestPayload.ToolName)
+		log.Printf("Tool not found or no handler registered: %s", requestParams.Name)
 		return s.conn.SendMessage(MessageTypeError, ErrorPayload{
-			Code:    ErrorCodeMCPToolNotFound,
-			Message: fmt.Sprintf("Tool '%s' not found or not implemented", requestPayload.ToolName),
+			Code:    ErrorCodeMCPToolNotFound, // Use MCP specific code
+			Message: fmt.Sprintf("Tool '%s' not found or not implemented", requestParams.Name),
 		})
 	}
 
-	result, execErr := handler(requestPayload.Arguments)
+	// Execute the handler
+	content, isError := handler(requestParams.Arguments)
 
-	if execErr != nil {
-		if execErr.Code == 0 {
-			execErr.Code = ErrorCodeMCPToolExecutionError
-		}
-		log.Printf("Tool '%s' execution failed: [%d] %s", requestPayload.ToolName, execErr.Code, execErr.Message)
-		return s.conn.SendMessage(MessageTypeError, *execErr)
+	// Construct the CallToolResult payload
+	responsePayload := CallToolResult{
+		Content: content,
+	}
+	if isError {
+		responsePayload.IsError = &isError // Assign pointer to true only if error occurred
+		log.Printf("Tool '%s' execution finished with error.", requestParams.Name)
+		// Note: Tool errors are reported in the result, not as protocol errors.
+		// The handler function itself should format the error message within the returned Content.
+	} else {
+		log.Printf("Tool '%s' execution successful.", requestParams.Name)
 	}
 
-	log.Printf("Tool '%s' execution successful.", requestPayload.ToolName)
-	// TODO: Refactor response to use CallToolResult structure (content array, isError bool)
-	responsePayload := UseToolResponsePayload{Result: result}
-	// TODO: Update MessageType when renaming is done
-	return s.conn.SendMessage(MessageTypeUseToolResponse, responsePayload)
+	// Send the response
+	// TODO: Refactor SendMessage for proper JSON-RPC response (id, jsonrpc, result)
+	return s.conn.SendMessage("CallToolResponse", responsePayload) // Conceptual type
 }
