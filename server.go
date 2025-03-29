@@ -97,6 +97,19 @@ func (s *Server) RegisterTool(tool Tool, handler ToolHandlerFunc) error { // Acc
 	s.toolRegistry[tool.Name] = tool
 	s.toolHandlers[tool.Name] = handler
 	log.Printf("Registered tool: %s", tool.Name)
+
+	// Send notification if server supports it (and presumably connection is active)
+	// Note: This assumes RegisterTool is called *after* initialization is complete
+	// and s.serverCapabilities is populated. A check for active connection might also be needed.
+	if s.serverCapabilities.Tools != nil && s.serverCapabilities.Tools.ListChanged {
+		log.Printf("Sending tools/list_changed notification to client")
+		err := s.SendToolsListChanged()
+		if err != nil {
+			// Log error but don't fail registration
+			log.Printf("Warning: failed to send tools/list_changed notification: %v", err)
+		}
+	}
+
 	return nil
 }
 
