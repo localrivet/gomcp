@@ -91,7 +91,9 @@ type ServerCapabilities struct {
 	// Add other known capability fields as needed, e.g.:
 	// Logging *struct{} `json:"logging,omitempty"`
 	// Completions *struct{} `json:"completions,omitempty"`
-	// Prompts *struct { ListChanged bool `json:"listChanged,omitempty"` } `json:"prompts,omitempty"`
+	Prompts *struct { // Add Prompts capability field
+		ListChanged bool `json:"listChanged,omitempty"` // Server supports notifications/prompts/list_changed
+	} `json:"prompts,omitempty"`
 	Resources *struct { // Add Resources capability field
 		Subscribe   bool `json:"subscribe,omitempty"`   // Server supports resources/subscribe
 		ListChanged bool `json:"listChanged,omitempty"` // Server supports notifications/resources/list_changed
@@ -302,10 +304,63 @@ type ReadResourceResult struct {
 	Contents ResourceContents `json:"contents"` // Actual content (Text or Blob)
 }
 
+// --- Prompt Structures ---
+
+// PromptArgument defines an input parameter for a prompt template.
+type PromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Type        string `json:"type"` // e.g., "string", "number", "boolean"
+	Required    bool   `json:"required,omitempty"`
+}
+
+// PromptMessage represents a single message within a prompt sequence.
+type PromptMessage struct {
+	Role    string    `json:"role"`    // e.g., "system", "user", "assistant"
+	Content []Content `json:"content"` // Array of content parts
+}
+
+// Prompt represents a prompt template available from the server.
+type Prompt struct {
+	URI         string                 `json:"uri"`                   // Unique identifier (e.g., "mcp://prompts/summarize")
+	Title       string                 `json:"title,omitempty"`       // Human-readable title
+	Description string                 `json:"description,omitempty"` // Longer description
+	Arguments   []PromptArgument       `json:"arguments,omitempty"`   // Input arguments for the template
+	Messages    []PromptMessage        `json:"messages"`              // The sequence of messages forming the prompt
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`    // Additional arbitrary metadata
+}
+
+// PromptReference allows referencing a prompt, potentially with arguments.
+type PromptReference struct {
+	URI       string                 `json:"uri"`                 // URI of the prompt template
+	Arguments map[string]interface{} `json:"arguments,omitempty"` // Arguments to fill into the template
+}
+
+// ListPromptsRequestParams defines parameters for 'prompts/list'.
+type ListPromptsRequestParams struct {
+	// TODO: Add filtering options
+	Cursor string `json:"cursor,omitempty"`
+}
+
+// ListPromptsResult defines the result for 'prompts/list'.
+type ListPromptsResult struct {
+	Prompts    []Prompt `json:"prompts"`
+	NextCursor string   `json:"nextCursor,omitempty"`
+}
+
+// GetPromptRequestParams defines parameters for 'prompts/get'.
+type GetPromptRequestParams struct {
+	URI string `json:"uri"` // URI of the prompt to get
+}
+
+// GetPromptResult defines the result for 'prompts/get'.
+type GetPromptResult struct {
+	Prompt Prompt `json:"prompt"`
+}
+
 // --- Constants ---
 
 const (
-	// CurrentProtocolVersion defines the MCP version this library implementation supports.
 	CurrentProtocolVersion = "2025-03-26" // Updated version
 
 	// --- Message Type (Method Name) Constants ---
@@ -324,6 +379,11 @@ const (
 	MethodListResources = "resources/list"
 	MethodReadResource  = "resources/read"
 	// TODO: Add resource notification methods
+
+	// Prompts
+	MethodListPrompts = "prompts/list"
+	MethodGetPrompt   = "prompts/get"
+	// TODO: Add prompt notification methods
 
 	// Old Handshake types (REMOVED)
 	// MessageTypeHandshakeRequest  = "HandshakeRequest"

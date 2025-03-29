@@ -306,7 +306,11 @@ func (s *Server) Run() error {
 			handlerErr = s.handleListResources(baseMessage.ID, baseMessage.Params)
 		case MethodReadResource: // Add case for reading resource
 			handlerErr = s.handleReadResource(baseMessage.ID, baseMessage.Params)
-		// TODO: Add cases for Resource subscription etc.
+		case MethodListPrompts: // Add case for listing prompts
+			handlerErr = s.handleListPrompts(baseMessage.ID, baseMessage.Params)
+		case MethodGetPrompt: // Add case for getting prompt
+			handlerErr = s.handleGetPrompt(baseMessage.ID, baseMessage.Params)
+		// TODO: Add cases for Resource/Prompt subscription/notifications etc.
 		default:
 			// Handle unknown methods
 			log.Printf("Method not implemented: %s", baseMessage.Method)
@@ -404,6 +408,50 @@ func (s *Server) handleCallToolRequest(requestID interface{}, params interface{}
 	// Send the response
 	// Use SendResponse with the original request ID
 	return s.conn.SendResponse(requestID, responsePayload) // Use requestID
+}
+
+// handleListPrompts handles the 'prompts/list' request.
+// TODO: Implement actual prompt listing and pagination.
+func (s *Server) handleListPrompts(requestID interface{}, params interface{}) error {
+	log.Println("Handling ListPromptsRequest (stub)")
+	// TODO: Unmarshal params ListPromptsRequestParams
+	responsePayload := ListPromptsResult{
+		Prompts: []Prompt{}, // Return empty list for now
+	}
+	return s.conn.SendResponse(requestID, responsePayload)
+}
+
+// handleGetPrompt handles the 'prompts/get' request.
+// TODO: Implement actual prompt retrieval.
+func (s *Server) handleGetPrompt(requestID interface{}, params interface{}) error {
+	log.Println("Handling GetPromptRequest (stub)")
+	var requestParams GetPromptRequestParams
+	// Unmarshal params
+	if params == nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: "Missing params for prompts/get",
+		})
+	}
+	paramsBytes, err := json.Marshal(params)
+	if err != nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: fmt.Sprintf("Failed to re-marshal GetPrompt params: %v", err),
+		})
+	}
+	err = json.Unmarshal(paramsBytes, &requestParams)
+	if err != nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: fmt.Sprintf("Failed to unmarshal GetPrompt params: %v", err),
+		})
+	}
+
+	// For now, always return not found
+	log.Printf("GetPrompt requested for URI: %s (returning Not Found)", requestParams.URI)
+	// TODO: Define a more specific error code for prompt not found? Using ResourceNotFound for now.
+	return s.conn.SendErrorResponse(requestID, ErrorPayload{
+		Code:    ErrorCodeMCPResourceNotFound,
+		Message: fmt.Sprintf("Prompt not found (stub implementation): %s", requestParams.URI),
+	})
 }
 
 // handleListResources handles the 'resources/list' request.

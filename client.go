@@ -366,8 +366,57 @@ func (c *Client) ReadResource(params ReadResourceRequestParams) (*ReadResourceRe
 		}
 		readResult.Contents = blobContents
 	}
-
 	return &readResult, nil
+}
+
+// ListPrompts sends a 'prompts/list' request and waits for the response.
+func (c *Client) ListPrompts(params ListPromptsRequestParams) (*ListPromptsResult, error) {
+	timeout := 10 * time.Second // Default timeout
+	response, err := c.sendRequestAndWait(MethodListPrompts, params, timeout)
+	if err != nil {
+		return nil, err
+	}
+	if response.Error != nil {
+		return nil, fmt.Errorf("received MCP Error for ListPrompts: [%d] %s", response.Error.Code, response.Error.Message)
+	}
+	var listResult ListPromptsResult
+	if response.Result == nil {
+		return nil, fmt.Errorf("received successful ListPrompts response but 'result' field was null")
+	}
+	resultBytes, err := json.Marshal(response.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-marshal ListPrompts 'result' field: %w", err)
+	}
+	err = json.Unmarshal(resultBytes, &listResult)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal ListPromptsResult from response: %w", err)
+	}
+	return &listResult, nil
+}
+
+// GetPrompt sends a 'prompts/get' request and waits for the response.
+func (c *Client) GetPrompt(params GetPromptRequestParams) (*GetPromptResult, error) {
+	timeout := 10 * time.Second // Default timeout
+	response, err := c.sendRequestAndWait(MethodGetPrompt, params, timeout)
+	if err != nil {
+		return nil, err
+	}
+	if response.Error != nil {
+		return nil, fmt.Errorf("received MCP Error for GetPrompt (URI: %s): [%d] %s", params.URI, response.Error.Code, response.Error.Message)
+	}
+	var getResult GetPromptResult
+	if response.Result == nil {
+		return nil, fmt.Errorf("received successful GetPrompt response but 'result' field was null")
+	}
+	resultBytes, err := json.Marshal(response.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-marshal GetPrompt 'result' field: %w", err)
+	}
+	err = json.Unmarshal(resultBytes, &getResult)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal GetPromptResult from response: %w", err)
+	}
+	return &getResult, nil
 }
 
 // processIncomingMessages runs in a separate goroutine to handle responses and notifications.
