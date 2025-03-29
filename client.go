@@ -17,9 +17,9 @@ type Client struct {
 	conn       *Connection // The underlying MCP connection handler
 	clientName string      // Name announced during initialization
 	serverName string      // Name of the server, discovered during initialization
-	// TODO: Store client/server capabilities
-	// clientCapabilities ClientCapabilities
-	// serverCapabilities ServerCapabilities
+	// Store capabilities after handshake
+	clientCapabilities ClientCapabilities // Capabilities announced by this client
+	serverCapabilities ServerCapabilities // Capabilities received from the server
 
 	// For handling concurrent requests/responses
 	pendingRequests map[string]chan *JSONRPCResponse // Map request ID to a channel for the response
@@ -137,9 +137,10 @@ func (c *Client) Connect() error {
 		return fmt.Errorf("server selected unsupported protocol version: %s", initResult.ProtocolVersion)
 	}
 
-	// Store server info
+	// Store server info and capabilities
 	c.serverName = initResult.ServerInfo.Name
-	// TODO: Store server capabilities (initResult.Capabilities) for later use
+	c.serverCapabilities = initResult.Capabilities
+	c.clientCapabilities = clientCapabilities // Store the capabilities we sent
 
 	log.Printf("Initialization successful with server: %s (Version: %s)", c.serverName, initResult.ServerInfo.Version)
 
@@ -232,9 +233,56 @@ func (c *Client) ListTools(params ListToolsRequestParams) (*ListToolsResult, err
 	}
 
 	return &listResult, nil
-} // <-- Add missing closing brace
+}
 
-// TODO: Add CallTool method
+// CallTool sends a 'tools/call' request and waits for the response.
+func (c *Client) CallTool(params CallToolParams) (*CallToolResult, error) {
+	// Use a default timeout, e.g., 30 seconds (tool calls might take longer)
+	timeout := 30 * time.Second
+
+	response, err := c.sendRequestAndWait(MethodCallTool, params, timeout)
+	if err != nil {
+		return nil, err // Error includes timeout message
+	}
+
+	// Check for JSON-RPC level error
+	if response.Error != nil {
+		return nil, fmt.Errorf("received MCP Error for CallTool (tool: %s): [%d] %s", params.Name, response.Error.Code, response.Error.Message)
+	}
+
+	// Unmarshal the result
+	var callResult CallToolResult
+	if response.Result == nil {
+		// This might be valid if the tool has no output, but spec implies content should be at least []
+		// Let's treat null result as an issue for now.
+		return nil, fmt.Errorf("received successful CallTool response but 'result' field was null")
+	}
+	resultBytes, err := json.Marshal(response.Result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-marshal CallTool 'result' field: %w", err)
+	}
+	err = json.Unmarshal(resultBytes, &callResult)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal CallToolResult from response: %w", err)
+	}
+
+	// Check the business logic error flag within the result
+	if callResult.IsError != nil && *callResult.IsError {
+		// Extract error message from content (assuming first text content)
+		errMsg := fmt.Sprintf("Tool '%s' execution reported an error", params.Name)
+		if len(callResult.Content) > 0 {
+			if textContent, ok := callResult.Content[0].(TextContent); ok { // Use concrete type
+				errMsg = fmt.Sprintf("Tool '%s' failed: %s", params.Name, textContent.Text)
+			} else {
+				errMsg = fmt.Sprintf("Tool '%s' failed with non-text error content: %T", params.Name, callResult.Content[0])
+			}
+		}
+		// Return the result along with an error to indicate failure
+		return &callResult, fmt.Errorf("%s", errMsg)
+	}
+
+	return &callResult, nil // Success
+}
 
 // processIncomingMessages runs in a separate goroutine to handle responses and notifications.
 func (c *Client) processIncomingMessages() { // Add missing function signature
