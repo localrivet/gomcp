@@ -67,15 +67,34 @@ func TestExampleClientLogic(t *testing.T) {
 			return msg, true // Indicate success
 		}
 
-		// 1. Expect HandshakeRequest, send HandshakeResponse
-		msg, ok := expectReceive(mcp.MessageTypeHandshakeRequest)
+		// 1. Expect InitializeRequest, send InitializeResponse, expect InitializedNotification
+		msg, ok := expectReceive(mcp.MethodInitialize) // Expect initialize method
 		if !ok {
 			return
 		}
-		hsResp := mcp.HandshakeResponsePayload{SelectedProtocolVersion: "1.0", ServerName: testServerName}
-		if err := serverConn.SendMessage(mcp.MessageTypeHandshakeResponse, hsResp); err != nil {
-			log.Printf("ERROR (Server simulator): failed to send hs resp: %v", err)
+		// Send InitializeResult (wrapped in conceptual InitializeResponse)
+		initResult := mcp.InitializeResult{
+			ProtocolVersion: mcp.CurrentProtocolVersion,
+			ServerInfo:      mcp.Implementation{Name: testServerName, Version: "0.1.0"},
+			Capabilities: mcp.ServerCapabilities{ // Advertise capabilities
+				Tools: &struct {
+					ListChanged bool `json:"listChanged,omitempty"`
+				}{ListChanged: false},
+			},
+		}
+		// TODO: Update SendMessage to handle JSON-RPC response structure properly
+		if err := serverConn.SendMessage("InitializeResponse", initResult); err != nil { // Conceptual type
+			log.Printf("ERROR (Server simulator): failed to send initialize resp: %v", err)
 			return
+		}
+		// Expect Initialized notification from client
+		_, ok = expectReceive(mcp.MethodInitialized)
+		if !ok {
+			// This is now expected if client initialization fails before sending initialized
+			log.Printf("Server simulator: did not receive Initialized notification (client error or disconnect?)")
+			// Don't return here, let the test check clientErr
+		} else {
+			log.Printf("Server simulator: Received Initialized notification.")
 		}
 
 		// 2. Expect ToolDefinitionRequest, send ToolDefinitionResponse

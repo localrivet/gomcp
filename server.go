@@ -15,25 +15,20 @@ import (
 type ToolHandlerFunc func(arguments map[string]interface{}) (result interface{}, errorPayload *ErrorPayload)
 
 // Server represents an MCP server instance. It manages the connection,
-// handles the handshake, tool registration, and processes incoming messages.
+// handles the handshake/initialization, tool registration, and processes incoming messages.
 type Server struct {
 	conn         *Connection // The underlying MCP connection handler
 	serverName   string
 	toolRegistry map[string]ToolDefinition  // Stores tool definitions
 	toolHandlers map[string]ToolHandlerFunc // Stores handlers for each tool
+	// TODO: Store client/server capabilities after handshake
+	// clientCapabilities ClientCapabilities
+	// serverCapabilities ServerCapabilities
 }
 
-// NewServer creates and initializes a new MCP Server instance.
+// NewServer creates and initializes a new MCP Server instance using stdio.
 func NewServer(serverName string) *Server {
-	log.SetOutput(os.Stderr)
-	log.SetFlags(log.Ltime | log.Lshortfile)
-
-	return &Server{
-		conn:         NewStdioConnection(), // Assumes stdio for now
-		serverName:   serverName,
-		toolRegistry: make(map[string]ToolDefinition),
-		toolHandlers: make(map[string]ToolHandlerFunc),
-	}
+	return NewServerWithConnection(serverName, NewStdioConnection())
 }
 
 // NewServerWithConnection creates and initializes a new MCP Server instance
@@ -74,75 +69,146 @@ func (s *Server) RegisterTool(definition ToolDefinition, handler ToolHandlerFunc
 	return nil
 }
 
-// handleHandshake performs the server side of the MCP handshake protocol.
-// (This function remains largely the same as before, using new Error Codes)
-func (s *Server) handleHandshake() (clientName string, err error) {
-	log.Println("Waiting for HandshakeRequest...")
+// handleInitialize performs the server side of the MCP initialization protocol.
+// It waits for an InitializeRequest, validates the protocol version,
+// determines capabilities, and sends back either an InitializeResponse or an Error message.
+// It also waits for the client's InitializedNotification.
+// Returns the client's info/capabilities on success.
+func (s *Server) handleInitialize() (clientInfo Implementation, clientCapabilities ClientCapabilities, err error) {
+	log.Println("Waiting for InitializeRequest...")
 	msg, err := s.conn.ReceiveMessage()
 	if err != nil {
-		return "", fmt.Errorf("failed to receive initial message: %w", err)
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("failed to receive initial message: %w", err)
 	}
 
-	if msg.MessageType != MessageTypeHandshakeRequest {
-		errMsg := fmt.Sprintf("Expected HandshakeRequest, got %s", msg.MessageType)
-		// Attempt to send specific error code
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPHandshakeFailed, Message: errMsg}) // Use MCP code
-		return "", fmt.Errorf("%s", errMsg)
+	// Check message type (method)
+	// TODO: This check might be redundant if transport layer handles JSON-RPC method/id directly
+	if msg.MessageType != MethodInitialize { // Use MethodInitialize constant
+		errMsg := fmt.Sprintf("Expected '%s' request, got '%s'", MethodInitialize, msg.MessageType)
+		// Use standard JSON-RPC code if method is wrong
+		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMethodNotFound, Message: errMsg})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg) // Use %s
 	}
 
-	var reqPayload HandshakeRequestPayload
-	err = UnmarshalPayload(msg.Payload, &reqPayload)
+	// Unmarshal params
+	var reqParams InitializeRequestParams
+	// TODO: ReceiveMessage should ideally return params directly for requests
+	err = UnmarshalPayload(msg.Payload, &reqParams)
 	if err != nil {
-		errMsg := fmt.Sprintf("Failed to unmarshal HandshakeRequest payload: %v", err)
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPInvalidPayload, Message: errMsg}) // Correct
-		return "", fmt.Errorf("failed to unmarshal HandshakeRequest payload: %w", err)
-	}
-	// Validate required payload field
-	if reqPayload.SupportedProtocolVersions == nil {
-		errMsg := "malformed HandshakeRequest payload: missing supported_protocol_versions"
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPInvalidPayload, Message: errMsg}) // Correct
-		return "", fmt.Errorf("%s", errMsg)                                                                       // Use %s format specifier
+		errMsg := fmt.Sprintf("Failed to unmarshal InitializeRequest params: %v", err)
+		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeInvalidParams, Message: errMsg})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("failed to unmarshal InitializeRequest params: %w", err)
 	}
 
-	log.Printf("Received HandshakeRequest from client: %s", reqPayload.ClientName)
-	clientSupportsCurrent := false
-	for _, v := range reqPayload.SupportedProtocolVersions {
-		if v == CurrentProtocolVersion {
-			clientSupportsCurrent = true
-			break
-		}
+	// Basic validation of received params
+	if reqParams.ProtocolVersion == "" {
+		errMsg := "malformed InitializeRequest params: missing protocolVersion"
+		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeInvalidParams, Message: errMsg})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg) // Use %s
 	}
-	if !clientSupportsCurrent {
-		errMsg := fmt.Sprintf("Client does not support protocol version %s", CurrentProtocolVersion)
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPUnsupportedProtocolVersion, Message: fmt.Sprintf("Server requires protocol version %s", CurrentProtocolVersion)}) // Use MCP code
-		return "", fmt.Errorf("%s", errMsg)
+	if reqParams.ClientInfo.Name == "" {
+		log.Println("Warning: Received InitializeRequest with missing clientInfo.name")
 	}
 
-	respPayload := HandshakeResponsePayload{SelectedProtocolVersion: CurrentProtocolVersion, ServerName: s.serverName}
-	err = s.conn.SendMessage(MessageTypeHandshakeResponse, respPayload)
+	log.Printf("Received InitializeRequest from client: %s (Version: %s)", reqParams.ClientInfo.Name, reqParams.ClientInfo.Version)
+	log.Printf("Client Capabilities: %+v", reqParams.Capabilities) // Log received capabilities
+
+	// --- Protocol Version Negotiation ---
+	// For now, we only support CurrentProtocolVersion exactly.
+	if reqParams.ProtocolVersion != CurrentProtocolVersion {
+		errMsg := fmt.Sprintf("Unsupported protocol version '%s' requested by client. Server requires '%s'.", reqParams.ProtocolVersion, CurrentProtocolVersion)
+		// Send specific MCP error code
+		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPUnsupportedProtocolVersion, Message: errMsg})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg) // Use %s
+	}
+	selectedVersion := CurrentProtocolVersion
+	// --- End Version Negotiation ---
+
+	// --- Define Server Capabilities ---
+	// Advertise the capabilities this server supports.
+	serverCapabilities := ServerCapabilities{
+		// Indicate tool support if tools are registered
+		Tools: &struct {
+			ListChanged bool `json:"listChanged,omitempty"`
+		}{ListChanged: false},
+		// Add other capabilities like Logging, Resources etc. here if implemented
+		// Experimental: map[string]interface{}{"featureX": true},
+	}
+	if len(s.toolRegistry) == 0 {
+		serverCapabilities.Tools = nil // Don't advertise tools if none registered
+	}
+
+	// Define server info
+	serverInfo := Implementation{
+		Name:    s.serverName,
+		Version: "0.1.0", // Example server version
+	}
+
+	// --- Send InitializeResponse ---
+	// Construct the result part of the JSON-RPC response
+	initResult := InitializeResult{
+		ProtocolVersion: selectedVersion,
+		Capabilities:    serverCapabilities,
+		ServerInfo:      serverInfo,
+		// Instructions: "Optional instructions for the client/LLM...",
+	}
+
+	// Send the response.
+	// NOTE: SendMessage currently wraps this in a basic Message struct.
+	// A strict JSON-RPC layer would construct a JSONRPCResponse with id, jsonrpc, result.
+	// We also need the original request ID (msg.MessageID) to put in the response.
+	// Let's modify SendMessage slightly or add SendResponse later.
+	// For now, sending the payload directly with a conceptual type.
+	log.Printf("Sending InitializeResponse: %+v", initResult)
+	// We need a way to associate response with request ID. Let's assume SendMessage handles it magically for now.
+	// A conceptual "InitializeResponse" type is used here. This needs fixing.
+	// TODO: Refactor SendMessage/ReceiveMessage for proper JSON-RPC request/response/notification handling.
+	err = s.conn.SendMessage("InitializeResponse", initResult) // Conceptual type - NEEDS FIXING
 	if err != nil {
-		return "", fmt.Errorf("failed to send HandshakeResponse: %w", err)
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("failed to send InitializeResponse: %w", err)
 	}
 
-	log.Printf("Handshake successful with client: %s", reqPayload.ClientName)
-	return reqPayload.ClientName, nil
+	// --- Wait for Initialized Notification ---
+	// The client MUST send this after receiving the InitializeResponse.
+	log.Println("Waiting for InitializedNotification...")
+	initMsg, err := s.conn.ReceiveMessage()
+	if err != nil {
+		// If client disconnects here, maybe it's okay? Or maybe handshake failed implicitly.
+		log.Printf("Failed to receive InitializedNotification: %v", err)
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("failed to receive InitializedNotification: %w", err)
+	}
+	// TODO: This check might be redundant if transport layer handles JSON-RPC method/id directly
+	if initMsg.MessageType != MethodInitialized { // Use MethodInitialized constant
+		errMsg := fmt.Sprintf("Expected '%s' notification after initialize response, got '%s'", MethodInitialized, initMsg.MessageType)
+		// This is a protocol violation by the client. Send an error.
+		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeInvalidRequest, Message: errMsg})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg) // Use %s
+	}
+	log.Println("Received InitializedNotification from client.")
+	// --- End Initialized Notification ---
+
+	log.Printf("Initialization successful with client: %s", reqParams.ClientInfo.Name)
+	// Return the client's info and capabilities, and nil error
+	// TODO: Store these capabilities on the server struct
+	return reqParams.ClientInfo, reqParams.Capabilities, nil
 }
 
-// Run starts the server's main loop. It performs the initial handshake
+// Run starts the server's main loop. It performs the initial handshake/initialization
 // and then enters a loop to continuously receive and dispatch messages
 // to registered handlers or default handlers.
 // This method blocks until a fatal error occurs or the connection is closed.
 func (s *Server) Run() error {
 	log.Printf("Server '%s' starting...", s.serverName)
 
-	// 1. Perform Handshake
-	clientName, err := s.handleHandshake()
+	// 1. Perform Initialization (replaces handshake)
+	clientInfo, clientCaps, err := s.handleInitialize() // Use new initialize handler
 	if err != nil {
-		log.Printf("Handshake failed: %v", err)
-		// Handshake errors are returned directly, no extra HandshakeFailed needed here
-		return fmt.Errorf("handshake failed: %w", err)
+		log.Printf("Initialization failed: %v", err)
+		// Initialization errors are returned directly
+		return fmt.Errorf("initialization failed: %w", err)
 	}
-	log.Printf("Handshake successful with client: %s", clientName)
+	log.Printf("Initialization successful with client: %s %+v", clientInfo.Name, clientCaps)
+	// TODO: Store clientCaps on s.clientCapabilities
 
 	// 2. Main Message Loop with Dispatch
 	log.Println("Entering main message loop...")
@@ -161,10 +227,11 @@ func (s *Server) Run() error {
 		var handlerErr error
 
 		// Dispatch based on message type
+		// TODO: Update these case statements to use Method constants (e.g., MethodListTools)
 		switch msg.MessageType {
-		case MessageTypeToolDefinitionRequest:
+		case MessageTypeToolDefinitionRequest: // To become MethodListTools
 			handlerErr = s.handleToolDefinitionRequest(msg) // Call internal handler
-		case MessageTypeUseToolRequest:
+		case MessageTypeUseToolRequest: // To become MethodCallTool
 			handlerErr = s.handleUseToolRequest(msg) // Call internal handler
 		// TODO: Add cases for ResourceAccessRequest etc.
 		default:
@@ -184,71 +251,62 @@ func (s *Server) Run() error {
 				log.Println("Detected write error, assuming client disconnected. Shutting down.")
 				return handlerErr // Return the underlying write error
 			}
-			// Otherwise, log the error but continue the loop. The handler itself
-			// should have sent an MCP Error message if it was a recoverable error.
 		}
 	}
 }
 
-// handleToolDefinitionRequest is the internal handler called by Run.
-// It sends back the list of tools registered with the server.
-func (s *Server) handleToolDefinitionRequest(requestMsg *Message) error { // Use Message directly
-	log.Println("Handling ToolDefinitionRequest")
+// handleToolDefinitionRequest needs renaming to handleListToolsRequest
+// ... (implementation remains similar for now) ...
+func (s *Server) handleToolDefinitionRequest(requestMsg *Message) error {
+	log.Println("Handling ToolDefinitionRequest (soon ListToolsRequest)")
 	tools := make([]ToolDefinition, 0, len(s.toolRegistry))
-	// Consider sorting tools by name for consistent output if needed
 	for _, tool := range s.toolRegistry {
 		tools = append(tools, tool)
 	}
-	responsePayload := ToolDefinitionResponsePayload{Tools: tools} // Use ToolDefinitionResponsePayload directly
+	responsePayload := ToolDefinitionResponsePayload{Tools: tools}
 	log.Printf("Sending ToolDefinitionResponse with %d tools", len(tools))
+	// TODO: Update MessageType when renaming is done
 	return s.conn.SendMessage(MessageTypeToolDefinitionResponse, responsePayload)
 }
 
-// handleUseToolRequest is the internal handler called by Run.
-// It unmarshals the request, finds the appropriate tool handler, executes it,
-// and sends back the result or an error.
-func (s *Server) handleUseToolRequest(requestMsg *Message) error { // Use Message directly
-	log.Println("Handling UseToolRequest")
-	var requestPayload UseToolRequestPayload // Use UseToolRequestPayload directly
+// handleUseToolRequest needs renaming to handleCallToolRequest
+// ... (implementation needs changes for CallToolResult structure) ...
+func (s *Server) handleUseToolRequest(requestMsg *Message) error {
+	log.Println("Handling UseToolRequest (soon CallToolRequest)")
+	var requestPayload UseToolRequestPayload
 	err := UnmarshalPayload(requestMsg.Payload, &requestPayload)
 	if err != nil {
 		log.Printf("Error unmarshalling UseToolRequest payload: %v", err)
-		return s.conn.SendMessage(MessageTypeError, ErrorPayload{ // Use ErrorPayload directly
-			Code:    ErrorCodeMCPInvalidPayload, // Use correct MCP code
+		return s.conn.SendMessage(MessageTypeError, ErrorPayload{
+			Code:    ErrorCodeMCPInvalidPayload,
 			Message: fmt.Sprintf("Failed to unmarshal UseToolRequest payload: %v", err),
 		})
 	}
 
 	log.Printf("Requested tool: %s with args: %v", requestPayload.ToolName, requestPayload.Arguments)
 
-	// Find the handler for the requested tool
 	handler, exists := s.toolHandlers[requestPayload.ToolName]
 	if !exists {
 		log.Printf("Tool not found or no handler registered: %s", requestPayload.ToolName)
-		return s.conn.SendMessage(MessageTypeError, ErrorPayload{ // Use ErrorPayload directly
-			Code:    ErrorCodeMCPToolNotFound, // Use correct MCP code
+		return s.conn.SendMessage(MessageTypeError, ErrorPayload{
+			Code:    ErrorCodeMCPToolNotFound,
 			Message: fmt.Sprintf("Tool '%s' not found or not implemented", requestPayload.ToolName),
 		})
 	}
 
-	// --- Execute the registered tool handler ---
-	// The handler function is responsible for its own argument validation and execution logic.
 	result, execErr := handler(requestPayload.Arguments)
-	// --- End tool execution ---
 
-	// Send response (either result or error returned by the handler)
 	if execErr != nil {
-		// Ensure the error code is set, default if necessary
-		if execErr.Code == 0 { // Check against zero value for int
-			execErr.Code = ErrorCodeMCPToolExecutionError // Use correct MCP code
+		if execErr.Code == 0 {
+			execErr.Code = ErrorCodeMCPToolExecutionError
 		}
-		// Log the numeric code
 		log.Printf("Tool '%s' execution failed: [%d] %s", requestPayload.ToolName, execErr.Code, execErr.Message)
-		return s.conn.SendMessage(MessageTypeError, *execErr) // Use ErrorPayload directly
+		return s.conn.SendMessage(MessageTypeError, *execErr)
 	}
 
-	// Send successful UseToolResponse
 	log.Printf("Tool '%s' execution successful.", requestPayload.ToolName)
-	responsePayload := UseToolResponsePayload{Result: result} // Use UseToolResponsePayload directly
+	// TODO: Refactor response to use CallToolResult structure (content array, isError bool)
+	responsePayload := UseToolResponsePayload{Result: result}
+	// TODO: Update MessageType when renaming is done
 	return s.conn.SendMessage(MessageTypeUseToolResponse, responsePayload)
 }

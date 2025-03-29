@@ -51,11 +51,11 @@ func echoHandler(arguments map[string]interface{}) (result interface{}, errorPay
 	messageArg, ok := arguments["message"]
 	if !ok {
 		// Use standard error codes from the library
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeInvalidArgument, Message: "Missing required argument 'message' for tool 'echo'"}
+		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Missing required argument 'message' for tool 'echo'"} // Use MCP code
 	}
 	messageStr, ok := messageArg.(string)
 	if !ok {
-		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeInvalidArgument, Message: "Argument 'message' for tool 'echo' must be a string"}
+		return nil, &mcp.ErrorPayload{Code: mcp.ErrorCodeMCPInvalidArgument, Message: "Argument 'message' for tool 'echo' must be a string"} // Use MCP code
 	}
 	log.Printf("Echoing message: %s", messageStr)
 	return messageStr, nil // Return result and nil error

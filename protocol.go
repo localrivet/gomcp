@@ -38,26 +38,79 @@ type ErrorMessage struct {
 	Payload ErrorPayload `json:"error"` // Field name MUST be "error" for JSON-RPC compliance
 }
 
-// --- Handshake Messages (To be replaced by Initialize) ---
-// Keeping these temporarily for compatibility during refactor, will remove later.
+// --- Initialization Sequence Structures ---
 
-type HandshakeRequestPayload struct {
-	SupportedProtocolVersions []string `json:"supported_protocol_versions"`
-	ServerName                string   `json:"server_name,omitempty"`
-	ClientName                string   `json:"client_name,omitempty"`
+// Implementation describes the name and version of an MCP implementation (client or server).
+type Implementation struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
-type HandshakeRequest struct {
-	Message
-	Payload HandshakeRequestPayload `json:"payload"`
+
+// ClientCapabilities describes features the client supports.
+// NOTE: This is a basic structure; real implementations might add more specific fields
+// based on the capabilities they actually support (e.g., roots, sampling).
+type ClientCapabilities struct {
+	// Experimental capabilities can be added here.
+	Experimental map[string]interface{} `json:"experimental,omitempty"`
+	// Add other known capability fields as needed, e.g.:
+	// Roots *struct { ListChanged bool `json:"listChanged,omitempty"` } `json:"roots,omitempty"`
+	// Sampling *struct{} `json:"sampling,omitempty"`
 }
-type HandshakeResponsePayload struct {
-	SelectedProtocolVersion string `json:"selected_protocol_version"`
-	ServerName              string `json:"server_name,omitempty"`
-	ClientName              string `json:"client_name,omitempty"`
+
+// ServerCapabilities describes features the server supports.
+// NOTE: This is a basic structure; real implementations might add more specific fields.
+type ServerCapabilities struct {
+	// Experimental capabilities can be added here.
+	Experimental map[string]interface{} `json:"experimental,omitempty"`
+	// Add other known capability fields as needed, e.g.:
+	// Logging *struct{} `json:"logging,omitempty"`
+	// Completions *struct{} `json:"completions,omitempty"`
+	// Prompts *struct { ListChanged bool `json:"listChanged,omitempty"` } `json:"prompts,omitempty"`
+	// Resources *struct { Subscribe bool `json:"subscribe,omitempty"; ListChanged bool `json:"listChanged,omitempty"` } `json:"resources,omitempty"`
+	Tools *struct {
+		ListChanged bool `json:"listChanged,omitempty"`
+	} `json:"tools,omitempty"` // Add Tools capability field
 }
-type HandshakeResponse struct {
-	Message
-	Payload HandshakeResponsePayload `json:"payload"`
+
+// InitializeRequestParams defines the parameters for the 'initialize' request.
+type InitializeRequestParams struct {
+	ProtocolVersion string             `json:"protocolVersion"` // Note camelCase from schema
+	Capabilities    ClientCapabilities `json:"capabilities"`
+	ClientInfo      Implementation     `json:"clientInfo"`
+	// TODO: Add other optional fields like workspaceFolders, trace, etc. if needed
+}
+
+// InitializeRequest is sent by the client to start the connection.
+// Replaces the old HandshakeRequest.
+type InitializeRequest struct {
+	Message                         // Embeds ProtocolVersion, MessageID, MessageType="initialize"
+	Payload InitializeRequestParams `json:"params"` // JSON-RPC uses "params"
+}
+
+// InitializeResult defines the result payload for a successful 'initialize' response.
+type InitializeResult struct {
+	ProtocolVersion string             `json:"protocolVersion"`
+	Capabilities    ServerCapabilities `json:"capabilities"`
+	ServerInfo      Implementation     `json:"serverInfo"`
+	Instructions    string             `json:"instructions,omitempty"`
+}
+
+// InitializeResponse represents the successful server response to an InitializeRequest.
+// This is conceptually similar to the old HandshakeResponse but aligns with JSONRPCResponse structure.
+// Note: For strict JSON-RPC, this shouldn't embed Message, but have top-level id, jsonrpc, result.
+// We'll keep embedding for now to fit the current transport, but use the correct payload structure.
+type InitializeResponse struct {
+	Message                  // Embeds ProtocolVersion, MessageID, MessageType="initializeResponse" (conceptual)
+	Payload InitializeResult `json:"result"` // JSON-RPC uses "result"
+}
+
+// InitializedNotificationParams is the payload for the 'initialized' notification (empty).
+type InitializedNotificationParams struct{}
+
+// InitializedNotification is sent by the client after receiving InitializeResult.
+type InitializedNotification struct {
+	Message                               // Embeds ProtocolVersion, MessageID, MessageType="initialized"
+	Payload InitializedNotificationParams `json:"params"` // JSON-RPC uses "params"
 }
 
 // --- Tool Definition Messages ---
@@ -77,15 +130,15 @@ type ToolOutputSchema struct {
 	Description string `json:"description,omitempty"`
 	// TODO: Add other JSON schema fields
 }
-type ToolDefinition struct {
+type ToolDefinition struct { // To be renamed Tool later
 	Name         string           `json:"name"`
 	Description  string           `json:"description,omitempty"`
 	InputSchema  ToolInputSchema  `json:"input_schema"`
 	OutputSchema ToolOutputSchema `json:"output_schema"`
 	// TODO: Add Annotations field later based on 'Tool' schema
 }
-type ToolDefinitionRequestPayload struct{}
-type ToolDefinitionRequest struct { // To be renamed ListToolsRequest
+type ToolDefinitionRequestPayload struct{} // To be removed (use ListToolsRequest)
+type ToolDefinitionRequest struct {        // To be renamed ListToolsRequest
 	Message
 	Payload ToolDefinitionRequestPayload `json:"payload"`
 }
@@ -121,24 +174,31 @@ const (
 	// CurrentProtocolVersion defines the MCP version this library implementation supports.
 	CurrentProtocolVersion = "2025-03-26" // Updated version
 
-	// --- Message Type Constants ---
-	// NOTE: These will change according to the spec (e.g., "initialize", "tools/list", "tools/call")
+	// --- Message Type (Method Name) Constants ---
+	// These now align with the JSON-RPC 'method' field names from the spec.
+
+	// Initialization
+	MethodInitialize  = "initialize"
+	MethodInitialized = "initialized" // Notification
+
+	// Tools (Examples - will likely change based on spec updates for tools/call etc.)
+	// TODO: Update these when refactoring Tool messages
+	MethodListTools = "tools/list" // Replaces ToolDefinitionRequest
+	MethodCallTool  = "tools/call" // Replaces UseToolRequest
+
+	// Old Handshake types (to be removed after refactor)
+	MessageTypeHandshakeRequest  = "HandshakeRequest"
+	MessageTypeHandshakeResponse = "HandshakeResponse"
+	// Old Tool types (to be removed after refactor)
+	MessageTypeToolDefinitionRequest  = "ToolDefinitionRequest"
+	MessageTypeToolDefinitionResponse = "ToolDefinitionResponse"
+	MessageTypeUseToolRequest         = "UseToolRequest"
+	MessageTypeUseToolResponse        = "UseToolResponse"
 
 	// MessageTypeError identifies an Error message (conceptually).
-	MessageTypeError = "Error" // This might become irrelevant if errors are handled purely via JSONRPCError structure
-	// MessageTypeHandshakeRequest identifies a HandshakeRequest message (to be replaced by "initialize").
-	MessageTypeHandshakeRequest = "HandshakeRequest"
-	// MessageTypeHandshakeResponse identifies a HandshakeResponse message (to be replaced by JSONRPCResponse for "initialize").
-	MessageTypeHandshakeResponse = "HandshakeResponse"
-	// MessageTypeToolDefinitionRequest identifies a ToolDefinitionRequest message (to be replaced by "tools/list").
-	MessageTypeToolDefinitionRequest = "ToolDefinitionRequest"
-	// MessageTypeToolDefinitionResponse identifies a ToolDefinitionResponse message (to be replaced by JSONRPCResponse for "tools/list").
-	MessageTypeToolDefinitionResponse = "ToolDefinitionResponse"
-	// MessageTypeUseToolRequest identifies a UseToolRequest message (to be replaced by "tools/call").
-	MessageTypeUseToolRequest = "UseToolRequest"
-	// MessageTypeUseToolResponse identifies a UseToolResponse message (to be replaced by JSONRPCResponse for "tools/call").
-	MessageTypeUseToolResponse = "UseToolResponse"
-	// TODO: Add other message type constants (ResourceAccess, Notification, etc.)
+	MessageTypeError = "Error" // This might become irrelevant
+
+	// TODO: Add constants for other methods (ping, resources/*, prompts/*, etc.)
 
 	// --- Standard JSON-RPC Error Codes ---
 	ErrorCodeParseError     = -32700
@@ -150,7 +210,7 @@ const (
 
 	// --- MCP / Implementation-Defined Error Codes (Example Range) ---
 	// Using -32000 range for MCP/implementation specific errors
-	ErrorCodeMCPHandshakeFailed            = -32000 // Custom code for handshake phase errors
+	ErrorCodeMCPHandshakeFailed            = -32000 // Custom code for handshake phase errors (will become Initialize errors)
 	ErrorCodeMCPUnsupportedProtocolVersion = -32001 // Custom code for version mismatch
 	ErrorCodeMCPInvalidMessage             = -32002 // Custom code for structurally invalid MCP message (before JSON check)
 	ErrorCodeMCPInvalidPayload             = -32003 // Custom code for invalid MCP payload structure

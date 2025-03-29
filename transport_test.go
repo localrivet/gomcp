@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors" // Import errors package for errors.Is
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -15,14 +16,17 @@ func TestSendMessage(t *testing.T) {
 	var buf bytes.Buffer
 	conn := NewConnection(&bytes.Buffer{}, &buf) // Reader not used here
 
-	payload := HandshakeRequestPayload{
-		SupportedProtocolVersions: []string{"1.0"},
-		ClientName:                "TestClient",
+	// Use InitializeRequestParams as payload example
+	payload := InitializeRequestParams{
+		ProtocolVersion: CurrentProtocolVersion,
+		ClientInfo:      Implementation{Name: "TestClient", Version: "0.1"},
+		Capabilities:    ClientCapabilities{},
 	}
 
-	err := conn.SendMessage(MessageTypeHandshakeRequest, payload)
+	// Send using MethodInitialize
+	err := conn.SendMessage(MethodInitialize, payload)
 	if err != nil {
-		t.Fatalf("SendMessage failed: %v", err)
+		t.Fatalf("SendMessage failed for InitializeRequest: %v", err)
 	}
 
 	// Check the output buffer
@@ -41,8 +45,9 @@ func TestSendMessage(t *testing.T) {
 		t.Fatalf("Failed to unmarshal sent message: %v\nOriginal JSON: %s", err, jsonData)
 	}
 
-	if receivedMsg.MessageType != MessageTypeHandshakeRequest {
-		t.Errorf("Expected message type %q, got %q", MessageTypeHandshakeRequest, receivedMsg.MessageType)
+	// Check the method name used in the message
+	if receivedMsg.MessageType != MethodInitialize {
+		t.Errorf("Expected message type (method) %q, got %q", MethodInitialize, receivedMsg.MessageType)
 	}
 	if receivedMsg.ProtocolVersion != CurrentProtocolVersion {
 		t.Errorf("Expected protocol version %q, got %q", CurrentProtocolVersion, receivedMsg.ProtocolVersion)
@@ -51,8 +56,8 @@ func TestSendMessage(t *testing.T) {
 		t.Error("Expected non-empty MessageID, got empty string")
 	}
 
-	// Unmarshal and verify payload
-	var receivedPayload HandshakeRequestPayload
+	// Unmarshal and verify payload (now InitializeRequestParams)
+	var receivedPayload InitializeRequestParams
 	// When json.Unmarshal decodes into an interface{} (like Message.Payload),
 	// it uses map[string]interface{} for JSON objects. We need to handle this.
 	// One way is to re-marshal the map and unmarshal into the target struct.
@@ -70,26 +75,34 @@ func TestSendMessage(t *testing.T) {
 		t.Fatalf("Failed to unmarshal payload map into struct: %v", err)
 	}
 
-	if len(receivedPayload.SupportedProtocolVersions) != 1 || receivedPayload.SupportedProtocolVersions[0] != "1.0" {
-		t.Errorf("Expected supported versions %v, got %v", []string{"1.0"}, receivedPayload.SupportedProtocolVersions)
+	// Check fields of InitializeRequestParams
+	if receivedPayload.ProtocolVersion != CurrentProtocolVersion {
+		t.Errorf("Expected payload protocol version %q, got %q", CurrentProtocolVersion, receivedPayload.ProtocolVersion)
 	}
-	if receivedPayload.ClientName != "TestClient" {
-		t.Errorf("Expected client name %q, got %q", "TestClient", receivedPayload.ClientName)
+	if receivedPayload.ClientInfo.Name != "TestClient" {
+		t.Errorf("Expected client name %q, got %q", "TestClient", receivedPayload.ClientInfo.Name)
 	}
+	// Add checks for other fields if necessary (e.g., Capabilities)
 }
 
 // TestReceiveMessage verifies that ReceiveMessage correctly reads a newline-delimited
 // JSON message and returns the generic Message struct with RawMessage payload.
 func TestReceiveMessage(t *testing.T) {
-	// Prepare a message to be received
+	// Prepare a message to be received (simulate InitializeResponse)
+	// Note: Real InitializeResponse is JSON-RPC, not MCP Message format.
+	// This test verifies ReceiveMessage can parse the *content*, assuming
+	// the transport layer somehow provides it within the Message struct for now.
+	initResultPayload := InitializeResult{
+		ProtocolVersion: CurrentProtocolVersion,
+		ServerInfo:      Implementation{Name: "TestServer", Version: "0.1"},
+		Capabilities:    ServerCapabilities{}, // Add basic capabilities
+	}
+	// We still wrap it in Message for ReceiveMessage to parse currently
 	msgToSend := Message{
 		ProtocolVersion: CurrentProtocolVersion,
-		MessageID:       "test-uuid",
-		MessageType:     MessageTypeHandshakeResponse,
-		Payload: HandshakeResponsePayload{
-			SelectedProtocolVersion: CurrentProtocolVersion,
-			ServerName:              "TestServer",
-		},
+		MessageID:       "test-uuid",          // JSON-RPC response needs matching ID
+		MessageType:     "InitializeResponse", // Conceptual type for now
+		Payload:         initResultPayload,
 	}
 	jsonData, _ := json.Marshal(msgToSend)
 	inputJson := string(jsonData) + "\n" // Add newline
@@ -102,8 +115,10 @@ func TestReceiveMessage(t *testing.T) {
 	}
 
 	// Verify basic fields
-	if receivedMsg.MessageType != MessageTypeHandshakeResponse {
-		t.Errorf("Expected message type %q, got %q", MessageTypeHandshakeResponse, receivedMsg.MessageType)
+	// TODO: Update this check once SendMessage/ReceiveMessage handle JSON-RPC properly.
+	// For now, check the conceptual type we sent.
+	if receivedMsg.MessageType != "InitializeResponse" { // Check conceptual type
+		t.Errorf("Expected message type %q, got %q", "InitializeResponse", receivedMsg.MessageType)
 	}
 	if receivedMsg.ProtocolVersion != CurrentProtocolVersion {
 		t.Errorf("Expected protocol version %q, got %q", CurrentProtocolVersion, receivedMsg.ProtocolVersion)
@@ -118,18 +133,21 @@ func TestReceiveMessage(t *testing.T) {
 		t.Fatalf("Expected payload to be json.RawMessage, got %T", receivedMsg.Payload)
 	}
 
-	var receivedPayload HandshakeResponsePayload
+	// Unmarshal into InitializeResult
+	var receivedPayload InitializeResult
 	err = UnmarshalPayload(rawPayload, &receivedPayload)
 	if err != nil {
-		t.Fatalf("Failed to unmarshal RawMessage payload: %v", err)
+		t.Fatalf("Failed to unmarshal RawMessage payload into InitializeResult: %v", err)
 	}
 
-	if receivedPayload.SelectedProtocolVersion != CurrentProtocolVersion {
-		t.Errorf("Expected selected version %q, got %q", CurrentProtocolVersion, receivedPayload.SelectedProtocolVersion)
+	// Check fields of InitializeResult
+	if receivedPayload.ProtocolVersion != CurrentProtocolVersion {
+		t.Errorf("Expected payload protocol version %q, got %q", CurrentProtocolVersion, receivedPayload.ProtocolVersion)
 	}
-	if receivedPayload.ServerName != "TestServer" {
-		t.Errorf("Expected server name %q, got %q", "TestServer", receivedPayload.ServerName)
+	if receivedPayload.ServerInfo.Name != "TestServer" {
+		t.Errorf("Expected server name %q, got %q", "TestServer", receivedPayload.ServerInfo.Name)
 	}
+	// Check other fields like Capabilities if necessary
 }
 
 // TestReceiveMessageEOF tests that ReceiveMessage returns an error containing io.EOF
@@ -169,8 +187,10 @@ func TestReceiveMessageInvalidJSON(t *testing.T) {
 
 	// Check if the server attempted to send an Error message back
 	outputStr := serverOutput.String()
-	if !strings.Contains(outputStr, MessageTypeError) || !strings.Contains(outputStr, "InvalidJSON") {
-		t.Errorf("Expected server to send back an InvalidJSON Error message, got: %q", outputStr)
+	// Check for the numeric code in the output string
+	// Note: The check for MessageTypeError might become obsolete if we switch to pure JSON-RPC error format
+	if !strings.Contains(outputStr, fmt.Sprintf(`"code":%d`, ErrorCodeParseError)) {
+		t.Errorf("Expected server to send back an Error message with code %d, got: %q", ErrorCodeParseError, outputStr)
 	}
 }
 
@@ -190,7 +210,8 @@ func TestReceiveMessageMissingFields(t *testing.T) {
 
 	// Check if the server attempted to send an Error message back
 	outputStr := serverOutput.String()
-	if !strings.Contains(outputStr, MessageTypeError) || !strings.Contains(outputStr, "InvalidMessage") {
-		t.Errorf("Expected server to send back an InvalidMessage Error message, got: %q", outputStr)
+	// Check for the numeric code in the output string
+	if !strings.Contains(outputStr, MessageTypeError) || !strings.Contains(outputStr, fmt.Sprintf(`"code":%d`, ErrorCodeMCPInvalidMessage)) {
+		t.Errorf("Expected server to send back an Error message with code %d, got: %q", ErrorCodeMCPInvalidMessage, outputStr)
 	}
 }

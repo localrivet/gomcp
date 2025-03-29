@@ -93,35 +93,52 @@ func useTool(conn *mcp.Connection, toolName string, args map[string]interface{})
 
 // runClientLogic performs the handshake and executes the example tool calls sequence.
 func runClientLogic(conn *mcp.Connection, clientName string) error {
-	// --- Handshake ---
-	log.Println("Sending HandshakeRequest...")
-	handshakeReqPayload := mcp.HandshakeRequestPayload{SupportedProtocolVersions: []string{mcp.CurrentProtocolVersion}, ClientName: clientName}
-	err := conn.SendMessage(mcp.MessageTypeHandshakeRequest, handshakeReqPayload)
-	if err != nil {
-		return fmt.Errorf("failed to send HandshakeRequest: %w", err)
+	// --- Perform Initialization ---
+	log.Println("Sending InitializeRequest...")
+	clientCapabilities := mcp.ClientCapabilities{}
+	clientInfo := mcp.Implementation{Name: clientName, Version: "0.1.0"}
+	initReqParams := mcp.InitializeRequestParams{
+		ProtocolVersion: mcp.CurrentProtocolVersion,
+		Capabilities:    clientCapabilities,
+		ClientInfo:      clientInfo,
 	}
+	err := conn.SendMessage(mcp.MethodInitialize, initReqParams)
+	if err != nil {
+		return fmt.Errorf("failed to send InitializeRequest: %w", err)
+	}
+
+	log.Println("Waiting for InitializeResponse...")
 	msg, err := conn.ReceiveMessage()
 	if err != nil {
-		return fmt.Errorf("failed to receive HandshakeResponse: %w", err)
+		return fmt.Errorf("failed to receive initialize response: %w", err)
 	}
-	if msg.MessageType == mcp.MessageTypeError {
+	if msg.MessageType == mcp.MessageTypeError { // Assuming errors still use MessageTypeError for now
 		var errPayload mcp.ErrorPayload
-		_ = mcp.UnmarshalPayload(msg.Payload, &errPayload)
-		return fmt.Errorf("handshake failed with MCP Error: [%d] %s", errPayload.Code, errPayload.Message) // Use %d for int code
+		_ = mcp.UnmarshalPayload(msg.Payload, &errPayload) // Error handling simplified for brevity
+		return fmt.Errorf("initialize failed with MCP Error: [%d] %s", errPayload.Code, errPayload.Message)
 	}
-	if msg.MessageType != mcp.MessageTypeHandshakeResponse {
-		return fmt.Errorf("expected HandshakeResponse, got %s", msg.MessageType)
-	}
-	var handshakeRespPayload mcp.HandshakeResponsePayload
-	err = mcp.UnmarshalPayload(msg.Payload, &handshakeRespPayload)
+	// TODO: Improve response type checking based on JSON-RPC structure
+	log.Printf("Received potential InitializeResponse message (Payload Type: %T)", msg.Payload)
+
+	var initResult mcp.InitializeResult
+	err = mcp.UnmarshalPayload(msg.Payload, &initResult) // Assumes payload is InitializeResult
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal HandshakeResponse payload: %w", err)
+		return fmt.Errorf("failed to unmarshal InitializeResult payload: %w", err)
 	}
-	if handshakeRespPayload.SelectedProtocolVersion != mcp.CurrentProtocolVersion {
-		return fmt.Errorf("server selected unsupported protocol version: %s", handshakeRespPayload.SelectedProtocolVersion)
+	if initResult.ProtocolVersion != mcp.CurrentProtocolVersion {
+		return fmt.Errorf("server selected unsupported protocol version: %s", initResult.ProtocolVersion)
 	}
-	log.Printf("Handshake successful with server: %s", handshakeRespPayload.ServerName)
-	// --- End Handshake ---
+	serverName := initResult.ServerInfo.Name // Store server name locally if needed
+	log.Printf("Initialization successful with server: %s", serverName)
+
+	// Send Initialized Notification
+	log.Println("Sending InitializedNotification...")
+	initParams := mcp.InitializedNotificationParams{}
+	err = conn.SendMessage(mcp.MethodInitialized, initParams)
+	if err != nil {
+		log.Printf("Warning: failed to send InitializedNotification: %v", err)
+	}
+	// --- End Initialization ---
 
 	// --- Request Tool Definitions ---
 	tools, err := requestToolDefinitions(conn)

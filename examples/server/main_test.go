@@ -86,17 +86,35 @@ func TestExampleServerLogic(t *testing.T) {
 
 	// Simulate client interaction in the main test goroutine
 	clientErr := func() error {
-		// 1. Handshake
-		hsReq := mcp.HandshakeRequestPayload{SupportedProtocolVersions: []string{"1.0"}, ClientName: testClientName}
-		if err := clientConn.SendMessage(mcp.MessageTypeHandshakeRequest, hsReq); err != nil {
-			return fmt.Errorf("client send hs req failed: %w", err)
+		// 1. Initialization
+		clientCapabilities := mcp.ClientCapabilities{}
+		clientInfo := mcp.Implementation{Name: testClientName, Version: "0.1.0"}
+		initReqParams := mcp.InitializeRequestParams{
+			ProtocolVersion: mcp.CurrentProtocolVersion,
+			Capabilities:    clientCapabilities,
+			ClientInfo:      clientInfo,
 		}
-		msg, err := clientConn.ReceiveMessage() // Expect HandshakeResponse
+		if err := clientConn.SendMessage(mcp.MethodInitialize, initReqParams); err != nil {
+			return fmt.Errorf("client send initialize req failed: %w", err)
+		}
+		msg, err := clientConn.ReceiveMessage() // Expect InitializeResponse (or Error)
 		if err != nil {
-			return fmt.Errorf("client recv hs resp failed: %w", err)
+			return fmt.Errorf("client recv initialize resp failed: %w", err)
 		}
-		if msg.MessageType != mcp.MessageTypeHandshakeResponse {
-			return fmt.Errorf("client expected hs resp, got %s", msg.MessageType)
+		// TODO: Improve response checking for JSON-RPC structure
+		if msg.MessageType == mcp.MessageTypeError {
+			var errPayload mcp.ErrorPayload
+			_ = mcp.UnmarshalPayload(msg.Payload, &errPayload)
+			return fmt.Errorf("client received MCP Error during initialize: [%d] %s", errPayload.Code, errPayload.Message)
+		}
+		// Assume non-error is InitializeResponse for now
+		log.Printf("Client simulator received InitializeResponse")
+
+		// Send Initialized Notification
+		initParams := mcp.InitializedNotificationParams{}
+		if err := clientConn.SendMessage(mcp.MethodInitialized, initParams); err != nil {
+			// Log warning, proceed anyway for test
+			log.Printf("Client simulator warning: failed to send InitializedNotification: %v", err)
 		}
 
 		// 2. Get Tool Definitions
