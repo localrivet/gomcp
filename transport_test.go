@@ -23,10 +23,13 @@ func TestSendMessage(t *testing.T) {
 		Capabilities:    ClientCapabilities{},
 	}
 
-	// Send using MethodInitialize
-	err := conn.SendMessage(MethodInitialize, payload)
+	// Send using SendRequest
+	reqID, err := conn.SendRequest(MethodInitialize, payload)
 	if err != nil {
-		t.Fatalf("SendMessage failed for InitializeRequest: %v", err)
+		t.Fatalf("SendRequest failed for InitializeRequest: %v", err)
+	}
+	if reqID == "" {
+		t.Fatal("SendRequest returned an empty request ID")
 	}
 
 	// Check the output buffer
@@ -38,124 +41,98 @@ func TestSendMessage(t *testing.T) {
 	// Trim newline for JSON parsing
 	jsonData := strings.TrimSuffix(output, "\n")
 
-	// Unmarshal and verify basic fields
-	var receivedMsg Message
-	err = json.Unmarshal([]byte(jsonData), &receivedMsg)
+	// Unmarshal into JSONRPCRequest and verify fields
+	var receivedReq JSONRPCRequest
+	err = json.Unmarshal([]byte(jsonData), &receivedReq)
 	if err != nil {
-		t.Fatalf("Failed to unmarshal sent message: %v\nOriginal JSON: %s", err, jsonData)
+		t.Fatalf("Failed to unmarshal sent message into JSONRPCRequest: %v\nOriginal JSON: %s", err, jsonData)
 	}
 
-	// Check the method name used in the message
-	if receivedMsg.MessageType != MethodInitialize {
-		t.Errorf("Expected message type (method) %q, got %q", MethodInitialize, receivedMsg.MessageType)
+	// Check JSON-RPC fields
+	if receivedReq.JSONRPC != "2.0" {
+		t.Errorf("Expected jsonrpc %q, got %q", "2.0", receivedReq.JSONRPC)
 	}
-	if receivedMsg.ProtocolVersion != CurrentProtocolVersion {
-		t.Errorf("Expected protocol version %q, got %q", CurrentProtocolVersion, receivedMsg.ProtocolVersion)
+	if receivedReq.Method != MethodInitialize {
+		t.Errorf("Expected method %q, got %q", MethodInitialize, receivedReq.Method)
 	}
-	if receivedMsg.MessageID == "" {
-		t.Error("Expected non-empty MessageID, got empty string")
+	if receivedReq.ID == nil { // ID should not be nil for requests
+		t.Error("Expected non-nil ID, got nil")
+	}
+	// Check if ID matches the one returned by SendRequest (optional but good)
+	if idStr, ok := receivedReq.ID.(string); !ok || idStr != reqID {
+		t.Errorf("Expected ID %q, got %q", reqID, receivedReq.ID)
 	}
 
-	// Unmarshal and verify payload (now InitializeRequestParams)
-	var receivedPayload InitializeRequestParams
-	// When json.Unmarshal decodes into an interface{} (like Message.Payload),
-	// it uses map[string]interface{} for JSON objects. We need to handle this.
-	// One way is to re-marshal the map and unmarshal into the target struct.
-	payloadMap, ok := receivedMsg.Payload.(map[string]interface{})
+	// Unmarshal and verify params (InitializeRequestParams)
+	var receivedParams InitializeRequestParams
+	// Params field is interface{}, needs type assertion or re-marshal/unmarshal
+	paramsMap, ok := receivedReq.Params.(map[string]interface{})
 	if !ok {
-		// If the payload wasn't a JSON object, this might fail. Adjust if needed.
-		t.Fatalf("Payload is not a map[string]interface{}, type is %T", receivedMsg.Payload)
+		t.Fatalf("Params is not a map[string]interface{}, type is %T", receivedReq.Params)
 	}
-	payloadBytes, err := json.Marshal(payloadMap)
+	paramsBytes, err := json.Marshal(paramsMap)
 	if err != nil {
-		t.Fatalf("Failed to re-marshal payload map: %v", err)
+		t.Fatalf("Failed to re-marshal params map: %v", err)
 	}
-	err = json.Unmarshal(payloadBytes, &receivedPayload)
+	err = json.Unmarshal(paramsBytes, &receivedParams)
 	if err != nil {
-		t.Fatalf("Failed to unmarshal payload map into struct: %v", err)
+		t.Fatalf("Failed to unmarshal params map into struct: %v", err)
 	}
 
 	// Check fields of InitializeRequestParams
-	if receivedPayload.ProtocolVersion != CurrentProtocolVersion {
-		t.Errorf("Expected payload protocol version %q, got %q", CurrentProtocolVersion, receivedPayload.ProtocolVersion)
+	if receivedParams.ProtocolVersion != CurrentProtocolVersion {
+		t.Errorf("Expected params protocol version %q, got %q", CurrentProtocolVersion, receivedParams.ProtocolVersion)
 	}
-	if receivedPayload.ClientInfo.Name != "TestClient" {
-		t.Errorf("Expected client name %q, got %q", "TestClient", receivedPayload.ClientInfo.Name)
+	if receivedParams.ClientInfo.Name != "TestClient" {
+		t.Errorf("Expected client name %q, got %q", "TestClient", receivedParams.ClientInfo.Name)
 	}
 	// Add checks for other fields if necessary (e.g., Capabilities)
 }
 
 // TestReceiveMessage verifies that ReceiveMessage correctly reads a newline-delimited
-// JSON message and returns the generic Message struct with RawMessage payload.
-func TestReceiveMessage(t *testing.T) {
-	// Prepare a message to be received (simulate InitializeResponse)
-	// Note: Real InitializeResponse is JSON-RPC, not MCP Message format.
-	// This test verifies ReceiveMessage can parse the *content*, assuming
-	// the transport layer somehow provides it within the Message struct for now.
+// JSON message and returns the raw byte slice.
+func TestReceiveRawMessage(t *testing.T) { // Renamed
+	// Prepare a JSON-RPC Response to be received
+	testID := "req-123"
 	initResultPayload := InitializeResult{
 		ProtocolVersion: CurrentProtocolVersion,
 		ServerInfo:      Implementation{Name: "TestServer", Version: "0.1"},
-		Capabilities:    ServerCapabilities{}, // Add basic capabilities
+		Capabilities:    ServerCapabilities{},
 	}
-	// We still wrap it in Message for ReceiveMessage to parse currently
-	msgToSend := Message{
-		ProtocolVersion: CurrentProtocolVersion,
-		MessageID:       "test-uuid",          // JSON-RPC response needs matching ID
-		MessageType:     "InitializeResponse", // Conceptual type for now
-		Payload:         initResultPayload,
+	respToSend := JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      testID,
+		Result:  initResultPayload, // Embed the result directly
 	}
-	jsonData, _ := json.Marshal(msgToSend)
+	jsonData, _ := json.Marshal(respToSend)
 	inputJson := string(jsonData) + "\n" // Add newline
 
 	conn := NewConnection(strings.NewReader(inputJson), &bytes.Buffer{}) // Writer not used
 
-	receivedMsg, err := conn.ReceiveMessage()
+	// ReceiveMessage currently tries to parse into mcp.Message, which will fail
+	// for a standard JSON-RPC response.
+	// ReceiveRawMessage should return the raw bytes.
+	rawBytes, err := conn.ReceiveRawMessage() // Use ReceiveRawMessage
 	if err != nil {
-		t.Fatalf("ReceiveMessage failed: %v", err)
+		t.Fatalf("ReceiveRawMessage failed: %v", err)
 	}
 
-	// Verify basic fields
-	// TODO: Update this check once SendMessage/ReceiveMessage handle JSON-RPC properly.
-	// For now, check the conceptual type we sent.
-	if receivedMsg.MessageType != "InitializeResponse" { // Check conceptual type
-		t.Errorf("Expected message type %q, got %q", "InitializeResponse", receivedMsg.MessageType)
+	// Verify the received bytes match the input (excluding newline)
+	expectedBytes := []byte(strings.TrimSuffix(inputJson, "\n"))
+	// Trim newline from received bytes before comparing
+	receivedTrimmed := bytes.TrimSuffix(rawBytes, []byte("\n"))
+	if !bytes.Equal(receivedTrimmed, expectedBytes) {
+		t.Errorf("Expected raw bytes %q, got %q", string(expectedBytes), string(receivedTrimmed))
 	}
-	if receivedMsg.ProtocolVersion != CurrentProtocolVersion {
-		t.Errorf("Expected protocol version %q, got %q", CurrentProtocolVersion, receivedMsg.ProtocolVersion)
-	}
-	if receivedMsg.MessageID != "test-uuid" {
-		t.Errorf("Expected message ID %q, got %q", "test-uuid", receivedMsg.MessageID)
-	}
-
-	// Verify payload is RawMessage and can be unmarshalled
-	rawPayload, ok := receivedMsg.Payload.(json.RawMessage)
-	if !ok {
-		t.Fatalf("Expected payload to be json.RawMessage, got %T", receivedMsg.Payload)
-	}
-
-	// Unmarshal into InitializeResult
-	var receivedPayload InitializeResult
-	err = UnmarshalPayload(rawPayload, &receivedPayload)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal RawMessage payload into InitializeResult: %v", err)
-	}
-
-	// Check fields of InitializeResult
-	if receivedPayload.ProtocolVersion != CurrentProtocolVersion {
-		t.Errorf("Expected payload protocol version %q, got %q", CurrentProtocolVersion, receivedPayload.ProtocolVersion)
-	}
-	if receivedPayload.ServerInfo.Name != "TestServer" {
-		t.Errorf("Expected server name %q, got %q", "TestServer", receivedPayload.ServerInfo.Name)
-	}
-	// Check other fields like Capabilities if necessary
+	// Further parsing into JSONRPCResponse would happen in the caller (client/server)
 }
 
-// TestReceiveMessageEOF tests that ReceiveMessage returns an error containing io.EOF
+// TestReceiveRawMessageEOF tests that ReceiveRawMessage returns an error containing io.EOF
 // when the reader reaches EOF.
-func TestReceiveMessageEOF(t *testing.T) {
+func TestReceiveRawMessageEOF(t *testing.T) { // Renamed function
 	conn := NewConnection(strings.NewReader(""), &bytes.Buffer{}) // Empty reader
 
-	_, err := conn.ReceiveMessage()
+	_, err := conn.ReceiveRawMessage() // Use ReceiveRawMessage
 	if err == nil {
 		t.Fatal("Expected an error on EOF, got nil")
 	}
@@ -169,20 +146,19 @@ func TestReceiveMessageEOF(t *testing.T) {
 	}
 }
 
-// TestReceiveMessageInvalidJSON tests receiving malformed JSON.
-func TestReceiveMessageInvalidJSON(t *testing.T) {
+// TestReceiveRawMessageInvalidJSON tests receiving malformed JSON.
+func TestReceiveRawMessageInvalidJSON(t *testing.T) { // Renamed
 	invalidJson := "{not json\n"
 	var serverOutput bytes.Buffer // Capture error message sent back
 	conn := NewConnection(strings.NewReader(invalidJson), &serverOutput)
 
-	_, err := conn.ReceiveMessage()
+	_, err := conn.ReceiveRawMessage() // Use ReceiveRawMessage
 	if err == nil {
 		t.Fatal("Expected an error on invalid JSON, got nil")
 	}
-	// Check if it's a json syntax error
-	var syntaxError *json.SyntaxError
-	if !errors.As(err, &syntaxError) && !strings.Contains(err.Error(), "failed to unmarshal message") {
-		t.Errorf("Expected JSON syntax error or unmarshal error, got: %v", err)
+	// Check if the error is the expected one from ReceiveRawMessage
+	if !strings.Contains(err.Error(), "received invalid JSON") {
+		t.Errorf("Expected error containing 'received invalid JSON', got: %v", err)
 	}
 
 	// Check if the server attempted to send an Error message back
@@ -194,24 +170,29 @@ func TestReceiveMessageInvalidJSON(t *testing.T) {
 	}
 }
 
-// TestReceiveMessageMissingFields tests receiving valid JSON but missing required MCP fields.
-func TestReceiveMessageMissingFields(t *testing.T) {
-	missingFieldsJson := `{"payload": {}}` + "\n" // Missing version, id, type
-	var serverOutput bytes.Buffer                 // Capture error message sent back
+// TestReceiveRawMessageMissingFields tests receiving valid JSON but missing required JSON-RPC fields.
+// Note: ReceiveRawMessage itself doesn't validate fields anymore, so this test mainly checks if valid JSON is read.
+// The validation logic is now expected in the caller (client/server).
+func TestReceiveRawMessageMissingFields(t *testing.T) { // Renamed
+	missingFieldsJson := `{"params": {}}` + "\n" // Missing jsonrpc, method/id
+	var serverOutput bytes.Buffer                // Capture potential error message sent back
 	conn := NewConnection(strings.NewReader(missingFieldsJson), &serverOutput)
 
-	_, err := conn.ReceiveMessage()
-	if err == nil {
-		t.Fatal("Expected an error on missing fields, got nil")
-	}
-	if !strings.Contains(err.Error(), "missing required fields") {
-		t.Errorf("Expected error related to missing fields, got: %v", err)
+	rawBytes, err := conn.ReceiveRawMessage() // Use ReceiveRawMessage
+	if err != nil {
+		t.Fatalf("ReceiveRawMessage failed unexpectedly for valid JSON: %v", err)
 	}
 
-	// Check if the server attempted to send an Error message back
-	outputStr := serverOutput.String()
-	// Check for the numeric code in the output string
-	if !strings.Contains(outputStr, MessageTypeError) || !strings.Contains(outputStr, fmt.Sprintf(`"code":%d`, ErrorCodeMCPInvalidMessage)) {
-		t.Errorf("Expected server to send back an Error message with code %d, got: %q", ErrorCodeMCPInvalidMessage, outputStr)
+	// Verify the raw bytes were read correctly
+	expectedBytes := []byte(strings.TrimSuffix(missingFieldsJson, "\n"))
+	// Trim newline from received bytes before comparing
+	receivedTrimmed := bytes.TrimSuffix(rawBytes, []byte("\n"))
+	if !bytes.Equal(receivedTrimmed, expectedBytes) {
+		t.Errorf("Expected raw bytes %q, got %q", string(expectedBytes), string(receivedTrimmed))
+	}
+
+	// The serverOutput buffer should be empty because ReceiveRawMessage doesn't send errors for missing fields.
+	if outputStr := serverOutput.String(); outputStr != "" {
+		t.Errorf("Expected no error message to be sent by ReceiveRawMessage for missing fields, but got: %q", outputStr)
 	}
 }

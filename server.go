@@ -3,6 +3,7 @@ package mcp
 
 import (
 	// Required for UnmarshalPayload usage within server logic
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -76,35 +77,53 @@ func (s *Server) RegisterTool(tool Tool, handler ToolHandlerFunc) error { // Acc
 // Returns the client's info/capabilities on success.
 func (s *Server) handleInitialize() (clientInfo Implementation, clientCapabilities ClientCapabilities, err error) {
 	log.Println("Waiting for InitializeRequest...")
-	msg, err := s.conn.ReceiveMessage()
+	// Receive raw JSON
+	rawJSON, err := s.conn.ReceiveRawMessage()
 	if err != nil {
 		return Implementation{}, ClientCapabilities{}, fmt.Errorf("failed to receive initial message: %w", err)
 	}
 
-	// Check message type (method)
-	// TODO: This check might be redundant if transport layer handles JSON-RPC method/id directly
-	if msg.MessageType != MethodInitialize { // Use MethodInitialize constant
-		errMsg := fmt.Sprintf("Expected '%s' request, got '%s'", MethodInitialize, msg.MessageType)
-		// Use standard JSON-RPC code if method is wrong
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMethodNotFound, Message: errMsg})
-		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg) // Use %s
+	// Attempt to unmarshal into JSONRPCRequest
+	var jsonrpcReq JSONRPCRequest
+	err = json.Unmarshal(rawJSON, &jsonrpcReq)
+	if err != nil {
+		// If basic unmarshal fails, send ParseError with null ID
+		_ = s.conn.SendErrorResponse(nil, ErrorPayload{Code: ErrorCodeParseError, Message: fmt.Sprintf("Failed to parse incoming JSON: %v", err)})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("failed to parse incoming JSON: %w", err)
 	}
 
-	// Unmarshal params
+	// Check if it's a valid request with the correct method
+	if jsonrpcReq.Method != MethodInitialize {
+		errMsg := fmt.Sprintf("Expected method '%s', got '%s'", MethodInitialize, jsonrpcReq.Method)
+		_ = s.conn.SendErrorResponse(jsonrpcReq.ID, ErrorPayload{Code: ErrorCodeMethodNotFound, Message: errMsg})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg)
+	}
+
+	// Unmarshal params from the request
 	var reqParams InitializeRequestParams
-	// TODO: ReceiveMessage should ideally return params directly for requests
-	err = UnmarshalPayload(msg.Payload, &reqParams)
+	if jsonrpcReq.Params == nil {
+		errMsg := "Missing params for InitializeRequest"
+		_ = s.conn.SendErrorResponse(jsonrpcReq.ID, ErrorPayload{Code: ErrorCodeInvalidParams, Message: errMsg})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg)
+	}
+	paramsBytes, err := json.Marshal(jsonrpcReq.Params)
+	if err != nil {
+		errMsg := fmt.Sprintf("Failed to re-marshal InitializeRequest params: %v", err)
+		_ = s.conn.SendErrorResponse(jsonrpcReq.ID, ErrorPayload{Code: ErrorCodeInvalidParams, Message: errMsg})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("failed to re-marshal InitializeRequest params: %w", err)
+	}
+	err = json.Unmarshal(paramsBytes, &reqParams)
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to unmarshal InitializeRequest params: %v", err)
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeInvalidParams, Message: errMsg})
+		_ = s.conn.SendErrorResponse(jsonrpcReq.ID, ErrorPayload{Code: ErrorCodeInvalidParams, Message: errMsg})
 		return Implementation{}, ClientCapabilities{}, fmt.Errorf("failed to unmarshal InitializeRequest params: %w", err)
 	}
 
-	// Basic validation of received params
+	// Basic validation of received params (ProtocolVersion checked later)
 	if reqParams.ProtocolVersion == "" {
 		errMsg := "malformed InitializeRequest params: missing protocolVersion"
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeInvalidParams, Message: errMsg})
-		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg) // Use %s
+		_ = s.conn.SendErrorResponse(jsonrpcReq.ID, ErrorPayload{Code: ErrorCodeInvalidParams, Message: errMsg}) // Use jsonrpcReq.ID
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg)                                  // Use %s
 	}
 	if reqParams.ClientInfo.Name == "" {
 		log.Println("Warning: Received InitializeRequest with missing clientInfo.name")
@@ -118,8 +137,8 @@ func (s *Server) handleInitialize() (clientInfo Implementation, clientCapabiliti
 	if reqParams.ProtocolVersion != CurrentProtocolVersion {
 		errMsg := fmt.Sprintf("Unsupported protocol version '%s' requested by client. Server requires '%s'.", reqParams.ProtocolVersion, CurrentProtocolVersion)
 		// Send specific MCP error code
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeMCPUnsupportedProtocolVersion, Message: errMsg})
-		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg) // Use %s
+		_ = s.conn.SendErrorResponse(jsonrpcReq.ID, ErrorPayload{Code: ErrorCodeMCPUnsupportedProtocolVersion, Message: errMsg}) // Use jsonrpcReq.ID
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg)                                                  // Use %s
 	}
 	selectedVersion := CurrentProtocolVersion
 	// --- End Version Negotiation ---
@@ -160,10 +179,9 @@ func (s *Server) handleInitialize() (clientInfo Implementation, clientCapabiliti
 	// Let's modify SendMessage slightly or add SendResponse later.
 	// For now, sending the payload directly with a conceptual type.
 	log.Printf("Sending InitializeResponse: %+v", initResult)
-	// We need a way to associate response with request ID. Let's assume SendMessage handles it magically for now.
-	// A conceptual "InitializeResponse" type is used here. This needs fixing.
-	// TODO: Refactor SendMessage/ReceiveMessage for proper JSON-RPC request/response/notification handling.
-	err = s.conn.SendMessage("InitializeResponse", initResult) // Conceptual type - NEEDS FIXING
+	// We need a way to associate response with request ID.
+	// Use SendResponse with the original request ID.
+	err = s.conn.SendResponse(jsonrpcReq.ID, initResult) // Use jsonrpcReq.ID
 	if err != nil {
 		return Implementation{}, ClientCapabilities{}, fmt.Errorf("failed to send InitializeResponse: %w", err)
 	}
@@ -171,18 +189,27 @@ func (s *Server) handleInitialize() (clientInfo Implementation, clientCapabiliti
 	// --- Wait for Initialized Notification ---
 	// The client MUST send this after receiving the InitializeResponse.
 	log.Println("Waiting for InitializedNotification...")
-	initMsg, err := s.conn.ReceiveMessage()
+	rawJSONInit, err := s.conn.ReceiveRawMessage() // Use ReceiveRawMessage
 	if err != nil {
 		// If client disconnects here, maybe it's okay? Or maybe handshake failed implicitly.
 		log.Printf("Failed to receive InitializedNotification: %v", err)
 		return Implementation{}, ClientCapabilities{}, fmt.Errorf("failed to receive InitializedNotification: %w", err)
 	}
-	// TODO: This check might be redundant if transport layer handles JSON-RPC method/id directly
-	if initMsg.MessageType != MethodInitialized { // Use MethodInitialized constant
-		errMsg := fmt.Sprintf("Expected '%s' notification after initialize response, got '%s'", MethodInitialized, initMsg.MessageType)
+	// Attempt to unmarshal into JSONRPCNotification
+	var jsonrpcNotif JSONRPCNotification
+	err = json.Unmarshal(rawJSONInit, &jsonrpcNotif)
+	if err != nil {
+		// Invalid JSON received where notification was expected
+		errMsg := fmt.Sprintf("Failed to parse InitializedNotification JSON: %v", err)
+		_ = s.conn.SendErrorResponse(nil, ErrorPayload{Code: ErrorCodeParseError, Message: errMsg})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg)
+	}
+	// Check if it's the correct method
+	if jsonrpcNotif.Method != MethodInitialized {
+		errMsg := fmt.Sprintf("Expected '%s' notification after initialize response, got method '%s'", MethodInitialized, jsonrpcNotif.Method)
 		// This is a protocol violation by the client. Send an error.
-		_ = s.conn.SendMessage(MessageTypeError, ErrorPayload{Code: ErrorCodeInvalidRequest, Message: errMsg})
-		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg) // Use %s
+		_ = s.conn.SendErrorResponse(nil, ErrorPayload{Code: ErrorCodeInvalidRequest, Message: errMsg})
+		return Implementation{}, ClientCapabilities{}, fmt.Errorf("%s", errMsg)
 	}
 	log.Println("Received InitializedNotification from client.")
 	// --- End Initialized Notification ---
@@ -213,38 +240,88 @@ func (s *Server) Run() error {
 	// 2. Main Message Loop with Dispatch
 	log.Println("Entering main message loop...")
 	for {
-		msg, err := s.conn.ReceiveMessage()
+		// Receive raw JSON
+		rawJSON, err := s.conn.ReceiveRawMessage()
 		if err != nil {
 			if err.Error() == "failed to read message line: EOF" || strings.Contains(err.Error(), "EOF") {
 				log.Println("Client disconnected (EOF received). Server shutting down.")
 				return nil // Clean exit
 			}
 			log.Printf("Error receiving message: %v. Server shutting down.", err)
-			return err // Return other receive errors
+			return err
 		}
 
-		log.Printf("Received message type: %s", msg.MessageType)
+		// Attempt to unmarshal into a generic structure to determine type (Req/Notif)
+		var baseMessage struct {
+			JSONRPC string      `json:"jsonrpc"`
+			ID      interface{} `json:"id"`     // Present in requests, missing in notifications
+			Method  string      `json:"method"` // Present in requests and notifications
+			Params  interface{} `json:"params"` // Present in requests and notifications
+			Result  interface{} `json:"result"` // Present in responses
+			Error   interface{} `json:"error"`  // Present in error responses
+		}
+		err = json.Unmarshal(rawJSON, &baseMessage)
+		if err != nil {
+			// This should ideally not happen if ReceiveRawMessage validated JSON
+			log.Printf("Failed to unmarshal base JSON-RPC structure: %v. Raw: %s", err, string(rawJSON))
+			_ = s.conn.SendErrorResponse(nil, ErrorPayload{Code: ErrorCodeParseError, Message: fmt.Sprintf("Failed to parse JSON: %v", err)})
+			continue // Skip this message
+		}
+
+		// Basic validation
+		if baseMessage.JSONRPC != "2.0" {
+			log.Printf("Received message with invalid jsonrpc version: %s", baseMessage.JSONRPC)
+			_ = s.conn.SendErrorResponse(baseMessage.ID, ErrorPayload{Code: ErrorCodeInvalidRequest, Message: "Invalid jsonrpc version"})
+			continue
+		}
+
+		// Determine if it's a Request or Notification based on ID presence
+		isRequest := baseMessage.ID != nil
+		isNotification := baseMessage.ID == nil && baseMessage.Method != ""
+
+		if !isRequest && !isNotification {
+			log.Printf("Received message that is neither a valid Request nor Notification. Raw: %s", string(rawJSON))
+			_ = s.conn.SendErrorResponse(baseMessage.ID, ErrorPayload{Code: ErrorCodeInvalidRequest, Message: "Invalid message structure"})
+			continue
+		}
+
+		// We only handle Requests in this loop for now (dispatching based on Method)
+		// TODO: Handle notifications separately if needed
+		if !isRequest {
+			log.Printf("Received notification (method: %s), ignoring.", baseMessage.Method)
+			continue
+		}
+
+		log.Printf("Received request: Method=%s, ID=%v", baseMessage.Method, baseMessage.ID)
 		var handlerErr error
 
-		// Dispatch based on message type (using new Method constants)
-		switch msg.MessageType {
-		case MethodListTools: // Use new method name
-			handlerErr = s.handleListToolsRequest(msg) // Call renamed handler
-		case MethodCallTool: // Use new method name
-			handlerErr = s.handleCallToolRequest(msg) // Call renamed handler
+		// Re-wrap necessary info into the old Message struct for handler compatibility (TEMPORARY)
+		// This is a HACK until handlers are refactored to accept JSONRPCRequest directly.
+		tempMsg := &Message{
+			MessageID:   fmt.Sprintf("%v", baseMessage.ID), // Convert ID to string for now
+			MessageType: baseMessage.Method,                // Use Method as MessageType
+			Payload:     baseMessage.Params,                // Pass params as payload
+		}
+
+		// Dispatch based on message method
+		switch baseMessage.Method {
+		case MethodListTools:
+			handlerErr = s.handleListToolsRequest(tempMsg) // Pass tempMsg
+		case MethodCallTool:
+			handlerErr = s.handleCallToolRequest(tempMsg) // Pass tempMsg
 		// TODO: Add cases for ResourceAccessRequest etc.
 		default:
-			// Handle unknown message types
-			log.Printf("Handler not implemented for message type: %s", msg.MessageType)
-			handlerErr = s.conn.SendMessage(MessageTypeError, ErrorPayload{
-				Code:    ErrorCodeMCPNotImplemented, // Use correct MCP code
-				Message: fmt.Sprintf("Message type '%s' not implemented by server", msg.MessageType),
+			// Handle unknown methods
+			log.Printf("Method not implemented: %s", baseMessage.Method)
+			handlerErr = s.conn.SendErrorResponse(baseMessage.ID, ErrorPayload{
+				Code:    ErrorCodeMethodNotFound,
+				Message: fmt.Sprintf("Method '%s' not implemented by server", baseMessage.Method),
 			})
 		}
 
 		// Check for errors during handling (especially sending response/error)
 		if handlerErr != nil {
-			log.Printf("Error handling message type %s: %v", msg.MessageType, handlerErr)
+			log.Printf("Error handling method %s (ID: %v): %v", baseMessage.Method, baseMessage.ID, handlerErr)
 			// If sending the response/error failed, the connection is likely broken, so exit.
 			if strings.Contains(handlerErr.Error(), "write") || strings.Contains(handlerErr.Error(), "pipe") {
 				log.Println("Detected write error, assuming client disconnected. Shutting down.")
@@ -264,8 +341,8 @@ func (s *Server) handleListToolsRequest(requestMsg *Message) error {
 	}
 	responsePayload := ListToolsResult{Tools: tools} // Use ListToolsResult
 	log.Printf("Sending ListToolsResponse with %d tools", len(tools))
-	// TODO: Refactor SendMessage for proper JSON-RPC response (id, jsonrpc, result)
-	return s.conn.SendMessage("ListToolsResponse", responsePayload) // Conceptual type
+	// Use SendResponse with the original request ID
+	return s.conn.SendResponse(requestMsg.MessageID, responsePayload)
 }
 
 // handleCallToolRequest handles the 'tools/call' request.
@@ -275,7 +352,7 @@ func (s *Server) handleCallToolRequest(requestMsg *Message) error {
 	err := UnmarshalPayload(requestMsg.Payload, &requestParams)
 	if err != nil {
 		log.Printf("Error unmarshalling CallTool params: %v", err)
-		return s.conn.SendMessage(MessageTypeError, ErrorPayload{
+		return s.conn.SendErrorResponse(requestMsg.MessageID, ErrorPayload{ // Use SendErrorResponse
 			Code:    ErrorCodeInvalidParams, // Use standard JSON-RPC code
 			Message: fmt.Sprintf("Failed to unmarshal CallTool params: %v", err),
 		})
@@ -287,7 +364,7 @@ func (s *Server) handleCallToolRequest(requestMsg *Message) error {
 	handler, exists := s.toolHandlers[requestParams.Name]
 	if !exists {
 		log.Printf("Tool not found or no handler registered: %s", requestParams.Name)
-		return s.conn.SendMessage(MessageTypeError, ErrorPayload{
+		return s.conn.SendErrorResponse(requestMsg.MessageID, ErrorPayload{ // Use SendErrorResponse
 			Code:    ErrorCodeMCPToolNotFound, // Use MCP specific code
 			Message: fmt.Sprintf("Tool '%s' not found or not implemented", requestParams.Name),
 		})
@@ -310,6 +387,6 @@ func (s *Server) handleCallToolRequest(requestMsg *Message) error {
 	}
 
 	// Send the response
-	// TODO: Refactor SendMessage for proper JSON-RPC response (id, jsonrpc, result)
-	return s.conn.SendMessage("CallToolResponse", responsePayload) // Conceptual type
+	// Use SendResponse with the original request ID
+	return s.conn.SendResponse(requestMsg.MessageID, responsePayload)
 }

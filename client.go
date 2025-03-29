@@ -65,71 +65,61 @@ func (c *Client) Connect() error {
 	// Note: SendMessage currently wraps this in a basic Message struct.
 	// A stricter JSON-RPC implementation might require changes here or in SendMessage.
 	// We also need to handle the JSON-RPC 'id' field properly for request/response matching.
-	// For now, we assume SendMessage handles basic wrapping and we match responses sequentially.
-	err := c.conn.SendMessage(MethodInitialize, reqParams) // Use MethodInitialize constant
+	// SendRequest generates and returns the ID. We need to store it to match the response.
+	requestID, err := c.conn.SendRequest(MethodInitialize, reqParams) // Use SendRequest
 	if err != nil {
 		return fmt.Errorf("failed to send InitializeRequest: %w", err)
 	}
+	// TODO: Store requestID to match with response ID later in ReceiveMessage/ReceiveResponse
+	_ = requestID // Avoid unused variable error for now
 
 	// --- Wait for InitializeResponse or Error ---
 	log.Println("Waiting for InitializeResponse...")
-	msg, err := c.conn.ReceiveMessage()
+	// Receive the raw JSON bytes
+	rawJSON, err := c.conn.ReceiveRawMessage()
 	if err != nil {
 		return fmt.Errorf("failed to receive initialize response: %w", err)
 	}
 
-	// Check for Error message first
-	// TODO: Refine error handling to properly parse JSONRPCError structure
-	if msg.MessageType == MessageTypeError { // Assuming errors are still sent this way for now
-		var errPayload ErrorPayload
-		// Attempt to unmarshal the 'error' field if Payload is map/RawMessage
-		rawPayload, ok := msg.Payload.(json.RawMessage)
-		if !ok {
-			// Fallback: try unmarshalling the whole payload if not RawMessage
-			payloadBytes, _ := json.Marshal(msg.Payload) // Marshal then unmarshal
-			if err := json.Unmarshal(payloadBytes, &errPayload); err != nil {
-				return fmt.Errorf("received Error message with non-RawMessage/non-ErrorPayload payload type: %T", msg.Payload)
-			}
-		} else {
-			// It is RawMessage, unmarshal it
-			unmarshalErr := UnmarshalPayload(rawPayload, &errPayload)
-			if unmarshalErr != nil {
-				log.Printf("Failed to unmarshal error payload. Raw: %s", string(rawPayload))
-				return fmt.Errorf("received Error message, but failed to unmarshal its payload: %w", unmarshalErr)
-			}
-		}
-		// Use the numeric error code in the error message
+	// Attempt to unmarshal into a JSONRPCResponse
+	var jsonrpcResp JSONRPCResponse
+	err = json.Unmarshal(rawJSON, &jsonrpcResp)
+	if err != nil {
+		// This indicates a fundamental issue with the received message structure
+		log.Printf("Failed to unmarshal received message into JSONRPCResponse: %v. Raw: %s", err, string(rawJSON))
+		return fmt.Errorf("failed to parse response from server: %w", err)
+	}
+
+	// Check if the response ID matches the request ID
+	if jsonrpcResp.ID != requestID {
+		// This is a protocol violation or a mismatched response
+		log.Printf("Received response with mismatched ID. Expected: %v, Got: %v", requestID, jsonrpcResp.ID)
+		return fmt.Errorf("received response with mismatched ID (Expected: %v, Got: %v)", requestID, jsonrpcResp.ID)
+	}
+
+	// Check if it's an error response
+	if jsonrpcResp.Error != nil {
+		errPayload := *jsonrpcResp.Error
+		log.Printf("Received JSON-RPC Error during initialize: Code=%d, Message=%s", errPayload.Code, errPayload.Message)
 		return fmt.Errorf("received MCP Error during initialize: [%d] %s", errPayload.Code, errPayload.Message)
 	}
 
-	// --- Process InitializeResponse ---
-	// TODO: This check needs refinement. JSON-RPC responses don't have MessageType.
-	// We should check if msg.Payload corresponds to an InitializeResult structure.
-	// A better approach involves matching the response 'id' to the request 'id'.
-	// For now, assume the first non-error response is the InitializeResponse.
-	log.Printf("Received potential InitializeResponse message (Payload Type: %T)", msg.Payload)
-
+	// --- Process Successful InitializeResponse ---
+	// Unmarshal the 'result' field into InitializeResult
 	var initResult InitializeResult
-	// Assume the payload IS the InitializeResult for now
-	rawPayload, ok := msg.Payload.(json.RawMessage)
-	if !ok {
-		// Fallback: try marshalling and unmarshalling if not RawMessage
-		payloadBytes, errJson := json.Marshal(msg.Payload)
-		if errJson != nil {
-			return fmt.Errorf("failed to re-marshal InitializeResponse payload: %w", errJson)
-		}
-		err = json.Unmarshal(payloadBytes, &initResult)
-		if err != nil {
-			log.Printf("Failed to unmarshal InitializeResult payload after re-marshal. Raw: %s", string(payloadBytes))
-			return fmt.Errorf("failed to unmarshal InitializeResult payload after re-marshal: %w", err)
-		}
-	} else {
-		// It is RawMessage, unmarshal it
-		err = UnmarshalPayload(rawPayload, &initResult)
-		if err != nil {
-			log.Printf("Failed to unmarshal InitializeResult payload. Raw: %s", string(rawPayload))
-			return fmt.Errorf("failed to unmarshal InitializeResult payload: %w", err)
-		}
+	if jsonrpcResp.Result == nil {
+		return fmt.Errorf("received successful JSON-RPC response but 'result' field was null")
+	}
+
+	// The 'result' field is interface{}, needs marshalling back to bytes then unmarshalling
+	resultBytes, err := json.Marshal(jsonrpcResp.Result)
+	if err != nil {
+		return fmt.Errorf("failed to re-marshal 'result' field: %w", err)
+	}
+	err = json.Unmarshal(resultBytes, &initResult)
+	if err != nil {
+		log.Printf("Failed to unmarshal 'result' field into InitializeResult. Raw Result: %s", string(resultBytes))
+		return fmt.Errorf("failed to unmarshal InitializeResult from response: %w", err)
 	}
 
 	log.Printf("Received InitializeResult: %+v", initResult)
@@ -150,8 +140,7 @@ func (c *Client) Connect() error {
 	log.Println("Sending InitializedNotification...")
 	initParams := InitializedNotificationParams{}
 	// Send notification using the correct method name
-	// Note: SendMessage wraps this in a basic Message struct. JSON-RPC notifications don't have 'id'.
-	err = c.conn.SendMessage(MethodInitialized, initParams) // Use MethodInitialized constant
+	err = c.conn.SendNotification(MethodInitialized, initParams) // Use SendNotification
 	if err != nil {
 		// Log warning but don't fail initialization if notification send fails
 		log.Printf("Warning: failed to send InitializedNotification: %v", err)

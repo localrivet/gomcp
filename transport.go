@@ -73,59 +73,89 @@ func (c *Connection) Close() error {
 	return err
 }
 
-// SendMessage marshals the given payload into a complete MCP Message,
-// assigns a new UUID as the MessageID, wraps it with the specified messageType
-// and current protocol version, encodes it as JSON, and writes it to the
-// connection's writer, followed by a newline character.
-// It ensures the underlying writer is flushed if possible.
-// Writes are protected by a mutex for concurrent safety.
-func (c *Connection) SendMessage(messageType string, payload interface{}) error {
+// --- JSON-RPC Sending Methods ---
+
+// sendJSON marshals and sends a generic JSON object, handling locking and flushing.
+func (c *Connection) sendJSON(data interface{}) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Construct the full message
-	msg := Message{
-		ProtocolVersion: CurrentProtocolVersion,
-		MessageID:       uuid.NewString(),
-		MessageType:     messageType,
-		Payload:         payload,
-	}
-
-	jsonData, err := json.Marshal(msg)
+	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return fmt.Errorf("failed to marshal message: %w", err)
+		return fmt.Errorf("failed to marshal JSON-RPC message: %w", err)
 	}
 
-	// Log only in non-test environments? Or use a debug flag? For now, always log.
-	// Consider using a more structured logger later.
-	log.Printf("Sending: %s\n", string(jsonData))
+	log.Printf("Sending JSON-RPC: %s\n", string(jsonData))
 
-	// MCP messages are newline-delimited JSON
 	_, err = fmt.Fprintf(c.writer, "%s\n", jsonData)
 	if err != nil {
-		return fmt.Errorf("failed to write message: %w", err)
+		return fmt.Errorf("failed to write JSON-RPC message: %w", err)
 	}
 
-	// Attempt to flush the writer if it supports it.
-	// This is important for interactive protocols.
+	// Attempt to flush the writer
 	if flusher, ok := c.writer.(interface{ Flush() error }); ok {
-		err = flusher.Flush()
-		if err != nil {
-			// Log warning but don't make it fatal, write might have succeeded partially
-			log.Printf("Warning: failed to flush writer: %v", err)
+		flushErr := flusher.Flush()
+		if flushErr != nil {
+			log.Printf("Warning: failed to flush writer after JSON-RPC send: %v", flushErr)
 		}
 	} else if f, ok := c.writer.(*os.File); ok && (f == os.Stdout || f == os.Stderr) {
-		// Specifically sync stdout/stderr if they are the writer
-		// Note: bufio.Writer also implements Flush, so the above case handles it.
-		// This case handles direct os.Stdout/os.Stderr if not wrapped.
-		err = f.Sync()
-		if err != nil {
-			log.Printf("Warning: failed to sync writer (%s): %v", f.Name(), err)
+		syncErr := f.Sync()
+		if syncErr != nil {
+			log.Printf("Warning: failed to sync writer (%s) after JSON-RPC send: %v", f.Name(), syncErr)
 		}
 	}
 
-	return nil // Return nil even if flush/sync warned
+	return nil
 }
+
+// SendRequest sends a JSON-RPC request.
+// It generates a new UUID for the request ID.
+func (c *Connection) SendRequest(method string, params interface{}) (string, error) {
+	id := uuid.NewString()
+	req := JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  method,
+		Params:  params,
+	}
+	err := c.sendJSON(req)
+	return id, err // Return the generated ID so the caller can match the response
+}
+
+// SendResponse sends a successful JSON-RPC response.
+func (c *Connection) SendResponse(id interface{}, result interface{}) error {
+	resp := JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      id,
+		Result:  result,
+	}
+	return c.sendJSON(resp)
+}
+
+// SendErrorResponse sends a JSON-RPC error response.
+func (c *Connection) SendErrorResponse(id interface{}, errPayload ErrorPayload) error {
+	// Ensure ID is null if it couldn't be determined (e.g., parse error)
+	// The caller should handle this logic based on where the error occurred.
+	// For simplicity here, we assume id is usually valid when sending an error response.
+	resp := JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      id,
+		Error:   &errPayload,
+	}
+	return c.sendJSON(resp)
+}
+
+// SendNotification sends a JSON-RPC notification.
+func (c *Connection) SendNotification(method string, params interface{}) error {
+	notif := JSONRPCNotification{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+	}
+	return c.sendJSON(notif)
+}
+
+// --- Receiving Logic (Needs Refactoring) ---
 
 // ReceiveMessage reads the next newline-delimited JSON line from the connection's reader.
 // It attempts to unmarshal the line into a generic Message struct, keeping the
@@ -134,9 +164,9 @@ func (c *Connection) SendMessage(messageType string, payload interface{}) error 
 // using the UnmarshalPayload helper or other means.
 // Basic validation is performed to ensure required fields (ProtocolVersion, MessageID, MessageType) are present.
 // If reading or initial unmarshalling fails, it attempts to send an MCP Error message back.
-// Returns the generic Message pointer and nil error on success, or nil message and error on failure.
+// Returns the raw JSON message bytes and nil error on success, or nil bytes and error on failure.
 // io.EOF is logged but returned as a distinct error to signal graceful closure.
-func (c *Connection) ReceiveMessage() (*Message, error) {
+func (c *Connection) ReceiveRawMessage() ([]byte, error) {
 	line, err := c.reader.ReadString('\n')
 	if err != nil {
 		if err == io.EOF {
@@ -147,53 +177,21 @@ func (c *Connection) ReceiveMessage() (*Message, error) {
 		return nil, fmt.Errorf("failed to read message line: %w", err) // Wrap EOF as well
 	}
 
-	// Log only in non-test environments?
 	log.Printf("Received raw: %s", line)
 
-	var tempMsg struct {
-		Message
-		RawPayload json.RawMessage `json:"payload"`
+	// Basic JSON validation (check if it's valid JSON at all)
+	if !json.Valid([]byte(line)) {
+		log.Printf("Received invalid JSON: %s", line)
+		// Attempt to send a JSON-RPC error response back if possible
+		// Send error with null ID because we can't parse anything
+		_ = c.SendErrorResponse(nil, ErrorPayload{
+			Code:    ErrorCodeParseError,
+			Message: "Received invalid JSON",
+		})
+		return nil, fmt.Errorf("received invalid JSON")
 	}
 
-	err = json.Unmarshal([]byte(line), &tempMsg)
-	if err != nil {
-		log.Printf("Error unmarshalling message: %v\nRaw data: %s", err, line)
-		// Attempt to send an MCP error message back if possible
-		// Be careful not to cause infinite error loops
-		if tempMsg.MessageType != MessageTypeError { // Avoid sending error in response to an error
-			_ = c.SendMessage(MessageTypeError, ErrorPayload{
-				Code:    ErrorCodeParseError, // Use standard JSON-RPC code for parse errors
-				Message: fmt.Sprintf("Failed to unmarshal incoming JSON: %v", err),
-			})
-		}
-		return nil, fmt.Errorf("failed to unmarshal message: %w", err)
-	}
-
-	finalMsg := &Message{
-		ProtocolVersion: tempMsg.ProtocolVersion,
-		MessageID:       tempMsg.MessageID,
-		MessageType:     tempMsg.MessageType,
-		Payload:         tempMsg.RawPayload,
-	}
-
-	// Log only in non-test environments?
-	// log.Printf("Received parsed (generic): %+v\n", finalMsg)
-
-	// Basic validation
-	if finalMsg.ProtocolVersion == "" || finalMsg.MessageID == "" || finalMsg.MessageType == "" {
-		errMsg := "Received message with missing required fields (ProtocolVersion, MessageID, or MessageType)"
-		log.Println(errMsg)
-		if finalMsg.MessageType != MessageTypeError { // Avoid sending error in response to an error
-			_ = c.SendMessage(MessageTypeError, ErrorPayload{
-				Code:    ErrorCodeMCPInvalidMessage, // Use numeric code
-				Message: errMsg,
-			})
-		}
-		// Use errMsg as an argument to avoid vet error
-		return nil, fmt.Errorf("%s", errMsg)
-	}
-
-	return finalMsg, nil
+	return []byte(line), nil
 }
 
 // UnmarshalPayload is a helper function to unmarshal the payload field from a

@@ -38,6 +38,32 @@ type ErrorMessage struct {
 	Payload ErrorPayload `json:"error"` // Field name MUST be "error" for JSON-RPC compliance
 }
 
+// --- JSON-RPC 2.0 Base Structures ---
+
+// JSONRPCRequest represents a standard JSON-RPC request object.
+type JSONRPCRequest struct {
+	JSONRPC string      `json:"jsonrpc"`          // MUST be "2.0"
+	ID      interface{} `json:"id"`               // Request ID (string, number, or null)
+	Method  string      `json:"method"`           // Method name (e.g., "initialize", "tools/call")
+	Params  interface{} `json:"params,omitempty"` // Parameters (struct or array)
+}
+
+// JSONRPCResponse represents a standard JSON-RPC response object.
+type JSONRPCResponse struct {
+	JSONRPC string        `json:"jsonrpc"`          // MUST be "2.0"
+	ID      interface{}   `json:"id"`               // MUST be the same as the request ID (or null if error before ID parsing)
+	Result  interface{}   `json:"result,omitempty"` // Result object (on success)
+	Error   *ErrorPayload `json:"error,omitempty"`  // Error object (on failure)
+}
+
+// JSONRPCNotification represents a standard JSON-RPC notification object.
+type JSONRPCNotification struct {
+	JSONRPC string      `json:"jsonrpc"`          // MUST be "2.0"
+	Method  string      `json:"method"`           // Method name (e.g., "initialized", "notifications/...")
+	Params  interface{} `json:"params,omitempty"` // Parameters (struct or array)
+	// Note: Notifications MUST NOT have an 'id' field.
+}
+
 // --- Initialization Sequence Structures ---
 
 // Implementation describes the name and version of an MCP implementation (client or server).

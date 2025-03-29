@@ -123,30 +123,37 @@ func TestInitializeUnsupportedVersion(t *testing.T) {
 			ClientInfo:      Implementation{Name: clientName, Version: "0.1"},
 			Capabilities:    ClientCapabilities{},
 		}
-		// Send using MethodInitialize
-		err := clientConn.SendMessage(MethodInitialize, badReqParams)
+		// Send using SendRequest
+		reqID, err := clientConn.SendRequest(MethodInitialize, badReqParams)
 		if err != nil {
 			clientErr = fmt.Errorf("simulated client failed to send request: %w", err)
 			return
 		}
 		// Expect Error response from server
-		msg, err := clientConn.ReceiveMessage()
+		rawJSON, err := clientConn.ReceiveRawMessage() // Use ReceiveRawMessage
 		if err != nil {
 			clientErr = fmt.Errorf("simulated client failed to receive response: %w", err)
 			return
 		}
-		if msg.MessageType != MessageTypeError { // Check conceptual type first
-			clientErr = fmt.Errorf("simulated client expected Error message, got %s", msg.MessageType)
+		// Parse as JSONRPCResponse
+		var jsonrpcResp JSONRPCResponse
+		err = json.Unmarshal(rawJSON, &jsonrpcResp)
+		if err != nil {
+			clientErr = fmt.Errorf("simulated client failed to parse response JSON: %w", err)
 			return
 		}
-		var errPayload ErrorPayload
-		// Error message payload is now under "error" key
-		rawPayload, ok := msg.Payload.(json.RawMessage)
-		if !ok {
-			clientErr = fmt.Errorf("simulated client received error, but payload was not RawMessage: %T", msg.Payload)
+		// Check ID and error presence
+		if jsonrpcResp.ID != reqID {
+			clientErr = fmt.Errorf("simulated client received error with mismatched ID. Expected %v, Got %v", reqID, jsonrpcResp.ID)
 			return
 		}
-		err = UnmarshalPayload(rawPayload, &errPayload) // Use helper
+		if jsonrpcResp.Error == nil {
+			clientErr = fmt.Errorf("simulated client expected error response, but error field was nil")
+			return
+		}
+		errPayload := *jsonrpcResp.Error
+		// Check for the numeric code (already done below)
+		// err = UnmarshalPayload(rawPayload, &errPayload) // No longer needed
 		if err != nil {
 			clientErr = fmt.Errorf("simulated client failed to unmarshal error payload: %w", err)
 			return
@@ -204,17 +211,17 @@ func TestInitializeInvalidSequence(t *testing.T) {
 	// Simulate client sending wrong first message
 	go func() {
 		defer wg.Done()
-		// Send an Error message instead of InitializeRequest
-		invalidFirstMessagePayload := ErrorPayload{Code: ErrorCodeInvalidRequest, Message: "Sending wrong message first"}
-		// Use MessageTypeError conceptually for SendMessage, though server expects MethodInitialize
-		err := clientConn.SendMessage(MessageTypeError, invalidFirstMessagePayload)
+		// Send an invalid first message (e.g., a notification instead of initialize request)
+		invalidFirstMessagePayload := InitializedNotificationParams{} // Example payload
+		// Use SendNotification
+		err := clientConn.SendNotification(MethodInitialized, invalidFirstMessagePayload) // Send 'initialized' instead of 'initialize'
 		if err != nil {
 			clientErr = fmt.Errorf("simulated client failed to send invalid message: %w", err)
 			return
 		}
 		// Server should error out. Attempt to read the error message from the server
 		// to prevent blocking the server's SendMessage call on the pipe.
-		_, err = clientConn.ReceiveMessage()
+		_, err = clientConn.ReceiveRawMessage() // Use ReceiveRawMessage
 		if err != nil && !errors.Is(err, io.ErrClosedPipe) && !strings.Contains(err.Error(), "pipe") {
 			// Log if receiving the error message itself failed unexpectedly
 			log.Printf("Client simulator (invalid sequence): Error receiving server response: %v", err)
@@ -227,7 +234,7 @@ func TestInitializeInvalidSequence(t *testing.T) {
 	// Check results: Expect server error about wrong message type/method
 	if serverErr == nil {
 		t.Error("Server initialization should have failed (invalid sequence), but succeeded")
-	} else if !strings.Contains(serverErr.Error(), "Expected 'initialize' request, got") { // Check for new method name
+	} else if !strings.Contains(serverErr.Error(), "Expected method 'initialize', got") { // Check for correct error message
 		t.Errorf("Server error message unexpected for invalid sequence: %v", serverErr)
 	}
 	if clientErr != nil {
@@ -267,14 +274,14 @@ func TestInitializeMalformedPayload(t *testing.T) {
 		defer wg.Done()
 		// Send MethodInitialize, but payload isn't InitializeRequestParams
 		malformedPayload := map[string]int{"wrong_field": 123}
-		err := clientConn.SendMessage(MethodInitialize, malformedPayload) // Use correct method name
+		_, err := clientConn.SendRequest(MethodInitialize, malformedPayload) // Use SendRequest
 		if err != nil {
 			clientErr = fmt.Errorf("simulated client failed to send malformed payload: %w", err)
 			return
 		}
 		// Server should error out. Attempt to read the error message from the server
 		// to prevent blocking the server's SendMessage call on the pipe.
-		_, err = clientConn.ReceiveMessage()
+		_, err = clientConn.ReceiveRawMessage() // Use ReceiveRawMessage
 		if err != nil && !errors.Is(err, io.ErrClosedPipe) && !strings.Contains(err.Error(), "pipe") {
 			// Log if receiving the error message itself failed unexpectedly
 			log.Printf("Client simulator (malformed payload): Error receiving server response: %v", err)
