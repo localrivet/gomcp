@@ -3,6 +3,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -25,6 +26,10 @@ type Client struct {
 	// For handling concurrent requests/responses
 	pendingRequests map[string]chan *JSONRPCResponse // Map request ID to a channel for the response
 	pendingMu       sync.Mutex                       // Mutex to protect pendingRequests map
+
+	// For handling server-to-client requests
+	requestHandlers map[string]func(id interface{}, params interface{}) error // Map method name to handler
+	handlerMu       sync.Mutex                                                // Mutex to protect requestHandlers map
 }
 
 // NewClient creates and initializes a new MCP Client instance.
@@ -38,8 +43,21 @@ func NewClient(clientName string) *Client {
 	return &Client{
 		conn:            NewStdioConnection(), // Assumes stdio for now
 		clientName:      clientName,
-		pendingRequests: make(map[string]chan *JSONRPCResponse), // Initialize map
+		pendingRequests: make(map[string]chan *JSONRPCResponse),                          // Initialize map
+		requestHandlers: make(map[string]func(id interface{}, params interface{}) error), // Initialize map
 	}
+}
+
+// RegisterRequestHandler registers a handler function for a specific server-to-client request method.
+func (c *Client) RegisterRequestHandler(method string, handler func(id interface{}, params interface{}) error) error {
+	c.handlerMu.Lock()
+	defer c.handlerMu.Unlock()
+	if _, exists := c.requestHandlers[method]; exists {
+		return fmt.Errorf("handler already registered for method: %s", method)
+	}
+	c.requestHandlers[method] = handler
+	log.Printf("Registered request handler for method: %s", method)
+	return nil
 }
 
 // Connect performs the MCP Initialization sequence with the server.
@@ -483,10 +501,51 @@ func (c *Client) processIncomingMessages() { // Add missing function signature
 				log.Printf("Warning: Received response for unknown or timed-out request ID: %v", baseMessage.ID)
 			}
 
-		} else if baseMessage.Method != "" { // It's a Notification or Request from server
-			// TODO: Handle server-to-client requests (e.g., sampling/createMessage)
-			log.Printf("Client received notification/request: Method=%s", baseMessage.Method)
-			// TODO: Dispatch notifications (e.g., $/progress, $/cancel)
+		} else if baseMessage.Method != "" { // It's a Notification or a Request from server
+			if baseMessage.ID == nil { // It's a Notification
+				// TODO: Dispatch notifications (e.g., $/progress, $/cancel)
+				log.Printf("Client received notification: Method=%s", baseMessage.Method)
+			} else { // It's a Request from the server
+				log.Printf("Client received request from server: Method=%s, ID=%v", baseMessage.Method, baseMessage.ID)
+				// Dispatch to registered handler
+				c.handlerMu.Lock()
+				handler, ok := c.requestHandlers[baseMessage.Method]
+				c.handlerMu.Unlock()
+
+				if ok {
+					// Run handler in a new goroutine to avoid blocking the receive loop
+					go func(id interface{}, params interface{}) {
+						err := handler(id, params)
+						if err != nil {
+							// If handler returns error, send JSON-RPC error response
+							log.Printf("Error executing handler for method %s (ID: %v): %v", baseMessage.Method, id, err)
+							// Check if the returned error is an *MCPError
+							var mcpErr *MCPError
+							if errors.As(err, &mcpErr) {
+								// If it is, send its embedded ErrorPayload
+								_ = c.conn.SendErrorResponse(id, mcpErr.ErrorPayload)
+							} else {
+								// Otherwise, wrap the generic error message
+								_ = c.conn.SendErrorResponse(id, ErrorPayload{
+									Code:    ErrorCodeInternalError, // Generic internal error
+									Message: fmt.Sprintf("Handler error: %v", err),
+								})
+							}
+						}
+						// If handler returns nil, assume it sent the response itself (e.g., for sampling)
+					}(baseMessage.ID, baseMessage.Params)
+				} else {
+					// No handler registered, send MethodNotFound error
+					log.Printf("No handler registered for server request method: %s", baseMessage.Method)
+					err := c.conn.SendErrorResponse(baseMessage.ID, ErrorPayload{
+						Code:    ErrorCodeMethodNotFound,
+						Message: fmt.Sprintf("Client does not handle request method: %s", baseMessage.Method),
+					})
+					if err != nil {
+						log.Printf("Error sending MethodNotFound error response to server: %v", err)
+					}
+				}
+			}
 		} else {
 			log.Printf("Warning: Received message with no ID or Method. Raw: %s", string(rawJSON))
 		}

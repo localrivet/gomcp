@@ -3,6 +3,8 @@
 // and basic client/server logic for establishing connections via the MCP handshake.
 package mcp
 
+import "fmt"
+
 // --- Core Message Structures ---
 
 // Message represents the base structure for all MCP messages.
@@ -23,6 +25,17 @@ type ErrorPayload struct {
 	Code    int         `json:"code"`           // Numeric error code (JSON-RPC standard or implementation-defined)
 	Message string      `json:"message"`        // Short error description
 	Data    interface{} `json:"data,omitempty"` // Optional additional error details
+}
+
+// MCPError wraps ErrorPayload to implement the error interface.
+// Handlers can return this type to provide specific JSON-RPC error details.
+type MCPError struct {
+	ErrorPayload
+}
+
+// Error implements the error interface for MCPError.
+func (e *MCPError) Error() string {
+	return fmt.Sprintf("MCP Error: Code=%d, Message=%s", e.Code, e.Message)
 }
 
 // ErrorMessage represents an MCP Error message, which follows the JSONRPCError structure.
@@ -80,7 +93,7 @@ type ClientCapabilities struct {
 	Experimental map[string]interface{} `json:"experimental,omitempty"`
 	// Add other known capability fields as needed, e.g.:
 	// Roots *struct { ListChanged bool `json:"listChanged,omitempty"` } `json:"roots,omitempty"`
-	// Sampling *struct{} `json:"sampling,omitempty"`
+	Sampling *struct{} `json:"sampling,omitempty"` // Add Sampling capability field
 }
 
 // ServerCapabilities describes features the server supports.
@@ -89,7 +102,7 @@ type ServerCapabilities struct {
 	// Experimental capabilities can be added here.
 	Experimental map[string]interface{} `json:"experimental,omitempty"`
 	// Add other known capability fields as needed, e.g.:
-	// Logging *struct{} `json:"logging,omitempty"`
+	Logging *struct{} `json:"logging,omitempty"` // Add Logging capability field
 	// Completions *struct{} `json:"completions,omitempty"`
 	Prompts *struct { // Add Prompts capability field
 		ListChanged bool `json:"listChanged,omitempty"` // Server supports notifications/prompts/list_changed
@@ -358,6 +371,63 @@ type GetPromptResult struct {
 	Prompt Prompt `json:"prompt"`
 }
 
+// --- Logging Structures ---
+
+// LoggingLevel defines the possible logging levels.
+type LoggingLevel string
+
+const (
+	LogLevelError LoggingLevel = "error"
+	LogLevelWarn  LoggingLevel = "warn"
+	LogLevelInfo  LoggingLevel = "info"
+	LogLevelDebug LoggingLevel = "debug"
+	LogLevelTrace LoggingLevel = "trace" // Added based on common practice
+)
+
+// SetLevelRequestParams defines parameters for 'logging/set_level'.
+type SetLevelRequestParams struct {
+	Level LoggingLevel `json:"level"`
+}
+
+// LoggingMessageParams defines parameters for 'notifications/message'.
+type LoggingMessageParams struct {
+	Level   LoggingLevel `json:"level"`
+	Message string       `json:"message"`
+}
+
+// --- Sampling Structures ---
+
+// SamplingMessage represents a message in the context provided for sampling.
+type SamplingMessage struct {
+	Role    string    `json:"role"`    // e.g., "system", "user", "assistant"
+	Content []Content `json:"content"` // Array of content parts
+	// TODO: Add optional 'name' field if needed for tool results
+}
+
+// ModelPreferences specifies desired model characteristics.
+type ModelPreferences struct {
+	ModelURI string `json:"modelUri,omitempty"` // Preferred model URI
+	// TODO: Add other preference fields (temperature, top_k, etc.)
+}
+
+// ModelHint provides information about the model used for a response.
+type ModelHint struct {
+	ModelURI string `json:"modelUri"` // URI of the model used
+	// TODO: Add other hint fields (token counts, finish reason, etc.)
+}
+
+// CreateMessageRequestParams defines parameters for 'sampling/create_message'.
+type CreateMessageRequestParams struct {
+	Context     []SamplingMessage `json:"context"`               // The message history
+	Preferences *ModelPreferences `json:"preferences,omitempty"` // Optional model preferences
+}
+
+// CreateMessageResult defines the result for 'sampling/create_message'.
+type CreateMessageResult struct {
+	Message   SamplingMessage `json:"message"`             // The generated message
+	ModelHint *ModelHint      `json:"modelHint,omitempty"` // Optional info about the model used
+}
+
 // --- Constants ---
 
 const (
@@ -384,6 +454,13 @@ const (
 	MethodListPrompts = "prompts/list"
 	MethodGetPrompt   = "prompts/get"
 	// TODO: Add prompt notification methods
+
+	// Logging
+	MethodLoggingSetLevel     = "logging/set_level"
+	MethodNotificationMessage = "notifications/message" // Note: This is a notification
+
+	// Sampling
+	MethodSamplingCreateMessage = "sampling/create_message"
 
 	// Old Handshake types (REMOVED)
 	// MessageTypeHandshakeRequest  = "HandshakeRequest"

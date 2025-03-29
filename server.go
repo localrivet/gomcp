@@ -310,6 +310,8 @@ func (s *Server) Run() error {
 			handlerErr = s.handleListPrompts(baseMessage.ID, baseMessage.Params)
 		case MethodGetPrompt: // Add case for getting prompt
 			handlerErr = s.handleGetPrompt(baseMessage.ID, baseMessage.Params)
+		case MethodLoggingSetLevel: // Add case for setting log level
+			handlerErr = s.handleLoggingSetLevel(baseMessage.ID, baseMessage.Params)
 		// TODO: Add cases for Resource/Prompt subscription/notifications etc.
 		default:
 			// Handle unknown methods
@@ -463,6 +465,55 @@ func (s *Server) handleListResources(requestID interface{}, params interface{}) 
 		Resources: []Resource{}, // Return empty list for now
 	}
 	return s.conn.SendResponse(requestID, responsePayload)
+}
+
+// handleLoggingSetLevel handles the 'logging/set_level' request.
+// TODO: Implement actual level setting and potentially use it to filter server-sent logs.
+func (s *Server) handleLoggingSetLevel(requestID interface{}, params interface{}) error {
+	log.Println("Handling LoggingSetLevelRequest (stub)")
+	var requestParams SetLevelRequestParams
+	// Unmarshal params
+	if params == nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: "Missing params for logging/set_level",
+		})
+	}
+	paramsBytes, err := json.Marshal(params)
+	if err != nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: fmt.Sprintf("Failed to re-marshal SetLevel params: %v", err),
+		})
+	}
+	err = json.Unmarshal(paramsBytes, &requestParams)
+	if err != nil {
+		return s.conn.SendErrorResponse(requestID, ErrorPayload{
+			Code: ErrorCodeInvalidParams, Message: fmt.Sprintf("Failed to unmarshal SetLevel params: %v", err),
+		})
+	}
+
+	// TODO: Store requestParams.Level on the server or connection state
+	log.Printf("Client requested logging level: %s (not yet implemented)", requestParams.Level)
+
+	// Send empty successful response
+	return s.conn.SendResponse(requestID, nil)
+}
+
+// CreateMessage sends a 'sampling/create_message' request to the client.
+// Note: This sends the request but doesn't wait for the response here.
+// The response would need to be handled asynchronously, likely by the client's
+// main application logic after being received by the client's receive loop.
+func (s *Server) CreateMessage(params CreateMessageRequestParams) (string, error) {
+	log.Printf("Server sending CreateMessage request...")
+	// SendRequest generates and returns the ID
+	requestID, err := s.conn.SendRequest(MethodSamplingCreateMessage, params)
+	if err != nil {
+		log.Printf("Error sending CreateMessage request: %v", err)
+		return "", err
+	}
+	log.Printf("CreateMessage request sent with ID: %s", requestID)
+	// The caller would need to store this ID if they want to match a potential future response,
+	// but JSON-RPC doesn't guarantee a response to server-sent requests in the same way.
+	return requestID, nil
 }
 
 // handleReadResource handles the 'resources/read' request.
