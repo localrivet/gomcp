@@ -862,12 +862,12 @@ func (s *Server) NotifyResourceUpdated(resource Resource) {
 
 	// Send the notification
 	log.Printf("Resource %s updated, sending notification.", resource.URI)
-	params := ResourceChangedParams{
+	params := ResourceUpdatedParams{ // Use renamed struct
 		Resource: resource,
 	}
-	err := s.SendResourceChanged(params)
+	err := s.SendResourceUpdated(params) // Use renamed method
 	if err != nil {
-		log.Printf("Warning: failed to send resources/changed notification for URI %s: %v", resource.URI, err)
+		log.Printf("Warning: failed to send resources/updated notification for URI %s: %v", resource.URI, err)
 	}
 }
 
@@ -881,9 +881,9 @@ func (s *Server) SendProgress(params ProgressParams) error {
 	return s.conn.SendNotification(MethodProgress, params)
 }
 
-// SendResourceChanged sends a 'notifications/resources/changed' notification.
-func (s *Server) SendResourceChanged(params ResourceChangedParams) error {
-	return s.conn.SendNotification(MethodNotifyResourceChanged, params)
+// SendResourceUpdated sends a 'notifications/resources/updated' notification. (Renamed from SendResourceChanged)
+func (s *Server) SendResourceUpdated(params ResourceUpdatedParams) error {
+	return s.conn.SendNotification(MethodNotifyResourceUpdated, params) // Use renamed constant and param type
 }
 
 // SendToolsListChanged sends a 'notifications/tools/list_changed' notification.

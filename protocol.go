@@ -260,7 +260,7 @@ func (tc TextContent) GetType() string { return tc.Type }
 // ImageContent represents image content.
 type ImageContent struct {
 	Type        string              `json:"type"`      // Should always be "image"
-	Source      string              `json:"source"`    // URI or base64 encoded data
+	Data        string              `json:"data"`      // Base64 encoded data (or potentially URI? Spec is ambiguous here vs. ResourceContents)
 	MediaType   string              `json:"mediaType"` // e.g., "image/png", "image/jpeg"
 	Annotations *ContentAnnotations `json:"annotations,omitempty"`
 }
@@ -270,7 +270,7 @@ func (ic ImageContent) GetType() string { return ic.Type }
 // AudioContent represents audio content.
 type AudioContent struct {
 	Type        string              `json:"type"`      // Should always be "audio"
-	Source      string              `json:"source"`    // URI or base64 encoded data
+	Data        string              `json:"data"`      // Base64 encoded data (or potentially URI?)
 	MediaType   string              `json:"mediaType"` // e.g., "audio/mpeg", "audio/wav"
 	Annotations *ContentAnnotations `json:"annotations,omitempty"`
 }
@@ -331,7 +331,7 @@ func (trc TextResourceContents) GetContentType() string { return trc.ContentType
 // BlobResourceContents holds binary resource content (base64 encoded).
 type BlobResourceContents struct {
 	ContentType string `json:"contentType"` // e.g., "image/png", "application/octet-stream"
-	Content     string `json:"content"`     // Base64 encoded string
+	Blob        string `json:"blob"`        // Base64 encoded string
 }
 
 func (brc BlobResourceContents) GetContentType() string { return brc.ContentType }
@@ -547,8 +547,8 @@ type UnsubscribeResourceParams struct {
 // UnsubscribeResourceResult defines the result for 'resources/unsubscribe'. (Currently empty)
 type UnsubscribeResourceResult struct{}
 
-// ResourceChangedParams defines parameters for 'notifications/resources/changed'.
-type ResourceChangedParams struct {
+// ResourceUpdatedParams defines parameters for 'notifications/resources/updated'.
+type ResourceUpdatedParams struct {
 	Resource Resource `json:"resource"` // The resource that changed (includes new version)
 }
 
@@ -576,7 +576,7 @@ const (
 	MethodSubscribeResource          = "resources/subscribe"                  // Request
 	MethodUnsubscribeResource        = "resources/unsubscribe"                // Request (Optional, can use subscribe with empty list)
 	MethodNotifyResourcesListChanged = "notifications/resources/list_changed" // Notification
-	MethodNotifyResourceChanged      = "notifications/resources/changed"      // Notification
+	MethodNotifyResourceUpdated      = "notifications/resources/updated"      // Notification (Renamed from changed)
 
 	// Prompts
 	MethodListPrompts              = "prompts/list"
