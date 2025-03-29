@@ -28,3 +28,11 @@ go.work.sum
 
 # Local TODO file
 TODO.md
+
+# Example binaries (ignore files without extensions in example subdirs)
+examples/*/*[!.]
+
+# Specific build output if needed (if built in root)
+/kitchen-sink-server
+/mcp-client
+/mcp-server

@@ -113,10 +113,17 @@ type ServerCapabilities struct {
 
 // InitializeRequestParams defines the parameters for the 'initialize' request.
 type InitializeRequestParams struct {
-	ProtocolVersion string             `json:"protocolVersion"` // Note camelCase from schema
-	Capabilities    ClientCapabilities `json:"capabilities"`
-	ClientInfo      Implementation     `json:"clientInfo"`
-	// TODO: Add other optional fields like workspaceFolders, trace, etc. if needed
+	ProtocolVersion  string             `json:"protocolVersion"` // Note camelCase from schema
+	Capabilities     ClientCapabilities `json:"capabilities"`
+	ClientInfo       Implementation     `json:"clientInfo"`
+	Trace            *string            `json:"trace,omitempty"`            // "off" | "messages" | "verbose"
+	WorkspaceFolders []WorkspaceFolder  `json:"workspaceFolders,omitempty"` // Information about workspace folders
+}
+
+// WorkspaceFolder represents a workspace folder as defined by LSP.
+type WorkspaceFolder struct {
+	URI  string `json:"uri"`  // The associated URI for this workspace folder.
+	Name string `json:"name"` // The name of the workspace folder. Might be empty.
 }
 
 // InitializeRequest is sent by the client to start the connection.
@@ -169,9 +176,10 @@ type ToolInputSchema struct {
 
 // PropertyDetail describes a single parameter within a ToolInputSchema.
 type PropertyDetail struct {
-	Type        string `json:"type"`
-	Description string `json:"description,omitempty"`
-	// TODO: Add other JSON schema fields (enum, format, etc.)
+	Type        string        `json:"type"`
+	Description string        `json:"description,omitempty"`
+	Enum        []interface{} `json:"enum,omitempty"`   // Possible values for the property
+	Format      string        `json:"format,omitempty"` // Specific format (e.g., "date-time", "email")
 }
 
 // ToolAnnotations provides optional hints about tool behavior.
@@ -243,9 +251,11 @@ type Content interface {
 }
 
 // ContentAnnotations defines optional metadata for content parts.
+// Based on https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#markupContent
 type ContentAnnotations struct {
-	Title *string `json:"title,omitempty"`
-	// Add other potential common annotations here
+	Title    *string  `json:"title,omitempty"`    // Optional human-readable title.
+	Audience []string `json:"audience,omitempty"` // Intended audience (e.g., "user", "assistant").
+	Priority *float64 `json:"priority,omitempty"` // Importance hint (0.0 to 1.0). Use pointer for optionality.
 }
 
 // TextContent represents textual content.
@@ -338,8 +348,8 @@ func (brc BlobResourceContents) GetContentType() string { return brc.ContentType
 
 // ListResourcesRequestParams defines parameters for 'resources/list'.
 type ListResourcesRequestParams struct {
-	// TODO: Add filtering options (kind, query, etc.)
-	Cursor string `json:"cursor,omitempty"`
+	Filter map[string]interface{} `json:"filter,omitempty"` // Optional filtering criteria (e.g., {"kind": "file", "query": "..."})
+	Cursor string                 `json:"cursor,omitempty"`
 }
 
 // ListResourcesResult defines the result for 'resources/list'.
@@ -395,8 +405,8 @@ type PromptReference struct {
 
 // ListPromptsRequestParams defines parameters for 'prompts/list'.
 type ListPromptsRequestParams struct {
-	// TODO: Add filtering options
-	Cursor string `json:"cursor,omitempty"`
+	Filter map[string]interface{} `json:"filter,omitempty"` // Optional filtering criteria
+	Cursor string                 `json:"cursor,omitempty"`
 }
 
 // ListPromptsResult defines the result for 'prompts/list'.
@@ -407,7 +417,8 @@ type ListPromptsResult struct {
 
 // GetPromptRequestParams defines parameters for 'prompts/get'.
 type GetPromptRequestParams struct {
-	URI string `json:"uri"` // URI of the prompt to get
+	URI       string                 `json:"uri"`                 // URI of the prompt to get
+	Arguments map[string]interface{} `json:"arguments,omitempty"` // Optional arguments for template rendering
 }
 
 // GetPromptResult defines the result for 'prompts/get'.
@@ -443,21 +454,26 @@ type LoggingMessageParams struct {
 
 // SamplingMessage represents a message in the context provided for sampling.
 type SamplingMessage struct {
-	Role    string    `json:"role"`    // e.g., "system", "user", "assistant"
-	Content []Content `json:"content"` // Array of content parts
-	// TODO: Add optional 'name' field if needed for tool results
+	Role    string    `json:"role"`           // e.g., "system", "user", "assistant"
+	Content []Content `json:"content"`        // Array of content parts
+	Name    *string   `json:"name,omitempty"` // Optional identifier, e.g., for tool results
 }
 
 // ModelPreferences specifies desired model characteristics.
 type ModelPreferences struct {
-	ModelURI string `json:"modelUri,omitempty"` // Preferred model URI
-	// TODO: Add other preference fields (temperature, top_k, etc.)
+	ModelURI    string   `json:"modelUri,omitempty"`    // Preferred model URI
+	Temperature *float64 `json:"temperature,omitempty"` // Sampling temperature
+	TopP        *float64 `json:"topP,omitempty"`        // Nucleus sampling probability
+	TopK        *int     `json:"topK,omitempty"`        // Top-k sampling
+	// TODO: Add other potential fields like maxOutputTokens, stopSequences
 }
 
 // ModelHint provides information about the model used for a response.
 type ModelHint struct {
-	ModelURI string `json:"modelUri"` // URI of the model used
-	// TODO: Add other hint fields (token counts, finish reason, etc.)
+	ModelURI     string  `json:"modelUri"`               // URI of the model used
+	InputTokens  *int    `json:"inputTokens,omitempty"`  // Number of tokens in the input prompt
+	OutputTokens *int    `json:"outputTokens,omitempty"` // Number of tokens in the generated response
+	FinishReason *string `json:"finishReason,omitempty"` // Reason sampling stopped (e.g., "stop", "length", "content_filter")
 }
 
 // CreateMessageRequestParams defines parameters for 'sampling/create_message'.

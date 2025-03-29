@@ -80,6 +80,12 @@ func NewServerWithConnection(serverName string, conn *Connection) *Server {
 	return srv
 }
 
+// Conn returns the underlying Connection object for the server.
+// Use with caution, primarily for sending custom responses/errors if needed.
+func (s *Server) Conn() *Connection {
+	return s.conn
+}
+
 // RegisterNotificationHandler registers a handler function for a specific client-to-server notification method.
 func (s *Server) RegisterNotificationHandler(method string, handler func(params interface{})) error {
 	s.notificationMu.Lock()
@@ -131,12 +137,17 @@ func (s *Server) RegisterResource(resource Resource) error {
 	}
 	// TODO: Add locking if registry access needs to be thread-safe
 	s.resourceRegistry[resource.URI] = resource
+	// Use mutex for thread-safe access to the registry
+	s.subscriptionMu.Lock() // Assuming resource registry and subscriptions might be related, use same mutex for now
+	s.resourceRegistry[resource.URI] = resource
+	s.subscriptionMu.Unlock()
 	log.Printf("Registered/Updated resource: %s", resource.URI)
 
-	// Send notification if server supports it
+	// Send notification if server supports it and connection is established (capabilities are set)
+	// Note: This assumes RegisterResource is called *after* initialization.
 	if s.serverCapabilities.Resources != nil && s.serverCapabilities.Resources.ListChanged {
 		log.Printf("Sending resources/list_changed notification to client")
-		err := s.SendResourcesListChanged()
+		err := s.SendResourcesListChanged() // Use the specific sender method
 		if err != nil {
 			log.Printf("Warning: failed to send resources/list_changed notification: %v", err)
 		}
@@ -156,17 +167,35 @@ func (s *Server) UnregisterResource(uri string) error {
 		return fmt.Errorf("resource '%s' not found", uri)
 	}
 	delete(s.resourceRegistry, uri)
+	// Also remove any subscriptions for this resource
+	delete(s.resourceSubscriptions, uri)
+	s.subscriptionMu.Unlock() // Unlock after modifications
 	log.Printf("Unregistered resource: %s", uri)
 
-	// Send notification if server supports it
+	// Send notification if server supports it and connection is established
 	if s.serverCapabilities.Resources != nil && s.serverCapabilities.Resources.ListChanged {
 		log.Printf("Sending resources/list_changed notification to client")
-		err := s.SendResourcesListChanged()
+		err := s.SendResourcesListChanged() // Use the specific sender method
 		if err != nil {
 			log.Printf("Warning: failed to send resources/list_changed notification: %v", err)
 		}
 	}
 	return nil
+}
+
+// ResourceRegistry returns a read-only copy of the current resource registry.
+// Note: Modifying the returned map will not affect the server's internal state.
+// Use RegisterResource/UnregisterResource for modifications.
+func (s *Server) ResourceRegistry() map[string]Resource {
+	// Using the subscription mutex for simplicity as both registries might be accessed together.
+	// Consider separate mutexes if contention becomes an issue.
+	s.subscriptionMu.Lock()
+	defer s.subscriptionMu.Unlock()
+	registryCopy := make(map[string]Resource, len(s.resourceRegistry))
+	for k, v := range s.resourceRegistry {
+		registryCopy[k] = v
+	}
+	return registryCopy
 }
 
 // RegisterPrompt adds or updates a prompt in the server's registry.
