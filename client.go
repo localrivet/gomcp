@@ -57,6 +57,33 @@ func NewClient(clientName string) *Client {
 		notificationHandlers: make(map[string]func(params interface{})),                       // Initialize map
 		roots:                make(map[string]Root),                                           // Initialize map
 	}
+	// Register default handlers
+	c.RegisterRequestHandler(MethodRootsList, c.handleListRootsRequest) // Add default handler for roots/list
+	return c
+}
+
+// NewClientWithConnection creates a new MCP Client instance using a pre-existing connection.
+func NewClientWithConnection(clientName string, conn *Connection) *Client {
+	// Configure logging to stderr for client messages
+	log.SetOutput(os.Stderr)
+	log.SetFlags(log.Ltime | log.Lshortfile) // Add timestamp and file/line
+
+	if conn == nil {
+		log.Println("Warning: NewClientWithConnection received nil connection, cannot proceed.")
+		return nil // Or handle error appropriately
+	}
+
+	c := &Client{
+		conn:                 conn, // Use provided connection
+		clientName:           clientName,
+		pendingRequests:      make(map[string]chan *JSONRPCResponse),
+		requestHandlers:      make(map[string]func(id interface{}, params interface{}) error),
+		notificationHandlers: make(map[string]func(params interface{})),
+		roots:                make(map[string]Root),
+	}
+	// Register default handlers
+	c.RegisterRequestHandler(MethodRootsList, c.handleListRootsRequest) // Add default handler for roots/list
+	return c
 }
 
 // RegisterNotificationHandler registers a handler function for a specific server-to-client notification method.
