@@ -9,6 +9,7 @@ This directory contains example MCP servers and clients demonstrating the usage 
 - **`rate-limit/`**: Builds on the auth example, adding simple global rate limiting.
 - **`billing/`**: Builds on the auth example, simulating billing/tracking by logging structured events.
 - **`kitchen-sink/`**: A comprehensive server example demonstrating various MCP features.
+- **`sqlite/`**: Demonstrates using a SQLite database to store and query user data.
 
 ## Running the Examples
 
@@ -80,6 +81,25 @@ go run ./examples/rate-limit/server/main.go | go run ./examples/rate-limit/clien
 export MCP_API_KEY="test-key-123"
 go run ./examples/billing/server/main.go | go run ./examples/billing/client/main.go
 ```
+
+### SQLite Database Example (`sqlite/server/` and `sqlite/client/`)
+
+This example demonstrates using a SQLite database to store and query user data.
+
+**Using Piping:**
+
+```bash
+# Run the SQLite server and client
+go run ./examples/sqlite/server/main.go | go run ./examples/sqlite/client/main.go
+```
+
+The server provides the following tools:
+
+- `getUserById`: Get a user by their ID
+- `listUsers`: List all users, optionally filtered by active status
+- `searchUsers`: Search for users by name or email
+
+The client demonstrates using all of these tools to query the database.
 
 ### Kitchen Sink Server Example (`kitchen-sink/server/`)
 
