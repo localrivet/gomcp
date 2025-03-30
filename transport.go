@@ -108,6 +108,38 @@ func (c *Connection) sendJSON(data interface{}) error {
 	return nil
 }
 
+// SendRawMessage sends raw bytes as a message, adding newline and flushing.
+// Assumes the input bytes are a valid, complete JSON message.
+func (c *Connection) SendRawMessage(message []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	log.Printf("Sending raw message: %s\n", string(message)) // Log raw message
+
+	_, err := c.writer.Write(message)
+	if err != nil {
+		return fmt.Errorf("failed to write raw message: %w", err)
+	}
+	_, err = c.writer.Write([]byte("\n")) // Add newline delimiter
+	if err != nil {
+		return fmt.Errorf("failed to write newline delimiter for raw message: %w", err)
+	}
+
+	// Attempt to flush the writer
+	if flusher, ok := c.writer.(interface{ Flush() error }); ok {
+		flushErr := flusher.Flush()
+		if flushErr != nil {
+			log.Printf("Warning: failed to flush writer after raw message send: %v", flushErr)
+		}
+	} else if f, ok := c.writer.(*os.File); ok && (f == os.Stdout || f == os.Stderr) {
+		syncErr := f.Sync()
+		if syncErr != nil {
+			log.Printf("Warning: failed to sync writer (%s) after raw message send: %v", f.Name(), syncErr)
+		}
+	}
+	return nil
+}
+
 // SendRequest sends a JSON-RPC request.
 // It generates a new UUID for the request ID.
 func (c *Connection) SendRequest(method string, params interface{}) (string, error) {
