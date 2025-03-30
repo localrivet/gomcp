@@ -32,6 +32,9 @@ TODO.md
 # Session context summary file
 SESSION_CONTEXT_SUMMARY.md
 
+# SQLite database files
+*.db
+
 # Example binaries: Ignore everything in example subdirs...
 examples/*/*
 examples/*/*/*
