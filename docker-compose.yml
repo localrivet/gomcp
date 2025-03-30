@@ -4,7 +4,7 @@ services:
   mcp-server:
     build:
       context: . # Build context is the root directory
-      dockerfile: examples/server/Dockerfile # Specify the Dockerfile location
+      dockerfile: examples/basic/server/Dockerfile # Specify the Dockerfile location
     image: gomcp-server-example # Explicit image name
     container_name: gomcp_server_example
     # For stdio interaction, we need to run it interactively
@@ -27,7 +27,7 @@ services:
 #
 # 3. Run the client locally and pipe its output to the container's stdin:
 #    (Open a separate terminal)
-#    go run ./examples/client/main.go | docker exec -i my_mcp_server sh -c 'cat > /dev/stdin'
+#    go run ./examples/basic/client/main.go | docker exec -i my_mcp_server sh -c 'cat > /dev/stdin'
 #    (Note: This piping method might be complex and shell-dependent.
 #     A simpler approach for testing might be to run both client and server locally.)
 #
@@ -41,7 +41,7 @@ services:
 #   mcp-client:
 #     build:
 #       context: .
-#       dockerfile: examples/client/Dockerfile # Needs a client Dockerfile
+#       dockerfile: examples/basic/client/Dockerfile # Needs a client Dockerfile
 #     depends_on:
 #       - mcp-server
 #     environment:

@@ -10,7 +10,7 @@ WorkingDirectory=/opt/gomcp-server
 
 # Build the executable and place it in the WorkingDirectory.
 # Example build command (run from repo root):
-# CGO_ENABLED=0 GOOS=linux go build -o ./deployments/systemd/multi-tool-server ./examples/server/*.go
+# CGO_ENABLED=0 GOOS=linux go build -o ./deployments/systemd/multi-tool-server ./examples/basic/server/*.go
 # Then copy 'multi-tool-server' and 'start-gomcp-server.sh' to '/opt/gomcp-server' on the target machine.
 
 # Executable path (relative to WorkingDirectory)
