@@ -5,16 +5,16 @@ import (
 	"context"
 	"fmt"
 
-	mcp "github.com/localrivet/gomcp"
+	"github.com/localrivet/gomcp"
 )
 
 // calculatorToolDefinition defines the structure and schema for the calculator tool.
-var calculatorToolDefinition = mcp.Tool{ // Use new Tool struct
+var calculatorToolDefinition = gomcp.Tool{ // Use new Tool struct
 	Name:        "calculator",
 	Description: "Performs basic arithmetic operations (add, subtract, multiply, divide).",
-	InputSchema: mcp.ToolInputSchema{
+	InputSchema: gomcp.ToolInputSchema{
 		Type: "object",
-		Properties: map[string]mcp.PropertyDetail{
+		Properties: map[string]gomcp.PropertyDetail{
 			"operand1":  {Type: "number", Description: "The first number."},
 			"operand2":  {Type: "number", Description: "The second number."},
 			"operation": {Type: "string", Description: "The operation ('add', 'subtract', 'multiply', 'divide')."},
@@ -22,15 +22,15 @@ var calculatorToolDefinition = mcp.Tool{ // Use new Tool struct
 		Required: []string{"operand1", "operand2", "operation"},
 	},
 	// OutputSchema removed
-	// Annotations: mcp.ToolAnnotations{}, // Optional
+	// Annotations: gomcp.ToolAnnotations{}, // Optional
 }
 
 // executeCalculator contains the actual logic for the calculator tool.
 // It now matches the ToolHandlerFunc signature.
-func executeCalculator(ctx context.Context, progressToken *mcp.ProgressToken, args map[string]interface{}) ([]mcp.Content, bool) {
+func executeCalculator(ctx context.Context, progressToken *gomcp.ProgressToken, args map[string]interface{}) ([]gomcp.Content, bool) {
 	// Helper to create error response content
-	newErrorContent := func(msg string) []mcp.Content {
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}
+	newErrorContent := func(msg string) []gomcp.Content {
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: msg}}
 	}
 
 	// --- Argument Extraction and Type Validation ---
@@ -90,6 +90,6 @@ func executeCalculator(ctx context.Context, progressToken *mcp.ProgressToken, ar
 	// Return the successful result wrapped in TextContent and isError=false
 	// Note: The schema technically expects a number, but CallToolResult content allows text.
 	// A stricter implementation might require a NumberContent type or similar.
-	resultContent := mcp.TextContent{Type: "text", Text: fmt.Sprintf("%f", result)}
-	return []mcp.Content{resultContent}, false
+	resultContent := gomcp.TextContent{Type: "text", Text: fmt.Sprintf("%f", result)}
+	return []gomcp.Content{resultContent}, false
 }

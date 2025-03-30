@@ -1,5 +1,5 @@
 // server.go (Modified)
-package mcp
+package gomcp
 
 import (
 	// Needed for cancellation
@@ -55,7 +55,7 @@ func NewServer(serverName string) *Server {
 }
 
 // NewServerWithConnection creates and initializes a new MCP Server instance
-// using the provided mcp.Connection. This is useful for testing or integrating
+// using the provided gomcp.Connection. This is useful for testing or integrating
 // with different transport mechanisms.
 func NewServerWithConnection(serverName string, conn *Connection) *Server {
 	log.SetOutput(os.Stderr) // Still configure logging

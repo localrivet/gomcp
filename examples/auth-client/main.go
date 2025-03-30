@@ -7,13 +7,13 @@ import (
 	"os"
 	"time"
 
-	mcp "github.com/localrivet/gomcp"
+	"github.com/localrivet/gomcp"
 )
 
 // requestToolDefinitions uses the client to request tool definitions.
-func requestToolDefinitions(client *mcp.Client) ([]mcp.Tool, error) {
+func requestToolDefinitions(client *gomcp.Client) ([]gomcp.Tool, error) {
 	log.Println("Sending ListToolsRequest...")
-	params := mcp.ListToolsRequestParams{} // No pagination/filtering in this example
+	params := gomcp.ListToolsRequestParams{} // No pagination/filtering in this example
 	result, err := client.ListTools(params)
 	if err != nil {
 		return nil, fmt.Errorf("ListTools failed: %w", err)
@@ -24,9 +24,9 @@ func requestToolDefinitions(client *mcp.Client) ([]mcp.Tool, error) {
 }
 
 // useTool sends a CallToolRequest using the client and processes the response.
-func useTool(client *mcp.Client, toolName string, args map[string]interface{}) ([]mcp.Content, error) {
+func useTool(client *gomcp.Client, toolName string, args map[string]interface{}) ([]gomcp.Content, error) {
 	log.Printf("Sending CallToolRequest for tool '%s'...", toolName)
-	reqParams := mcp.CallToolParams{
+	reqParams := gomcp.CallToolParams{
 		Name:      toolName,
 		Arguments: args,
 	}
@@ -42,7 +42,7 @@ func useTool(client *mcp.Client, toolName string, args map[string]interface{}) (
 	if result.IsError != nil && *result.IsError {
 		errMsg := fmt.Sprintf("Tool '%s' execution reported an error", toolName) // Use toolName here
 		if len(result.Content) > 0 {
-			if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+			if textContent, ok := result.Content[0].(gomcp.TextContent); ok {
 				errMsg = fmt.Sprintf("Tool '%s' failed: %s", toolName, textContent.Text) // Use toolName here
 			} else {
 				errMsg = fmt.Sprintf("Tool '%s' failed with non-text error content: %T", toolName, result.Content[0]) // Use toolName here
@@ -58,7 +58,7 @@ func useTool(client *mcp.Client, toolName string, args map[string]interface{}) (
 // runClientLogic creates a client, connects, and executes the example tool calls sequence.
 func runClientLogic(clientName string) error {
 	// Create a new client instance
-	client := mcp.NewClient(clientName)
+	client := gomcp.NewClient(clientName)
 
 	// Connect and perform initialization
 	log.Println("Connecting to server...")
@@ -105,7 +105,7 @@ func runClientLogic(clientName string) error {
 			log.Printf("  Sent: %s", echoMessage)
 			log.Printf("  Received Content: %+v", result)
 			if len(result) > 0 {
-				if textContent, ok := result[0].(mcp.TextContent); ok {
+				if textContent, ok := result[0].(gomcp.TextContent); ok {
 					log.Printf("  Extracted Text: %s", textContent.Text)
 					if textContent.Text != echoMessage {
 						log.Printf("WARNING: Secure Echo result '%s' did not match sent message '%s'", textContent.Text, echoMessage)

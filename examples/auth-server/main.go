@@ -6,39 +6,38 @@ import (
 	"log"
 	"os"
 
+	"github.com/localrivet/gomcp"
 	// "strings" // No longer needed
-
-	mcp "github.com/localrivet/gomcp"
 )
 
 // For this simple example, the expected API key is hardcoded.
 const expectedApiKey = "test-key-123"
 
 // Define the secure echo tool
-var secureEchoTool = mcp.Tool{ // Use new Tool struct
+var secureEchoTool = gomcp.Tool{ // Use new Tool struct
 	Name:        "secure-echo",
 	Description: "Echoes back the provided message (Requires API Key Auth).",
-	InputSchema: mcp.ToolInputSchema{
+	InputSchema: gomcp.ToolInputSchema{
 		Type: "object",
-		Properties: map[string]mcp.PropertyDetail{
+		Properties: map[string]gomcp.PropertyDetail{
 			"message": {Type: "string", Description: "The message to echo."},
 		},
 		Required: []string{"message"},
 	},
 	// OutputSchema removed
-	// Annotations: mcp.ToolAnnotations{}, // Optional
+	// Annotations: gomcp.ToolAnnotations{}, // Optional
 }
 
 // secureEchoHandler implements the logic for the secure-echo tool.
 // It now matches the ToolHandlerFunc signature.
-func secureEchoHandler(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) (content []mcp.Content, isError bool) {
+func secureEchoHandler(ctx context.Context, progressToken *gomcp.ProgressToken, arguments map[string]interface{}) (content []gomcp.Content, isError bool) {
 	log.Printf("Executing secure-echo tool with args: %v", arguments)
 	// Note: The API key check is done at server startup in this example.
 	// A real-world scenario might involve checking tokens/credentials passed via arguments or metadata.
 
 	// Helper to create error response content
-	newErrorContent := func(msg string) []mcp.Content {
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}
+	newErrorContent := func(msg string) []gomcp.Content {
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: msg}}
 	}
 
 	messageArg, ok := arguments["message"]
@@ -50,8 +49,8 @@ func secureEchoHandler(ctx context.Context, progressToken *mcp.ProgressToken, ar
 		return newErrorContent("Argument 'message' for tool 'secure-echo' must be a string"), true // isError = true
 	}
 	log.Printf("Securely Echoing message: %s", messageStr)
-	successContent := mcp.TextContent{Type: "text", Text: messageStr}
-	return []mcp.Content{successContent}, false // isError = false
+	successContent := gomcp.TextContent{Type: "text", Text: messageStr}
+	return []gomcp.Content{successContent}, false // isError = false
 }
 
 func main() {
@@ -75,7 +74,7 @@ func main() {
 
 	// Create a new server instance using the library
 	serverName := "GoAuthServer-Refactored"
-	server := mcp.NewServer(serverName) // Uses stdio connection
+	server := gomcp.NewServer(serverName) // Uses stdio connection
 
 	// Register the secure echo tool and its handler
 	err := server.RegisterTool(secureEchoTool, secureEchoHandler) // Pass the updated tool struct

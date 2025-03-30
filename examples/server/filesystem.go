@@ -14,7 +14,7 @@ import (
 	"strings" // Needed for HasPrefix
 	"time"    // Needed for ModTime format
 
-	mcp "github.com/localrivet/gomcp"
+	gomcp "github.com/localrivet/gomcp"
 )
 
 // fileSystemSandbox defines the root directory within which all filesystem
@@ -22,12 +22,12 @@ import (
 const fileSystemSandbox = "./fs_sandbox"
 
 // fileSystemToolDefinition defines the structure and schema for the filesystem tool.
-var fileSystemToolDefinition = mcp.Tool{ // Use new Tool struct
+var fileSystemToolDefinition = gomcp.Tool{ // Use new Tool struct
 	Name:        "filesystem",
 	Description: fmt.Sprintf("Performs file operations (list, read, write) within the '%s' sandbox directory.", fileSystemSandbox),
-	InputSchema: mcp.ToolInputSchema{
+	InputSchema: gomcp.ToolInputSchema{
 		Type: "object",
-		Properties: map[string]mcp.PropertyDetail{
+		Properties: map[string]gomcp.PropertyDetail{
 			"operation": {Type: "string", Description: "The operation to perform ('list_files', 'read_file', 'write_file')."},
 			"path":      {Type: "string", Description: "The relative path within the sandbox directory (e.g., 'mydir/myfile.txt', '.')."},
 			"content":   {Type: "string", Description: "The content to write (only required for 'write_file')."},
@@ -35,7 +35,7 @@ var fileSystemToolDefinition = mcp.Tool{ // Use new Tool struct
 		Required: []string{"operation", "path"},
 	},
 	// OutputSchema removed
-	// Annotations: mcp.ToolAnnotations{}, // Optional
+	// Annotations: gomcp.ToolAnnotations{}, // Optional
 }
 
 // getSafePath resolves the user-provided relative path against the sandbox directory,
@@ -94,10 +94,10 @@ func getSafePath(relativePath string) (string, error) {
 // It validates arguments, determines the safe path, performs the requested operation,
 // and returns the result content and isError status.
 // It now matches the ToolHandlerFunc signature.
-func executeFileSystem(ctx context.Context, progressToken *mcp.ProgressToken, args map[string]interface{}) ([]mcp.Content, bool) {
+func executeFileSystem(ctx context.Context, progressToken *gomcp.ProgressToken, args map[string]interface{}) ([]gomcp.Content, bool) {
 	// Helper to create error response content
-	newErrorContent := func(msg string) []mcp.Content {
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}
+	newErrorContent := func(msg string) []gomcp.Content {
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: msg}}
 	}
 
 	// --- Argument Extraction and Basic Validation ---
@@ -154,8 +154,8 @@ func executeFileSystem(ctx context.Context, progressToken *mcp.ProgressToken, ar
 		}
 		// Return the list wrapped in TextContent (JSON encoded) for simplicity.
 		// A better approach might define a specific FileListContent type.
-		resultBytes, _ := json.Marshal(map[string]interface{}{"files": fileInfos})            // Ignore marshal error for example
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: string(resultBytes)}}, false // isError = false
+		resultBytes, _ := json.Marshal(map[string]interface{}{"files": fileInfos})                // Ignore marshal error for example
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: string(resultBytes)}}, false // isError = false
 
 	case "read_file":
 		// First, check if the path exists and is actually a file.
@@ -180,7 +180,7 @@ func executeFileSystem(ctx context.Context, progressToken *mcp.ProgressToken, ar
 			return newErrorContent(fmt.Sprintf("Failed to read file '%s': %v", relativePath, err)), true // isError = true
 		}
 		// Return content as TextContent
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: string(contentBytes)}}, false // isError = false
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: string(contentBytes)}}, false // isError = false
 
 	case "write_file":
 		// Extract and validate the 'content' argument specifically for write.
@@ -218,8 +218,8 @@ func executeFileSystem(ctx context.Context, progressToken *mcp.ProgressToken, ar
 		}
 		// Return a success status message as TextContent (JSON encoded).
 		resultMap := map[string]interface{}{"status": "success", "message": fmt.Sprintf("Successfully wrote %d bytes to '%s'", len(content), relativePath)}
-		resultBytes, _ := json.Marshal(resultMap)                                             // Ignore marshal error for example
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: string(resultBytes)}}, false // isError = false
+		resultBytes, _ := json.Marshal(resultMap)                                                 // Ignore marshal error for example
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: string(resultBytes)}}, false // isError = false
 
 	default:
 		// Handle unknown operation strings.

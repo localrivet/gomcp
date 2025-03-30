@@ -1,5 +1,5 @@
 // client.go (Refactored Connect method)
-package mcp
+package gomcp
 
 import (
 	"encoding/json"

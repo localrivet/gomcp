@@ -20,15 +20,15 @@ The core logic resides in the root package (`github.com/localrivet/gomcp`).
     	"log"
     	"os"
 
-    	mcp "github.com/localrivet/gomcp"
+    	"github.com/localrivet/gomcp"
     )
 
     // Example tool handler
-    func myToolHandler(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) (content []mcp.Content, isError bool) {
+    func myToolHandler(ctx context.Context, progressToken *gomcp.ProgressToken, arguments map[string]interface{}) (content []gomcp.Content, isError bool) {
     	log.Printf("Executing myTool with args: %v", arguments)
     	// Check for cancellation: if ctx.Err() != nil { ... }
     	// Report progress: if progressToken != nil { server.SendProgress(...) } // Need server instance or wrapper
-    	return []mcp.Content{mcp.TextContent{Type: "text", Text: "Tool executed!"}}, false
+    	return []gomcp.Content{gomcp.TextContent{Type: "text", Text: "Tool executed!"}}, false
     }
 
     func main() {
@@ -36,13 +36,13 @@ The core logic resides in the root package (`github.com/localrivet/gomcp`).
     	log.SetFlags(log.Ltime | log.Lshortfile)
     	log.Println("Starting My MCP Server...")
 
-    	server := mcp.NewServer("MyGoMCPServer")
+    	server := gomcp.NewServer("MyGoMCPServer")
 
     	// Register tools
-    	myTool := mcp.Tool{
+    	myTool := gomcp.Tool{
     		Name:        "my_tool",
     		Description: "A simple example tool",
-    		InputSchema: mcp.ToolInputSchema{Type: "object"}, // Define schema as needed
+    		InputSchema: gomcp.ToolInputSchema{Type: "object"}, // Define schema as needed
     	}
     	err := server.RegisterTool(myTool, myToolHandler)
     	if err != nil {
@@ -73,7 +73,7 @@ The core logic resides in the root package (`github.com/localrivet/gomcp`).
     	"os"
     	"time" // For Ping timeout
 
-    	mcp "github.com/localrivet/gomcp"
+    	"github.com/localrivet/gomcp"
     )
 
     func main() {
@@ -81,7 +81,7 @@ The core logic resides in the root package (`github.com/localrivet/gomcp`).
     	log.SetFlags(log.Ltime | log.Lshortfile)
     	log.Println("Starting My MCP Client...")
 
-    	client := mcp.NewClient("MyGoMCPClient")
+    	client := gomcp.NewClient("MyGoMCPClient")
 
     	// Connect and perform initialization
     	err := client.Connect()
@@ -91,7 +91,7 @@ The core logic resides in the root package (`github.com/localrivet/gomcp`).
     	log.Printf("Client connected successfully to server: %s", client.ServerName())
 
     	// Example: List tools
-    	listParams := mcp.ListToolsRequestParams{} // Add cursor if needed
+    	listParams := gomcp.ListToolsRequestParams{} // Add cursor if needed
     	toolsResult, err := client.ListTools(listParams)
     	if err != nil {
     		log.Printf("Error listing tools: %v", err)
@@ -103,10 +103,10 @@ The core logic resides in the root package (`github.com/localrivet/gomcp`).
     	}
 
     	// Example: Call a tool (assuming 'my_tool' exists and was registered by the server)
-    	callParams := mcp.CallToolParams{
+    	callParams := gomcp.CallToolParams{
     		Name:      "my_tool",
     		Arguments: map[string]interface{}{"input": "hello"},
-    		// Meta: &mcp.RequestMeta{ ProgressToken: &token }, // Optional progress
+    		// Meta: &gomcp.RequestMeta{ ProgressToken: &token }, // Optional progress
     	}
     	// Generate a progress token (optional)
     	// token := client.GenerateProgressToken()

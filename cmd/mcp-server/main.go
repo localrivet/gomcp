@@ -4,7 +4,8 @@ import (
 	"log"
 	"os"
 
-	mcp "github.com/localrivet/gomcp" // Import the root package
+	"github.com/localrivet/gomcp"
+	// Import the root package
 )
 
 func main() {
@@ -17,7 +18,7 @@ func main() {
 
 	// Create and run the server
 	// The server name can be configured (e.g., via flags or env vars)
-	server := mcp.NewServer("GoExampleServer")
+	server := gomcp.NewServer("GoExampleServer")
 	err := server.Run()
 	if err != nil {
 		// Log fatal will print message and exit(1)

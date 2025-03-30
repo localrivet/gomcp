@@ -15,5 +15,5 @@ go get github.com/localrivet/gomcp
 Then, import it in your Go code:
 
 ```go
-import mcp "github.com/localrivet/gomcp"
+import "github.com/localrivet/gomcp"
 ```

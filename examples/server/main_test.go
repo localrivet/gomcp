@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time" // Needed for timeout
 
-	mcp "github.com/localrivet/gomcp"
+	"github.com/localrivet/gomcp"
 	// Use google/uuid for request IDs in the test simulation
 )
 
@@ -22,17 +22,17 @@ import (
 
 // createTestConnections creates a pair of connected in-memory pipes
 // suitable for testing client-server interactions without real network I/O.
-func createTestConnections() (*mcp.Connection, *mcp.Connection) {
+func createTestConnections() (*gomcp.Connection, *gomcp.Connection) {
 	serverReader, clientWriter := io.Pipe()
 	clientReader, serverWriter := io.Pipe()
 	// Use the standard NewConnection. Closing the pipes handles cleanup.
-	serverConn := mcp.NewConnection(serverReader, serverWriter)
-	clientConn := mcp.NewConnection(clientReader, clientWriter)
+	serverConn := gomcp.NewConnection(serverReader, serverWriter)
+	clientConn := gomcp.NewConnection(clientReader, clientWriter)
 	return serverConn, clientConn
 }
 
 // Helper to receive and decode a JSON-RPC response within a timeout
-func receiveResponse(t *testing.T, conn *mcp.Connection, expectedID interface{}, timeout time.Duration) (*mcp.JSONRPCResponse, error) {
+func receiveResponse(t *testing.T, conn *gomcp.Connection, expectedID interface{}, timeout time.Duration) (*gomcp.JSONRPCResponse, error) {
 	t.Helper()
 	rawJSONChan := make(chan []byte)
 	errChan := make(chan error, 1)
@@ -49,10 +49,10 @@ func receiveResponse(t *testing.T, conn *mcp.Connection, expectedID interface{},
 	select {
 	case rawJSON := <-rawJSONChan:
 		// log.Printf("Client simulator received raw: %s", string(rawJSON)) // Uncomment for debugging
-		var resp mcp.JSONRPCResponse
+		var resp gomcp.JSONRPCResponse
 		if err := json.Unmarshal(rawJSON, &resp); err != nil {
 			// Try unmarshalling as a batch response (array) in case server sends one unexpectedly
-			var batchResp []mcp.JSONRPCResponse
+			var batchResp []gomcp.JSONRPCResponse
 			if errBatch := json.Unmarshal(rawJSON, &batchResp); errBatch == nil && len(batchResp) > 0 {
 				// For simplicity in this test, just check the first response in the batch
 				resp = batchResp[0]
@@ -88,7 +88,7 @@ func receiveResponse(t *testing.T, conn *mcp.Connection, expectedID interface{},
 }
 
 // Helper to receive and decode a JSON-RPC message (Request or Notification) within a timeout
-func receiveRequestOrNotification(t *testing.T, conn *mcp.Connection, timeout time.Duration) (map[string]interface{}, error) {
+func receiveRequestOrNotification(t *testing.T, conn *gomcp.Connection, timeout time.Duration) (map[string]interface{}, error) {
 	t.Helper()
 	rawJSONChan := make(chan []byte)
 	errChan := make(chan error, 1)
@@ -130,23 +130,23 @@ func receiveRequestOrNotification(t *testing.T, conn *mcp.Connection, timeout ti
 }
 
 // --- Dummy Handlers for Server Simulation (Needed because test is in package main) ---
-var testEchoTool = mcp.Tool{
+var testEchoTool = gomcp.Tool{
 	Name:        "echo",
 	Description: "Test Echo",
-	InputSchema: mcp.ToolInputSchema{Type: "object", Properties: map[string]mcp.PropertyDetail{"message": {Type: "string"}}, Required: []string{"message"}},
+	InputSchema: gomcp.ToolInputSchema{Type: "object", Properties: map[string]gomcp.PropertyDetail{"message": {Type: "string"}}, Required: []string{"message"}},
 }
 
-func testEchoHandler(ctx context.Context, pt *mcp.ProgressToken, args map[string]interface{}) ([]mcp.Content, bool) {
+func testEchoHandler(ctx context.Context, pt *gomcp.ProgressToken, args map[string]interface{}) ([]gomcp.Content, bool) {
 	msg, _ := args["message"].(string)
-	return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}, false
+	return []gomcp.Content{gomcp.TextContent{Type: "text", Text: msg}}, false
 }
 
-var testCalculatorTool = mcp.Tool{
+var testCalculatorTool = gomcp.Tool{
 	Name:        "calculator",
 	Description: "Test Calc",
-	InputSchema: mcp.ToolInputSchema{
+	InputSchema: gomcp.ToolInputSchema{
 		Type: "object",
-		Properties: map[string]mcp.PropertyDetail{
+		Properties: map[string]gomcp.PropertyDetail{
 			"operand1":  {Type: "number"},
 			"operand2":  {Type: "number"},
 			"operation": {Type: "string", Enum: []interface{}{"add", "subtract", "multiply", "divide"}},
@@ -155,12 +155,12 @@ var testCalculatorTool = mcp.Tool{
 	},
 }
 
-func testCalculatorHandler(ctx context.Context, pt *mcp.ProgressToken, args map[string]interface{}) ([]mcp.Content, bool) {
+func testCalculatorHandler(ctx context.Context, pt *gomcp.ProgressToken, args map[string]interface{}) ([]gomcp.Content, bool) {
 	op1, ok1 := args["operand1"].(float64)
 	op2, ok2 := args["operand2"].(float64)
 	opStr, ok3 := args["operation"].(string)
 	if !ok1 || !ok2 || !ok3 {
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: "Missing required arguments"}}, true
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: "Missing required arguments"}}, true
 	}
 	var result float64
 	isErrTrue := true // Local variable for error flag pointer
@@ -173,24 +173,24 @@ func testCalculatorHandler(ctx context.Context, pt *mcp.ProgressToken, args map[
 		result = op1 * op2
 	case "divide":
 		if op2 == 0 {
-			return []mcp.Content{mcp.TextContent{Type: "text", Text: "Division by zero"}}, isErrTrue
+			return []gomcp.Content{gomcp.TextContent{Type: "text", Text: "Division by zero"}}, isErrTrue
 		}
 		result = op1 / op2
 	default:
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: "Invalid operation"}}, isErrTrue
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: "Invalid operation"}}, isErrTrue
 	}
-	return []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("%f", result)}}, false
+	return []gomcp.Content{gomcp.TextContent{Type: "text", Text: fmt.Sprintf("%f", result)}}, false
 }
 
 // Use a test-specific sandbox directory
 const testFileSystemSandbox = "./fs_sandbox_test_server" // Renamed to avoid conflict
 
-var testFileSystemTool = mcp.Tool{
+var testFileSystemTool = gomcp.Tool{
 	Name:        "filesystem",
 	Description: fmt.Sprintf("Test FS Tool (Sandbox: %s)", testFileSystemSandbox),
-	InputSchema: mcp.ToolInputSchema{
+	InputSchema: gomcp.ToolInputSchema{
 		Type: "object",
-		Properties: map[string]mcp.PropertyDetail{
+		Properties: map[string]gomcp.PropertyDetail{
 			"operation": {Type: "string", Enum: []interface{}{"list_files", "read_file", "write_file"}},
 			"path":      {Type: "string"},
 			"content":   {Type: "string"},
@@ -200,16 +200,16 @@ var testFileSystemTool = mcp.Tool{
 }
 
 // Simplified filesystem handler for testing basic calls within a test sandbox
-func testFilesystemHandler(ctx context.Context, pt *mcp.ProgressToken, args map[string]interface{}) ([]mcp.Content, bool) {
+func testFilesystemHandler(ctx context.Context, pt *gomcp.ProgressToken, args map[string]interface{}) ([]gomcp.Content, bool) {
 	op, _ := args["operation"].(string)
 	relativePath, okPath := args["path"].(string)
 	if !okPath {
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: "Missing path argument"}}, true
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: "Missing path argument"}}, true
 	}
 
 	// Basic path validation for test sandbox
 	if strings.Contains(relativePath, "..") || filepath.IsAbs(relativePath) {
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: "Invalid path: contains '..' or is absolute"}}, true
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: "Invalid path: contains '..' or is absolute"}}, true
 	}
 	// Use filepath.Join which cleans the path
 	safePath := filepath.Join(testFileSystemSandbox, relativePath)
@@ -217,7 +217,7 @@ func testFilesystemHandler(ctx context.Context, pt *mcp.ProgressToken, args map[
 	absSandbox, _ := filepath.Abs(testFileSystemSandbox) // Ignore error for test simplicity
 	absSafePath, _ := filepath.Abs(safePath)
 	if !strings.HasPrefix(absSafePath, absSandbox) {
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("Path '%s' attempts to escape the sandbox directory '%s'", relativePath, testFileSystemSandbox)}}, true
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: fmt.Sprintf("Path '%s' attempts to escape the sandbox directory '%s'", relativePath, testFileSystemSandbox)}}, true
 	}
 
 	isErrTrue := true // Local variable for error flag pointer
@@ -230,9 +230,9 @@ func testFilesystemHandler(ctx context.Context, pt *mcp.ProgressToken, args map[
 			if os.IsNotExist(err) {
 				resultMap := map[string]interface{}{"files": []interface{}{}}
 				resultBytes, _ := json.Marshal(resultMap)
-				return []mcp.Content{mcp.TextContent{Type: "text", Text: string(resultBytes)}}, false
+				return []gomcp.Content{gomcp.TextContent{Type: "text", Text: string(resultBytes)}}, false
 			}
-			return []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("Failed to list files: %v", err)}}, isErrTrue
+			return []gomcp.Content{gomcp.TextContent{Type: "text", Text: fmt.Sprintf("Failed to list files: %v", err)}}, isErrTrue
 		}
 		var fileInfos []map[string]interface{}
 		for _, file := range files {
@@ -249,45 +249,45 @@ func testFilesystemHandler(ctx context.Context, pt *mcp.ProgressToken, args map[
 		// Return result as JSON string within TextContent
 		resultMap := map[string]interface{}{"files": fileInfos}
 		resultBytes, _ := json.Marshal(resultMap) // Ignore marshal error for test simplicity
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: string(resultBytes)}}, false
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: string(resultBytes)}}, false
 
 	case "write_file":
 		contentToWrite, okContent := args["content"].(string)
 		if !okContent {
-			return []mcp.Content{mcp.TextContent{Type: "text", Text: "Missing content argument for write_file"}}, isErrTrue
+			return []gomcp.Content{gomcp.TextContent{Type: "text", Text: "Missing content argument for write_file"}}, isErrTrue
 		}
 		parentDir := filepath.Dir(safePath)
 		if err := os.MkdirAll(parentDir, 0755); err != nil {
-			return []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("Failed to create parent dir: %v", err)}}, isErrTrue
+			return []gomcp.Content{gomcp.TextContent{Type: "text", Text: fmt.Sprintf("Failed to create parent dir: %v", err)}}, isErrTrue
 		}
 		err := os.WriteFile(safePath, []byte(contentToWrite), 0644)
 		if err != nil {
-			return []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("Failed to write file: %v", err)}}, isErrTrue
+			return []gomcp.Content{gomcp.TextContent{Type: "text", Text: fmt.Sprintf("Failed to write file: %v", err)}}, isErrTrue
 		}
 		// Return success message as JSON string within TextContent
 		resultMap := map[string]interface{}{"status": "success", "message": fmt.Sprintf("Successfully wrote %d bytes to '%s'", len(contentToWrite), relativePath)}
 		resultBytes, _ := json.Marshal(resultMap)
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: string(resultBytes)}}, false
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: string(resultBytes)}}, false
 
 	case "read_file":
 		contentBytes, err := os.ReadFile(safePath)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("File not found at path '%s'", relativePath)}}, isErrTrue
+				return []gomcp.Content{gomcp.TextContent{Type: "text", Text: fmt.Sprintf("File not found at path '%s'", relativePath)}}, isErrTrue
 			}
-			return []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("Failed to read file: %v", err)}}, isErrTrue
+			return []gomcp.Content{gomcp.TextContent{Type: "text", Text: fmt.Sprintf("Failed to read file: %v", err)}}, isErrTrue
 		}
 		// Return file content directly as TextContent
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: string(contentBytes)}}, false
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: string(contentBytes)}}, false
 
 	default:
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: fmt.Sprintf("Invalid operation '%s'", op)}}, isErrTrue
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: fmt.Sprintf("Invalid operation '%s'", op)}}, isErrTrue
 	}
 }
 
 // --- Test Function ---
 
-// TestExampleServerLogic runs the server logic using the refactored mcp.Server
+// TestExampleServerLogic runs the server logic using the refactored gomcp.Server
 // and simulates a basic client interaction using the Connection directly.
 func TestExampleServerLogic(t *testing.T) {
 	originalOutput := log.Writer()
@@ -313,12 +313,12 @@ func TestExampleServerLogic(t *testing.T) {
 	var serverWg sync.WaitGroup
 	var serverErr error // Declare serverErr in the outer scope
 
-	// Run server logic in a goroutine using the mcp.Server
+	// Run server logic in a goroutine using the gomcp.Server
 	serverWg.Add(1)
 	go func() {
 		defer serverWg.Done()
 		// Create server instance using the new constructor with the test connection
-		server := mcp.NewServerWithConnection(testServerName, serverConn)
+		server := gomcp.NewServerWithConnection(testServerName, serverConn)
 		if server == nil {
 			serverErr = fmt.Errorf("test setup: NewServerWithConnection returned nil")
 			return
@@ -364,15 +364,15 @@ func TestExampleServerLogic(t *testing.T) {
 
 		// 1. Send InitializeRequest, wait for InitializeResponse
 		log.Println("Client simulator: Sending InitializeRequest...")
-		clientCapabilities := mcp.ClientCapabilities{} // Basic capabilities
-		clientInfo := mcp.Implementation{Name: testClientName, Version: "0.1.0"}
-		initReqParams := mcp.InitializeRequestParams{
-			ProtocolVersion: mcp.CurrentProtocolVersion,
+		clientCapabilities := gomcp.ClientCapabilities{} // Basic capabilities
+		clientInfo := gomcp.Implementation{Name: testClientName, Version: "0.1.0"}
+		initReqParams := gomcp.InitializeRequestParams{
+			ProtocolVersion: gomcp.CurrentProtocolVersion,
 			Capabilities:    clientCapabilities,
 			ClientInfo:      clientInfo,
 		}
 		// Use the correct SendRequest signature: method, params -> returns id, err
-		initReqID, err := clientConn.SendRequest(mcp.MethodInitialize, initReqParams)
+		initReqID, err := clientConn.SendRequest(gomcp.MethodInitialize, initReqParams)
 		if err != nil {
 			return fmt.Errorf("client send initialize req failed: %w", err)
 		}
@@ -382,11 +382,11 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv initialize resp failed: %w", err)
 		}
-		var initResult mcp.InitializeResult
+		var initResult gomcp.InitializeResult
 		if initResp.Result == nil {
 			return fmt.Errorf("client received null result for Initialize")
 		}
-		if err := mcp.UnmarshalPayload(initResp.Result, &initResult); err != nil {
+		if err := gomcp.UnmarshalPayload(initResp.Result, &initResult); err != nil {
 			return fmt.Errorf("client failed to unmarshal InitializeResult: %w", err)
 		}
 		if initResult.ServerInfo.Name != testServerName {
@@ -396,17 +396,17 @@ func TestExampleServerLogic(t *testing.T) {
 
 		// 2. Send Initialized Notification
 		log.Println("Client simulator: Sending InitializedNotification...")
-		initParams := mcp.InitializedNotificationParams{}
-		if err := clientConn.SendNotification(mcp.MethodInitialized, initParams); err != nil {
+		initParams := gomcp.InitializedNotificationParams{}
+		if err := clientConn.SendNotification(gomcp.MethodInitialized, initParams); err != nil {
 			log.Printf("Client simulator warning: failed to send InitializedNotification: %v", err)
 			// Continue anyway for testing other interactions
 		}
 
 		// 3. Send ListToolsRequest, wait for ListToolsResponse
 		log.Println("Client simulator: Sending ListToolsRequest...")
-		listToolsReqParams := mcp.ListToolsRequestParams{}
+		listToolsReqParams := gomcp.ListToolsRequestParams{}
 		// Use the correct SendRequest signature
-		listToolsReqID, err := clientConn.SendRequest(mcp.MethodListTools, listToolsReqParams)
+		listToolsReqID, err := clientConn.SendRequest(gomcp.MethodListTools, listToolsReqParams)
 		if err != nil {
 			return fmt.Errorf("client send list tools req failed: %w", err)
 		}
@@ -416,11 +416,11 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv list tools resp failed: %w", err)
 		}
-		var listToolsResult mcp.ListToolsResult
+		var listToolsResult gomcp.ListToolsResult
 		if listToolsResp.Result == nil {
 			return fmt.Errorf("client received null result for ListTools")
 		}
-		if err := mcp.UnmarshalPayload(listToolsResp.Result, &listToolsResult); err != nil {
+		if err := gomcp.UnmarshalPayload(listToolsResp.Result, &listToolsResult); err != nil {
 			return fmt.Errorf("client failed to unmarshal ListToolsResult: %w", err)
 		}
 		log.Printf("Client simulator: Received ListToolsResponse with %d tools", len(listToolsResult.Tools))
@@ -432,9 +432,9 @@ func TestExampleServerLogic(t *testing.T) {
 		log.Println("Client simulator: Sending CallToolRequest (echo)...")
 		echoMsg := "hello server"
 		echoArgs := map[string]interface{}{"message": echoMsg}
-		echoReqParams := mcp.CallToolParams{Name: "echo", Arguments: echoArgs}
+		echoReqParams := gomcp.CallToolParams{Name: "echo", Arguments: echoArgs}
 		// Use the correct SendRequest signature
-		echoReqID, err := clientConn.SendRequest(mcp.MethodCallTool, echoReqParams)
+		echoReqID, err := clientConn.SendRequest(gomcp.MethodCallTool, echoReqParams)
 		if err != nil {
 			return fmt.Errorf("client send call tool(echo) req failed: %w", err)
 		}
@@ -444,7 +444,7 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv call tool(echo) resp failed: %w", err)
 		}
-		var echoResult mcp.CallToolResult
+		var echoResult gomcp.CallToolResult
 		if echoResp.Result == nil {
 			return fmt.Errorf("client received null result for CallTool(echo)")
 		}
@@ -464,7 +464,7 @@ func TestExampleServerLogic(t *testing.T) {
 			return fmt.Errorf("echo tool expected 1 content item, got %d", len(echoResult.Content))
 		}
 		// Check the concrete type after custom unmarshalling
-		if textContent, ok := echoResult.Content[0].(mcp.TextContent); !ok || textContent.Text != echoMsg {
+		if textContent, ok := echoResult.Content[0].(gomcp.TextContent); !ok || textContent.Text != echoMsg {
 			return fmt.Errorf("echo tool result mismatch: expected '%s', got '%+v' (type %T)", echoMsg, echoResult.Content[0], echoResult.Content[0])
 		}
 		log.Printf("Client simulator: Received CallToolResponse(echo) successfully.")
@@ -472,9 +472,9 @@ func TestExampleServerLogic(t *testing.T) {
 		// 5. Send CallToolRequest (calculator add), wait for CallToolResponse
 		log.Println("Client simulator: Sending CallToolRequest (calculator add)...")
 		calcArgs1 := map[string]interface{}{"operand1": 5.0, "operand2": 7.0, "operation": "add"}
-		calcReqParams1 := mcp.CallToolParams{Name: "calculator", Arguments: calcArgs1}
+		calcReqParams1 := gomcp.CallToolParams{Name: "calculator", Arguments: calcArgs1}
 		// Use the correct SendRequest signature
-		calcReqID1, err := clientConn.SendRequest(mcp.MethodCallTool, calcReqParams1)
+		calcReqID1, err := clientConn.SendRequest(gomcp.MethodCallTool, calcReqParams1)
 		if err != nil {
 			return fmt.Errorf("client send calc(add) req failed: %w", err)
 		}
@@ -482,7 +482,7 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv calc(add) resp failed: %w", err)
 		}
-		var calcResult1 mcp.CallToolResult
+		var calcResult1 gomcp.CallToolResult
 		if calcResp1.Result == nil {
 			return fmt.Errorf("client received null result for CallTool(add)")
 		}
@@ -500,9 +500,9 @@ func TestExampleServerLogic(t *testing.T) {
 		// 6. Send CallToolRequest (calculator divide by zero), wait for CallToolResponse (expecting tool error)
 		log.Println("Client simulator: Sending CallToolRequest (calculator div0)...")
 		calcArgs2 := map[string]interface{}{"operand1": 10.0, "operand2": 0.0, "operation": "divide"}
-		calcReqParams2 := mcp.CallToolParams{Name: "calculator", Arguments: calcArgs2}
+		calcReqParams2 := gomcp.CallToolParams{Name: "calculator", Arguments: calcArgs2}
 		// Use the correct SendRequest signature
-		calcReqID2, err := clientConn.SendRequest(mcp.MethodCallTool, calcReqParams2)
+		calcReqID2, err := clientConn.SendRequest(gomcp.MethodCallTool, calcReqParams2)
 		if err != nil {
 			return fmt.Errorf("client send calc(div0) req failed: %w", err)
 		}
@@ -510,7 +510,7 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv calc(div0) resp failed: %w", err)
 		}
-		var calcResult2 mcp.CallToolResult
+		var calcResult2 gomcp.CallToolResult
 		if calcResp2.Result == nil {
 			return fmt.Errorf("client received null result for CallTool(div0)")
 		}
@@ -527,9 +527,9 @@ func TestExampleServerLogic(t *testing.T) {
 		// 7. Send CallToolRequest (calculator missing arg), wait for CallToolResponse (expecting tool error)
 		log.Println("Client simulator: Sending CallToolRequest (calculator missing arg)...")
 		calcArgs3 := map[string]interface{}{"operand1": 10.0, "operation": "multiply"} // Missing operand2
-		calcReqParams3 := mcp.CallToolParams{Name: "calculator", Arguments: calcArgs3}
+		calcReqParams3 := gomcp.CallToolParams{Name: "calculator", Arguments: calcArgs3}
 		// Use the correct SendRequest signature
-		calcReqID3, err := clientConn.SendRequest(mcp.MethodCallTool, calcReqParams3)
+		calcReqID3, err := clientConn.SendRequest(gomcp.MethodCallTool, calcReqParams3)
 		if err != nil {
 			return fmt.Errorf("client send calc(missing arg) req failed: %w", err)
 		}
@@ -537,7 +537,7 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv calc(missing arg) resp failed: %w", err)
 		}
-		var calcResult3 mcp.CallToolResult
+		var calcResult3 gomcp.CallToolResult
 		if calcResp3.Result == nil {
 			return fmt.Errorf("client received null result for CallTool(missing arg)")
 		}
@@ -554,9 +554,9 @@ func TestExampleServerLogic(t *testing.T) {
 		// 8. Send CallToolRequest (filesystem list), wait for CallToolResponse
 		log.Println("Client simulator: Sending CallToolRequest (fs list)...")
 		fsArgsList := map[string]interface{}{"operation": "list_files", "path": "."}
-		fsListParams := mcp.CallToolParams{Name: "filesystem", Arguments: fsArgsList}
+		fsListParams := gomcp.CallToolParams{Name: "filesystem", Arguments: fsArgsList}
 		// Use the correct SendRequest signature
-		fsListReqID, err := clientConn.SendRequest(mcp.MethodCallTool, fsListParams)
+		fsListReqID, err := clientConn.SendRequest(gomcp.MethodCallTool, fsListParams)
 		if err != nil {
 			return fmt.Errorf("client send fs(list) req failed: %w", err)
 		}
@@ -564,7 +564,7 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv fs(list) resp failed: %w", err)
 		}
-		var fsListResult mcp.CallToolResult
+		var fsListResult gomcp.CallToolResult
 		if fsListResp.Result == nil {
 			return fmt.Errorf("client received null result for CallTool(fs list)")
 		}
@@ -584,9 +584,9 @@ func TestExampleServerLogic(t *testing.T) {
 		testFilePath := "test_dir/my_file.txt" // Relative to sandbox
 		testFileContent := "This is the content of the test file.\nIt has multiple lines."
 		fsArgsWrite := map[string]interface{}{"operation": "write_file", "path": testFilePath, "content": testFileContent}
-		fsWriteParams := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgsWrite}
+		fsWriteParams := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgsWrite}
 		// Use the correct SendRequest signature
-		fsWriteReqID, err := clientConn.SendRequest(mcp.MethodCallTool, fsWriteParams)
+		fsWriteReqID, err := clientConn.SendRequest(gomcp.MethodCallTool, fsWriteParams)
 		if err != nil {
 			return fmt.Errorf("client send fs(write) req failed: %w", err)
 		}
@@ -594,7 +594,7 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv fs(write) resp failed: %w", err)
 		}
-		var fsWriteResult mcp.CallToolResult
+		var fsWriteResult gomcp.CallToolResult
 		if fsWriteResp.Result == nil {
 			return fmt.Errorf("client received null result for CallTool(fs write)")
 		}
@@ -611,9 +611,9 @@ func TestExampleServerLogic(t *testing.T) {
 		// 10. Send CallToolRequest (filesystem read), wait for CallToolResponse
 		log.Println("Client simulator: Sending CallToolRequest (fs read)...")
 		fsArgsRead := map[string]interface{}{"operation": "read_file", "path": testFilePath}
-		fsReadParams := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgsRead}
+		fsReadParams := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgsRead}
 		// Use the correct SendRequest signature
-		fsReadReqID, err := clientConn.SendRequest(mcp.MethodCallTool, fsReadParams)
+		fsReadReqID, err := clientConn.SendRequest(gomcp.MethodCallTool, fsReadParams)
 		if err != nil {
 			return fmt.Errorf("client send fs(read) req failed: %w", err)
 		}
@@ -621,13 +621,13 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv fs(read) resp failed: %w", err)
 		}
-		var fsReadResult mcp.CallToolResult
+		var fsReadResult gomcp.CallToolResult
 		if fsReadResp.Result == nil {
 			return fmt.Errorf("client received null result for CallTool(fs read)")
 		}
 		// Use the custom UnmarshalJSON for CallToolResult
 		tempReadResultBytes, _ := json.Marshal(fsReadResp.Result)
-		var tempReadResult mcp.CallToolResult
+		var tempReadResult gomcp.CallToolResult
 		if err := json.Unmarshal(tempReadResultBytes, &tempReadResult); err != nil {
 			return fmt.Errorf("client failed to re-unmarshal CallToolResult(fs read): %w", err)
 		}
@@ -640,7 +640,7 @@ func TestExampleServerLogic(t *testing.T) {
 			return fmt.Errorf("fs(read) tool expected 1 content item, got %d", len(fsReadResult.Content))
 		}
 		// Check the concrete type after custom unmarshalling
-		if textContent, ok := fsReadResult.Content[0].(mcp.TextContent); !ok || textContent.Text != testFileContent {
+		if textContent, ok := fsReadResult.Content[0].(gomcp.TextContent); !ok || textContent.Text != testFileContent {
 			return fmt.Errorf("fs(read) content mismatch: expected %q, got '%+v' (type %T)", testFileContent, fsReadResult.Content[0], fsReadResult.Content[0])
 		}
 		log.Printf("Client simulator: Received CallToolResponse(fs read) successfully.")
@@ -648,9 +648,9 @@ func TestExampleServerLogic(t *testing.T) {
 		// 11. Send CallToolRequest (filesystem list dir), wait for CallToolResponse
 		log.Println("Client simulator: Sending CallToolRequest (fs list dir)...")
 		fsArgsListDir := map[string]interface{}{"operation": "list_files", "path": "test_dir"}
-		fsListDirParams := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgsListDir}
+		fsListDirParams := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgsListDir}
 		// Use the correct SendRequest signature
-		fsListDirReqID, err := clientConn.SendRequest(mcp.MethodCallTool, fsListDirParams)
+		fsListDirReqID, err := clientConn.SendRequest(gomcp.MethodCallTool, fsListDirParams)
 		if err != nil {
 			return fmt.Errorf("client send fs(list dir) req failed: %w", err)
 		}
@@ -658,13 +658,13 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv fs(list dir) resp failed: %w", err)
 		}
-		var fsListDirResult mcp.CallToolResult
+		var fsListDirResult gomcp.CallToolResult
 		if fsListDirResp.Result == nil {
 			return fmt.Errorf("client received null result for CallTool(fs list dir)")
 		}
 		// Use the custom UnmarshalJSON for CallToolResult
 		tempListDirResultBytes, _ := json.Marshal(fsListDirResp.Result)
-		var tempListDirResult mcp.CallToolResult
+		var tempListDirResult gomcp.CallToolResult
 		if err := json.Unmarshal(tempListDirResultBytes, &tempListDirResult); err != nil {
 			return fmt.Errorf("client failed to re-unmarshal CallToolResult(fs list dir): %w", err)
 		}
@@ -677,7 +677,7 @@ func TestExampleServerLogic(t *testing.T) {
 		if len(fsListDirResult.Content) != 1 {
 			return fmt.Errorf("fs(list dir) tool expected 1 content item, got %d", len(fsListDirResult.Content))
 		}
-		var listTextContent mcp.TextContent
+		var listTextContent gomcp.TextContent
 		listBytes, _ := json.Marshal(fsListDirResult.Content[0])
 		if err := json.Unmarshal(listBytes, &listTextContent); err != nil || listTextContent.Type != "text" {
 			return fmt.Errorf("fs(list dir) result content[0] was not TextContent: %T, err: %v", fsListDirResult.Content[0], err)
@@ -690,9 +690,9 @@ func TestExampleServerLogic(t *testing.T) {
 		// 12. Send CallToolRequest (filesystem read non-existent), wait for CallToolResponse (expecting tool error)
 		log.Println("Client simulator: Sending CallToolRequest (fs read non-existent)...")
 		fsArgsReadNF := map[string]interface{}{"operation": "read_file", "path": "non_existent_file.txt"}
-		fsReadNFParams := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgsReadNF}
+		fsReadNFParams := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgsReadNF}
 		// Use the correct SendRequest signature
-		fsReadNFReqID, err := clientConn.SendRequest(mcp.MethodCallTool, fsReadNFParams)
+		fsReadNFReqID, err := clientConn.SendRequest(gomcp.MethodCallTool, fsReadNFParams)
 		if err != nil {
 			return fmt.Errorf("client send fs(read nf) req failed: %w", err)
 		}
@@ -700,7 +700,7 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv fs(read nf) resp failed: %w", err)
 		}
-		var fsReadNFResult mcp.CallToolResult
+		var fsReadNFResult gomcp.CallToolResult
 		if fsReadNFResp.Result == nil {
 			return fmt.Errorf("client received null result for CallTool(fs read nf)")
 		}
@@ -717,9 +717,9 @@ func TestExampleServerLogic(t *testing.T) {
 		// 13. Send CallToolRequest (filesystem write outside), wait for CallToolResponse (expecting tool error)
 		log.Println("Client simulator: Sending CallToolRequest (fs write outside)...")
 		fsArgsWriteOutside := map[string]interface{}{"operation": "write_file", "path": "../outside_sandbox.txt", "content": "attempt escape"}
-		fsWriteOutsideParams := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgsWriteOutside}
+		fsWriteOutsideParams := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgsWriteOutside}
 		// Use the correct SendRequest signature
-		fsWriteOutsideReqID, err := clientConn.SendRequest(mcp.MethodCallTool, fsWriteOutsideParams)
+		fsWriteOutsideReqID, err := clientConn.SendRequest(gomcp.MethodCallTool, fsWriteOutsideParams)
 		if err != nil {
 			return fmt.Errorf("client send fs(write outside) req failed: %w", err)
 		}
@@ -727,7 +727,7 @@ func TestExampleServerLogic(t *testing.T) {
 		if err != nil {
 			return fmt.Errorf("client recv fs(write outside) resp failed: %w", err)
 		}
-		var fsWriteOutsideResult mcp.CallToolResult
+		var fsWriteOutsideResult gomcp.CallToolResult
 		if fsWriteOutsideResp.Result == nil {
 			return fmt.Errorf("client received null result for CallTool(fs write outside)")
 		}
@@ -744,7 +744,7 @@ func TestExampleServerLogic(t *testing.T) {
 		// 14. Send Ping request, wait for Ping response
 		log.Println("Client simulator: Sending PingRequest...")
 		// Use the correct SendRequest signature
-		pingReqID, err := clientConn.SendRequest(mcp.MethodPing, nil) // Ping has nil params
+		pingReqID, err := clientConn.SendRequest(gomcp.MethodPing, nil) // Ping has nil params
 		if err != nil {
 			return fmt.Errorf("client send ping req failed: %w", err)
 		}

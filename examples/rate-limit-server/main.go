@@ -11,7 +11,7 @@ import (
 	// "sync" // No longer needed
 	// "time" // No longer needed
 
-	mcp "github.com/localrivet/gomcp"
+	"github.com/localrivet/gomcp"
 	"golang.org/x/time/rate"
 )
 
@@ -23,18 +23,18 @@ const requestsPerSecond = 2
 const burstLimit = 4
 
 // Define the limited echo tool
-var limitedEchoTool = mcp.Tool{ // Use new Tool struct
+var limitedEchoTool = gomcp.Tool{ // Use new Tool struct
 	Name:        "limited-echo",
 	Description: "Echoes back the provided message, but is rate limited.",
-	InputSchema: mcp.ToolInputSchema{
+	InputSchema: gomcp.ToolInputSchema{
 		Type: "object",
-		Properties: map[string]mcp.PropertyDetail{
+		Properties: map[string]gomcp.PropertyDetail{
 			"message": {Type: "string", Description: "The message to echo."},
 		},
 		Required: []string{"message"},
 	},
 	// OutputSchema removed
-	// Annotations: mcp.ToolAnnotations{}, // Optional
+	// Annotations: gomcp.ToolAnnotations{}, // Optional
 }
 
 // Global rate limiter (for simplicity in this example)
@@ -44,13 +44,13 @@ var globalLimiter = rate.NewLimiter(rate.Limit(requestsPerSecond), burstLimit)
 // limitedEchoHandler implements the logic for the rate-limited echo tool.
 // It checks the rate limit before processing.
 // It now matches the ToolHandlerFunc signature.
-func limitedEchoHandler(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) ([]mcp.Content, bool) {
+func limitedEchoHandler(ctx context.Context, progressToken *gomcp.ProgressToken, arguments map[string]interface{}) ([]gomcp.Content, bool) {
 	log.Printf("Executing limited-echo tool with args: %v", arguments)
 	// Could use ctx for cancellation checks if needed
 
 	// Helper to create error response content
-	newErrorContent := func(msg string) []mcp.Content {
-		return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}
+	newErrorContent := func(msg string) []gomcp.Content {
+		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: msg}}
 	}
 
 	// --- Rate Limit Check ---
@@ -74,8 +74,8 @@ func limitedEchoHandler(ctx context.Context, progressToken *mcp.ProgressToken, a
 	}
 
 	log.Printf("Rate-Limited Echoing message: %s", messageStr)
-	successContent := mcp.TextContent{Type: "text", Text: messageStr}
-	return []mcp.Content{successContent}, false // isError = false
+	successContent := gomcp.TextContent{Type: "text", Text: messageStr}
+	return []gomcp.Content{successContent}, false // isError = false
 	// --- End limited-echo tool execution ---
 }
 
@@ -98,7 +98,7 @@ func main() {
 
 	// Create a new server instance using the library
 	serverName := "GoRateLimitServer-Refactored"
-	server := mcp.NewServer(serverName) // Uses stdio connection
+	server := gomcp.NewServer(serverName) // Uses stdio connection
 
 	// Register the tool and its handler
 	err := server.RegisterTool(limitedEchoTool, limitedEchoHandler)

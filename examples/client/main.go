@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	mcp "github.com/localrivet/gomcp"
+	"github.com/localrivet/gomcp"
 	// "github.com/google/uuid" // For progress token generation if needed
 )
 
@@ -29,7 +29,7 @@ func StringPtr(s string) *string {
 // runClientLogic connects the provided client and executes the example tool calls sequence.
 // Returns an error if any fatal step fails (connection, getting tool defs).
 // Tool usage errors are logged but do not cause this function to return an error.
-func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
+func runClientLogic(client *gomcp.Client) error { // Accept *gomcp.Client
 	// Connect and perform initialization
 	log.Println("Connecting to server...")
 	err := client.Connect() // Use the provided client
@@ -46,7 +46,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 
 	// --- Request Tool Definitions ---
 	log.Println("\n--- Requesting Tool Definitions ---")
-	listParams := mcp.ListToolsRequestParams{} // No pagination/filtering in this example
+	listParams := gomcp.ListToolsRequestParams{} // No pagination/filtering in this example
 	toolsResult, err := client.ListTools(listParams)
 	if err != nil {
 		// Treat failure to get definitions as fatal for this example client
@@ -72,7 +72,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 		log.Println("\n--- Testing Echo Tool ---")
 		echoMessage := "Hello from Go MCP Client!"
 		args := map[string]interface{}{"message": echoMessage}
-		callParams := mcp.CallToolParams{Name: "echo", Arguments: args}
+		callParams := gomcp.CallToolParams{Name: "echo", Arguments: args}
 		// Call tool without requesting progress
 		result, err := client.CallTool(callParams, nil)
 		if err != nil {
@@ -84,7 +84,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 			// Extract text from the first TextContent element
 			if len(result.Content) > 0 {
 				// Use type assertion on the Content interface
-				if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+				if textContent, ok := result.Content[0].(gomcp.TextContent); ok {
 					log.Printf("  Extracted Text: %s", textContent.Text)
 					if textContent.Text != echoMessage {
 						log.Printf("WARNING: Echo result '%s' did not match sent message '%s'", textContent.Text, echoMessage)
@@ -113,7 +113,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 		log.Println("\n--- Testing Calculator Tool ---")
 		// Example 1: Add
 		calcArgs1 := map[string]interface{}{"operand1": 5.0, "operand2": 7.0, "operation": "add"}
-		calcParams1 := mcp.CallToolParams{Name: "calculator", Arguments: calcArgs1}
+		calcParams1 := gomcp.CallToolParams{Name: "calculator", Arguments: calcArgs1}
 		result1, err1 := client.CallTool(calcParams1, nil)
 		if err1 != nil {
 			log.Printf("ERROR: Failed to use 'calculator' tool (add): %v", err1)
@@ -121,7 +121,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 			log.Printf("Calculator(add) Content: %+v", result1.Content)
 			// Extract text, parse as float
 			if len(result1.Content) > 0 {
-				if textContent, ok := result1.Content[0].(mcp.TextContent); ok {
+				if textContent, ok := result1.Content[0].(gomcp.TextContent); ok {
 					var resNum float64
 					// Use fmt.Sscanf for safer parsing
 					if _, err := fmt.Sscanf(textContent.Text, "%f", &resNum); err != nil || resNum != 12.0 {
@@ -138,7 +138,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 		}
 		// Example 2: Divide by zero (expecting error in result)
 		calcArgs2 := map[string]interface{}{"operand1": 10.0, "operand2": 0.0, "operation": "divide"}
-		calcParams2 := mcp.CallToolParams{Name: "calculator", Arguments: calcArgs2}
+		calcParams2 := gomcp.CallToolParams{Name: "calculator", Arguments: calcArgs2}
 		result2, err2 := client.CallTool(calcParams2, nil)
 		if err2 == nil {
 			// Check IsError flag in the result
@@ -146,7 +146,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 				log.Printf("Calculator(divide by zero) failed as expected (IsError=true): Content=%+v", result2.Content)
 				// Optionally check the error message in content
 				if len(result2.Content) > 0 {
-					if textContent, ok := result2.Content[0].(mcp.TextContent); ok {
+					if textContent, ok := result2.Content[0].(gomcp.TextContent); ok {
 						if !strings.Contains(textContent.Text, "Division by zero") {
 							log.Printf("WARNING: Calculator(divide by zero) error message unexpected: %s", textContent.Text)
 						}
@@ -162,13 +162,13 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 
 		// Example 3: Missing argument (expecting error in result)
 		calcArgs3 := map[string]interface{}{"operand1": 10.0, "operation": "multiply"}
-		calcParams3 := mcp.CallToolParams{Name: "calculator", Arguments: calcArgs3}
+		calcParams3 := gomcp.CallToolParams{Name: "calculator", Arguments: calcArgs3}
 		result3, err3 := client.CallTool(calcParams3, nil)
 		if err3 == nil {
 			if result3.IsError != nil && *result3.IsError {
 				log.Printf("Calculator(missing arg) failed as expected (IsError=true): Content=%+v", result3.Content)
 				if len(result3.Content) > 0 {
-					if textContent, ok := result3.Content[0].(mcp.TextContent); ok {
+					if textContent, ok := result3.Content[0].(gomcp.TextContent); ok {
 						if !strings.Contains(textContent.Text, "Missing required arguments") {
 							log.Printf("WARNING: Calculator(missing arg) error message unexpected: %s", textContent.Text)
 						}
@@ -201,7 +201,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 
 		// Example 1: List root
 		fsArgs1 := map[string]interface{}{"operation": "list_files", "path": "."}
-		fsParams1 := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgs1}
+		fsParams1 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs1}
 		fsResult1, fsErr1 := client.CallTool(fsParams1, nil)
 		if fsErr1 != nil {
 			log.Printf("ERROR: Failed to use '%s' tool (list_files .): %v", fsToolName, fsErr1)
@@ -209,7 +209,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 			log.Printf("Filesystem(list .) Result Content: %+v", fsResult1.Content)
 			// Assuming the result is JSON text, try to unmarshal and print nicely
 			if len(fsResult1.Content) > 0 {
-				if textContent, ok := fsResult1.Content[0].(mcp.TextContent); ok {
+				if textContent, ok := fsResult1.Content[0].(gomcp.TextContent); ok {
 					var listData interface{}
 					if err := json.Unmarshal([]byte(textContent.Text), &listData); err == nil {
 						prettyJSON, _ := json.MarshalIndent(listData, "  ", "  ")
@@ -223,7 +223,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 
 		// Example 2: Write file
 		fsArgs2 := map[string]interface{}{"operation": "write_file", "path": testFilePath, "content": testFileContent}
-		fsParams2 := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgs2}
+		fsParams2 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs2}
 		fsResult2, fsErr2 := client.CallTool(fsParams2, nil)
 		if fsErr2 != nil {
 			log.Printf("ERROR: Failed to use '%s' tool (write_file): %v", fsToolName, fsErr2)
@@ -233,7 +233,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 
 		// Example 3: Read file back
 		fsArgs3 := map[string]interface{}{"operation": "read_file", "path": testFilePath}
-		fsParams3 := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgs3}
+		fsParams3 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs3}
 		fsResult3, fsErr3 := client.CallTool(fsParams3, nil)
 		if fsErr3 != nil {
 			log.Printf("ERROR: Failed to use '%s' tool (read_file): %v", fsToolName, fsErr3)
@@ -241,7 +241,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 			log.Printf("Filesystem(read) Content: %+v", fsResult3.Content)
 			// Extract text content
 			if len(fsResult3.Content) > 0 {
-				if textContent, ok := fsResult3.Content[0].(mcp.TextContent); ok {
+				if textContent, ok := fsResult3.Content[0].(gomcp.TextContent); ok {
 					log.Printf("  Extracted Content: %q", textContent.Text) // Quote to see newlines
 					if textContent.Text != testFileContent {
 						log.Printf("WARNING: Filesystem read content mismatch!")
@@ -258,7 +258,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 
 		// Example 4: List dir
 		fsArgs4 := map[string]interface{}{"operation": "list_files", "path": "test_dir"}
-		fsParams4 := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgs4}
+		fsParams4 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs4}
 		fsResult4, fsErr4 := client.CallTool(fsParams4, nil)
 		if fsErr4 != nil {
 			log.Printf("ERROR: Failed to use '%s' tool (list_files test_dir): %v", fsToolName, fsErr4)
@@ -266,7 +266,7 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 			log.Printf("Filesystem(list test_dir) Result Content: %+v", fsResult4.Content)
 			// Assuming the result is JSON text, try to unmarshal and print nicely
 			if len(fsResult4.Content) > 0 {
-				if textContent, ok := fsResult4.Content[0].(mcp.TextContent); ok {
+				if textContent, ok := fsResult4.Content[0].(gomcp.TextContent); ok {
 					var listData interface{}
 					if err := json.Unmarshal([]byte(textContent.Text), &listData); err == nil {
 						prettyJSON, _ := json.MarshalIndent(listData, "  ", "  ")
@@ -280,13 +280,13 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 
 		// Example 5: Read non-existent (expecting tool error)
 		fsArgs5 := map[string]interface{}{"operation": "read_file", "path": "non_existent_file.txt"}
-		fsParams5 := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgs5}
+		fsParams5 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs5}
 		result5, fsErr5 := client.CallTool(fsParams5, nil)
 		if fsErr5 == nil {
 			if result5.IsError != nil && *result5.IsError {
 				log.Printf("Filesystem(read non-existent) failed as expected (IsError=true): Content=%+v", result5.Content)
 				if len(result5.Content) > 0 {
-					if textContent, ok := result5.Content[0].(mcp.TextContent); ok {
+					if textContent, ok := result5.Content[0].(gomcp.TextContent); ok {
 						if !strings.Contains(textContent.Text, "not found") {
 							log.Printf("WARNING: Filesystem(read non-existent) error message unexpected: %s", textContent.Text)
 						}
@@ -301,13 +301,13 @@ func runClientLogic(client *mcp.Client) error { // Accept *mcp.Client
 
 		// Example 6: Write outside sandbox (expecting tool error)
 		fsArgs6 := map[string]interface{}{"operation": "write_file", "path": "../outside_sandbox.txt", "content": "attempt escape"}
-		fsParams6 := mcp.CallToolParams{Name: fsToolName, Arguments: fsArgs6}
+		fsParams6 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs6}
 		result6, fsErr6 := client.CallTool(fsParams6, nil)
 		if fsErr6 == nil {
 			if result6.IsError != nil && *result6.IsError {
 				log.Printf("Filesystem(write outside) failed as expected (IsError=true): Content=%+v", result6.Content)
 				if len(result6.Content) > 0 {
-					if textContent, ok := result6.Content[0].(mcp.TextContent); ok {
+					if textContent, ok := result6.Content[0].(gomcp.TextContent); ok {
 						if !strings.Contains(textContent.Text, "escape the sandbox") {
 							log.Printf("WARNING: Filesystem(write outside) error message unexpected: %s", textContent.Text)
 						}
@@ -347,7 +347,7 @@ func main() {
 	log.Println("Starting Example MCP Client...")
 
 	clientName := "GoExampleClient-Refactored"
-	client := mcp.NewClient(clientName) // Create client in main
+	client := gomcp.NewClient(clientName) // Create client in main
 
 	// Run the main client logic
 	err := runClientLogic(client) // Pass client instance

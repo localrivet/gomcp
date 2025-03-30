@@ -1,7 +1,7 @@
-// Package mcp provides the core implementation for the Model Context Protocol (MCP)
+// package gomcp provides the core implementation for the Model Context Protocol (MCP)
 // in Go. It defines message structures, transport mechanisms (currently stdio),
 // and basic client/server logic for establishing connections via the MCP handshake.
-package mcp
+package gomcp
 
 import (
 	"encoding/json"

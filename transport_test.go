@@ -1,4 +1,4 @@
-package mcp
+package gomcp
 
 import (
 	"bytes"
@@ -109,7 +109,7 @@ func TestReceiveRawMessage(t *testing.T) { // Renamed
 
 	conn := NewConnection(strings.NewReader(inputJson), &bytes.Buffer{}) // Writer not used
 
-	// ReceiveMessage currently tries to parse into mcp.Message, which will fail
+	// ReceiveMessage currently tries to parse into gomcp.Message, which will fail
 	// for a standard JSON-RPC response.
 	// ReceiveRawMessage should return the raw bytes.
 	rawBytes, err := conn.ReceiveRawMessage() // Use ReceiveRawMessage

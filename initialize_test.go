@@ -1,5 +1,5 @@
 // initialize_test.go (Refactored)
-package mcp
+package gomcp
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 	// "time" // No longer needed for timeouts in these specific tests
-	// Use blank import for mcp package if only types/constants are needed directly in test
+	// Use blank import for gomcp package if only types/constants are needed directly in test
 	// _ "github.com/localrivet/gomcp"
 )
 

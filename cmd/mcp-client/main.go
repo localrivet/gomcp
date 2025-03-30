@@ -4,7 +4,8 @@ import (
 	"log"
 	"os"
 
-	mcp "github.com/localrivet/gomcp" // Import the root package
+	"github.com/localrivet/gomcp"
+	// Import the root package
 )
 
 func main() {
@@ -15,7 +16,7 @@ func main() {
 	log.Println("Starting MCP Client...")
 
 	// Create a client
-	client := mcp.NewClient("GoExampleClient")
+	client := gomcp.NewClient("GoExampleClient")
 
 	// Connect (performs handshake)
 	err := client.Connect()

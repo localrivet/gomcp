@@ -9,14 +9,15 @@ import (
 	"sync"
 	"time"
 
-	mcp "github.com/localrivet/gomcp" // Import root package
+	"github.com/localrivet/gomcp"
+	// Import root package
 )
 
 // useTool sends a CallToolRequest using the client and processes the response.
 // It returns the result Content slice or an error.
-func useTool(client *mcp.Client, toolName string, args map[string]interface{}) ([]mcp.Content, error) {
+func useTool(client *gomcp.Client, toolName string, args map[string]interface{}) ([]gomcp.Content, error) {
 	// log.Printf("Sending CallToolRequest for tool '%s'...", toolName) // Reduce log noise for rapid requests
-	reqParams := mcp.CallToolParams{
+	reqParams := gomcp.CallToolParams{
 		Name:      toolName,
 		Arguments: args,
 	}
@@ -38,7 +39,7 @@ func useTool(client *mcp.Client, toolName string, args map[string]interface{}) (
 	if result.IsError != nil && *result.IsError {
 		errMsg := fmt.Sprintf("Tool '%s' execution reported an error", toolName)
 		if len(result.Content) > 0 {
-			if textContent, ok := result.Content[0].(mcp.TextContent); ok {
+			if textContent, ok := result.Content[0].(gomcp.TextContent); ok {
 				errMsg = fmt.Sprintf("Tool '%s' failed: %s", toolName, textContent.Text)
 			} else {
 				errMsg = fmt.Sprintf("Tool '%s' failed with non-text error content: %T", toolName, result.Content[0])
@@ -55,7 +56,7 @@ func useTool(client *mcp.Client, toolName string, args map[string]interface{}) (
 // runClientLogic creates a client, connects, and tests the rate limited tool.
 func runClientLogic(clientName string) error {
 	// Create a new client instance
-	client := mcp.NewClient(clientName)
+	client := gomcp.NewClient(clientName)
 
 	// Connect and perform initialization
 	log.Println("Connecting to server...")

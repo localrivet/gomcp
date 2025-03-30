@@ -4,44 +4,45 @@ package main
 import (
 	"context"       // Needed for handler signature
 	"encoding/json" // For logging structured billing event
+
 	// Needed for handler error messages
 	"log"
 	"os"
 	"time" // For timestamp
 
-	mcp "github.com/localrivet/gomcp"
+	"github.com/localrivet/gomcp"
 )
 
 // For this simple example, the expected API key is hardcoded.
 const expectedApiKey = "test-key-123"
 
 // Define the chargeable echo tool
-var chargeableEchoTool = mcp.Tool{ // Use new Tool struct
+var chargeableEchoTool = gomcp.Tool{ // Use new Tool struct
 	Name:        "chargeable-echo",
 	Description: "Echoes back the provided message (Simulates Billing/Tracking).",
-	InputSchema: mcp.ToolInputSchema{
+	InputSchema: gomcp.ToolInputSchema{
 		Type: "object",
-		Properties: map[string]mcp.PropertyDetail{
+		Properties: map[string]gomcp.PropertyDetail{
 			"message": {Type: "string", Description: "The message to echo."},
 		},
 		Required: []string{"message"},
 	},
 	// OutputSchema removed
-	// Annotations: mcp.ToolAnnotations{}, // Optional
+	// Annotations: gomcp.ToolAnnotations{}, // Optional
 }
 
 // chargeableEchoHandlerFactory creates a handler closure that captures the apiKey.
 // This allows the handler to access the validated API key without needing it passed
 // explicitly on every call within the server's Run loop.
-func chargeableEchoHandlerFactory(apiKey string) mcp.ToolHandlerFunc {
+func chargeableEchoHandlerFactory(apiKey string) gomcp.ToolHandlerFunc {
 	// Return a function matching the ToolHandlerFunc signature
-	return func(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) (content []mcp.Content, isError bool) {
+	return func(ctx context.Context, progressToken *gomcp.ProgressToken, arguments map[string]interface{}) (content []gomcp.Content, isError bool) {
 		log.Printf("Executing chargeable-echo tool with args: %v", arguments)
 		// Could use ctx for cancellation checks if needed
 
 		// Helper to create error response content
-		newErrorContent := func(msg string) []mcp.Content {
-			return []mcp.Content{mcp.TextContent{Type: "text", Text: msg}}
+		newErrorContent := func(msg string) []gomcp.Content {
+			return []gomcp.Content{gomcp.TextContent{Type: "text", Text: msg}}
 		}
 
 		// --- Simulate Billing/Tracking Event ---
@@ -68,8 +69,8 @@ func chargeableEchoHandlerFactory(apiKey string) mcp.ToolHandlerFunc {
 		}
 
 		log.Printf("Chargeable Echoing message: %s", messageStr)
-		successContent := mcp.TextContent{Type: "text", Text: messageStr}
-		return []mcp.Content{successContent}, false // isError = false
+		successContent := gomcp.TextContent{Type: "text", Text: messageStr}
+		return []gomcp.Content{successContent}, false // isError = false
 		// --- End chargeable-echo tool execution ---
 	}
 }
@@ -93,7 +94,7 @@ func main() {
 
 	// Create a new server instance using the library
 	serverName := "GoBillingServer-Refactored"
-	server := mcp.NewServer(serverName) // Uses stdio connection
+	server := gomcp.NewServer(serverName) // Uses stdio connection
 
 	// Create the handler closure, capturing the validated apiKey
 	handler := chargeableEchoHandlerFactory(apiKey)

@@ -51,17 +51,17 @@ import (
 	"log"
 	"os"
 
-	mcp "github.com/localrivet/gomcp"
+	"github.com/localrivet/gomcp"
 )
 
 // Example tool handler
-func myToolHandler(ctx context.Context, progressToken *mcp.ProgressToken, arguments map[string]interface{}) (content []mcp.Content, isError bool) {
+func myToolHandler(ctx context.Context, progressToken *gomcp.ProgressToken, arguments map[string]interface{}) (content []gomcp.Content, isError bool) {
 	log.Printf("Executing myTool with args: %v", arguments)
 	// Check for cancellation:
 	// if ctx.Err() != nil { return nil, true /* or specific error content */ }
 	// Report progress (if token provided):
 	// if progressToken != nil { server.SendProgress(...) }
-	return []mcp.Content{mcp.TextContent{Type: "text", Text: "Tool executed!"}}, false
+	return []gomcp.Content{gomcp.TextContent{Type: "text", Text: "Tool executed!"}}, false
 }
 
 func main() {
@@ -69,13 +69,13 @@ func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 	log.Println("Starting My MCP Server...")
 
-	server := mcp.NewServer("MyGoMCPServer")
+	server := gomcp.NewServer("MyGoMCPServer")
 
 	// Register tools
-	myTool := mcp.Tool{
+	myTool := gomcp.Tool{
 		Name:        "my_tool",
 		Description: "A simple example tool",
-		InputSchema: mcp.ToolInputSchema{Type: "object"}, // Define schema as needed
+		InputSchema: gomcp.ToolInputSchema{Type: "object"}, // Define schema as needed
 	}
 	err := server.RegisterTool(myTool, myToolHandler)
 	if err != nil {
@@ -103,7 +103,7 @@ import (
 	"os"
 	"time" // For Ping timeout
 
-	mcp "github.com/localrivet/gomcp"
+	"github.com/localrivet/gomcp"
 )
 
 func main() {
@@ -111,7 +111,7 @@ func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 	log.Println("Starting My MCP Client...")
 
-	client := mcp.NewClient("MyGoMCPClient")
+	client := gomcp.NewClient("MyGoMCPClient")
 
 	// Connect and perform initialization
 	err := client.Connect()
@@ -121,7 +121,7 @@ func main() {
 	log.Printf("Client connected successfully to server: %s", client.ServerName())
 
 	// Example: List tools
-	listParams := mcp.ListToolsRequestParams{} // Add cursor if needed
+	listParams := gomcp.ListToolsRequestParams{} // Add cursor if needed
 	toolsResult, err := client.ListTools(listParams)
 	if err != nil {
 		log.Printf("Error listing tools: %v", err)
@@ -133,10 +133,10 @@ func main() {
 	}
 
 	// Example: Call a tool (assuming 'my_tool' exists)
-	callParams := mcp.CallToolParams{
+	callParams := gomcp.CallToolParams{
 		Name:      "my_tool",
 		Arguments: map[string]interface{}{"input": "hello"},
-		// Meta: &mcp.RequestMeta{ ProgressToken: &token }, // Optional progress
+		// Meta: &gomcp.RequestMeta{ ProgressToken: &token }, // Optional progress
 	}
 	callResult, err := client.CallTool(callParams, nil) // Pass nil for no progress token
 	if err != nil {
@@ -165,20 +165,17 @@ func main() {
 
 ## Example Executables
 
-The `cmd/` directory contains simple example programs demonstrating the use of the library:
+The `examples/` directory contains elaborate client/server pairs demonstrating specific features like tool usage. These examples provide a more comprehensive demonstration of the library's capabilities.
 
-- `cmd/mcp-server`: A basic server that performs initialization. _(Needs update)_
-- `cmd/mcp-client`: A basic client that performs initialization. _(Needs update)_
+**Note:** The simple examples in the `cmd/` directory (`cmd/mcp-server` and `cmd/mcp-client`) are basic demonstrations that only perform initialization. These may be moved to the `examples/` directory or removed in future updates, as the examples in the `examples/` directory provide more comprehensive demonstrations.
 
-You can test the initialization sequence by running them connected via a pipe:
+If you want to test a basic initialization sequence, you can run:
 
 ```bash
 go run ./cmd/mcp-server/main.go | go run ./cmd/mcp-client/main.go
 ```
 
 _(Check the log output on stderr for details)_
-
-The `examples/` directory contains more elaborate client/server pairs demonstrating specific features like tool usage, but these also **require updates** to align with the latest library changes.
 
 ## Documentation
 
