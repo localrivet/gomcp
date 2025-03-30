@@ -29,6 +29,9 @@ go.work.sum
 # Local TODO file
 TODO.md
 
+# Session context summary file
+SESSION_CONTEXT_SUMMARY.md
+
 # Example binaries: Ignore everything in example subdirs...
 examples/*/*
 # ...then explicitly un-ignore source files and READMEs
