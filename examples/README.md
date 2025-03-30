@@ -93,6 +93,8 @@ This example demonstrates using a SQLite database to store and query user data.
 go run ./examples/sqlite/server/main.go | go run ./examples/sqlite/client/main.go
 ```
 
+**Note:** Due to limitations in how stdio is handled in terminal piping, this example might not work perfectly when using the pipe operator. If you encounter issues, try running the server and client in separate terminals and manually copying the JSON messages between them.
+
 The server provides the following tools:
 
 - `getUserById`: Get a user by their ID
