@@ -8,7 +8,7 @@ nav_order: 1
 
 Welcome to the documentation for `gomcp`, a Go library for implementing the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
 
-This library provides the building blocks for creating MCP servers (tool providers) and clients (tool consumers) that communicate over standard I/O using newline-delimited JSON.
+This library provides the building blocks for creating MCP servers (tool providers) and clients (tool consumers). While originally focused on standard I/O, it now supports multiple transport mechanisms like SSE.
 
 ## Getting Started
 

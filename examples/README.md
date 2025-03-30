@@ -93,8 +93,6 @@ This example demonstrates using a SQLite database to store and query user data.
 go run ./examples/sqlite/server/main.go | go run ./examples/sqlite/client/main.go
 ```
 
-**Note:** Due to limitations in how stdio is handled in terminal piping, this example might not work perfectly when using the pipe operator. If you encounter issues, try running the server and client in separate terminals and manually copying the JSON messages between them.
-
 The server provides the following tools:
 
 - `getUserById`: Get a user by their ID
@@ -120,7 +118,7 @@ A `Dockerfile` is provided in `examples/basic/server/` to build a container imag
 
 ```bash
 # From the repository root directory
-docker compose build mcp-server
+docker compose build gomcp-server
 # Or using docker build directly:
 # docker build -t gomcp-server-example -f examples/basic/server/Dockerfile .
 ```
@@ -130,7 +128,7 @@ docker compose build mcp-server
 Since the server uses stdio, you need to run it interactively.
 
 ```bash
-docker run -i --rm --name my_mcp_server gomcp-server-example
+docker run -i --rm --name my_gomcp_server gomcp-server-example
 ```
 
 **Interact with the container (Requires separate terminal):**
@@ -139,7 +137,7 @@ You can run a client locally and pipe its output to the container. _Note: Piping
 
 ```bash
 # Example: Run the standard client and pipe to the running container
-go run ./examples/basic/client/main.go | docker exec -i my_mcp_server sh -c 'cat > /dev/stdin'
+go run ./examples/basic/client/main.go | docker exec -i my_gomcp_server sh -c 'cat > /dev/stdin'
 ```
 
 You will see the server logs within the `docker run` terminal, and the client logs in the terminal where you ran the client.

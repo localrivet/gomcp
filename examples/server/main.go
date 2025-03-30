@@ -1,129 +1,139 @@
 // examples/server/main.go (Refactored)
 // This is the main file for the example MCP server.
-// It demonstrates how to use the refactored gomcp.Server from the library:
-// 1. Create an gomcp.Server.
-// 2. Define tool logic as functions matching gomcp.ToolHandlerFunc.
-// 3. Register tools using server.RegisterTool.
-// 4. Run the server using server.Run(), which handles handshake and message dispatch.
 package main
 
 import (
-	// Keep fmt for error messages if needed by tool handlers
 	"context"
+	// "encoding/json" // No longer needed here
+	// "errors"        // No longer needed here
+	// "fmt"           // No longer needed here
+	// "io"            // No longer needed here
 	"log"
 	"os"
 
-	"github.com/localrivet/gomcp"
-	// "strings" // No longer needed here
-	// Import root package
+	// "os/signal" // No longer needed here
+	// "strings"   // No longer needed here
+	// "sync"      // No longer needed here
+	// "time" // No longer needed here
+
+	// Import new packages
+	"github.com/localrivet/gomcp/protocol"
+	"github.com/localrivet/gomcp/server"
+
+	// "github.com/localrivet/gomcp/transport/stdio" // No longer needed here
+	"github.com/localrivet/gomcp/types" // Needed for logger interface
 )
 
 // --- Tool Definitions ---
-// Definitions remain the same.
 // See calculator.go and filesystem.go for the other definitions.
 
-// Define the echo tool (simple tool defined directly in main)
-var echoTool = gomcp.Tool{ // Use new Tool struct
+// Define the echo tool
+var echoTool = protocol.Tool{
 	Name:        "echo",
 	Description: "Echoes back the provided message.",
-	InputSchema: gomcp.ToolInputSchema{ // InputSchema remains similar
+	InputSchema: protocol.ToolInputSchema{
 		Type: "object",
-		Properties: map[string]gomcp.PropertyDetail{
+		Properties: map[string]protocol.PropertyDetail{
 			"message": {Type: "string", Description: "The message to echo."},
 		},
 		Required: []string{"message"},
 	},
-	// OutputSchema is removed in the new spec for Tool definition
-	// Annotations: gomcp.ToolAnnotations{}, // Optional annotations
 }
 
 // calculatorToolDefinition is defined in calculator.go
 // fileSystemToolDefinition is defined in filesystem.go
 
 // --- Tool Handler Functions ---
-// These functions now match the gomcp.ToolHandlerFunc signature.
-// They take arguments and return ([]Content, isError bool).
 
 // echoHandler implements the logic for the echo tool.
-func echoHandler(ctx context.Context, progressToken *gomcp.ProgressToken, arguments map[string]interface{}) (content []gomcp.Content, isError bool) {
+func echoHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments map[string]interface{}) (content []protocol.Content, isError bool) {
 	log.Printf("Executing echo tool with args: %v", arguments)
-	// Example: Check for cancellation
 	if ctx.Err() != nil {
 		log.Println("Echo tool cancelled")
-		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: "Operation cancelled"}}, true
+		return []protocol.Content{protocol.TextContent{Type: "text", Text: "Operation cancelled"}}, true
 	}
 	messageArg, ok := arguments["message"]
 	if !ok {
-		// Return error content and isError=true
-		errorContent := gomcp.TextContent{Type: "text", Text: "Missing required argument 'message' for tool 'echo'"}
-		return []gomcp.Content{errorContent}, true
+		errorContent := protocol.TextContent{Type: "text", Text: "Missing required argument 'message' for tool 'echo'"}
+		return []protocol.Content{errorContent}, true
 	}
 	messageStr, ok := messageArg.(string)
 	if !ok {
-		errorContent := gomcp.TextContent{Type: "text", Text: "Argument 'message' for tool 'echo' must be a string"}
-		return []gomcp.Content{errorContent}, true
+		errorContent := protocol.TextContent{Type: "text", Text: "Argument 'message' for tool 'echo' must be a string"}
+		return []protocol.Content{errorContent}, true
 	}
 	log.Printf("Echoing message: %s", messageStr)
-	// Return success content and isError=false
-	successContent := gomcp.TextContent{Type: "text", Text: messageStr}
-	return []gomcp.Content{successContent}, false
+	successContent := protocol.TextContent{Type: "text", Text: messageStr}
+	return []protocol.Content{successContent}, false
 }
 
 // calculatorHandler implements the logic for the calculator tool.
-// It calls the executeCalculator function which now needs to match the ToolHandlerFunc signature.
-func calculatorHandler(ctx context.Context, progressToken *gomcp.ProgressToken, arguments map[string]interface{}) (content []gomcp.Content, isError bool) {
+func calculatorHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments map[string]interface{}) (content []protocol.Content, isError bool) {
 	log.Printf("Executing calculator tool with args: %v", arguments)
-	// Assumes executeCalculator is defined in calculator.go and matches the new signature
-	// We pass the context and progress token along.
 	return executeCalculator(ctx, progressToken, arguments)
 }
 
 // filesystemHandler implements the logic for the filesystem tool.
-// It calls the executeFileSystem function which now needs to match the ToolHandlerFunc signature.
-func filesystemHandler(ctx context.Context, progressToken *gomcp.ProgressToken, arguments map[string]interface{}) (content []gomcp.Content, isError bool) {
+func filesystemHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments map[string]interface{}) (content []protocol.Content, isError bool) {
 	log.Printf("Executing filesystem tool with args: %v", arguments)
-	// Assumes executeFileSystem is defined in filesystem.go and matches the new signature
-	// We pass the context and progress token along.
 	return executeFileSystem(ctx, progressToken, arguments)
 }
 
+// --- runServerLoop (Removed) ---
+
+// --- mockSession (Removed) ---
+
 // --- Main Function ---
 func main() {
-	// Setup logging
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.Ltime | log.Lshortfile)
 	log.Println("Starting Example MCP Server (Refactored)...")
 
-	// Create a new server instance using the library's NewServer
+	// NOTE: This main function now only sets up the server but doesn't run it.
+	//       To run this server standalone, use `go run ./examples/server/` which
+	//       will build main.go, calculator.go, and filesystem.go together,
+	//       and then pipe input/output to it.
+
+	// transport := stdio.NewStdioTransport() // Example: Create transport (unused)
+	logger := NewDefaultLogger() // Use local helper
+
 	serverName := "GoMultiToolServer-Refactored"
-	server := gomcp.NewServer(serverName) // Uses stdio connection by default
+	srv := server.NewServer(serverName, server.ServerOptions{
+		Logger: logger,
+	})
 
 	// Register tools and their corresponding handler functions
-	err := server.RegisterTool(echoTool, echoHandler)
+	err := srv.RegisterTool(echoTool, echoHandler)
 	if err != nil {
 		log.Fatalf("Failed to register echo tool: %v", err)
 	}
-
-	// Assumes calculatorToolDefinition is available from calculator.go
-	err = server.RegisterTool(calculatorToolDefinition, calculatorHandler)
+	err = srv.RegisterTool(calculatorToolDefinition, calculatorHandler)
 	if err != nil {
 		log.Fatalf("Failed to register calculator tool: %v", err)
 	}
-
-	// Assumes fileSystemToolDefinition is available from filesystem.go
-	err = server.RegisterTool(fileSystemToolDefinition, filesystemHandler)
+	err = srv.RegisterTool(fileSystemToolDefinition, filesystemHandler)
 	if err != nil {
 		log.Fatalf("Failed to register filesystem tool: %v", err)
 	}
 
-	// Run the server's main loop.
-	// server.Run() now handles the handshake and message dispatch internally.
-	err = server.Run()
-	if err != nil {
-		// Log the final error before exiting
-		log.Printf("Server exited with error: %v", err)
-		os.Exit(1) // Exit with non-zero status on error
-	} else {
-		log.Println("Server finished.")
-	}
+	log.Println("Server setup complete. Exiting (no run loop implemented in this example main).")
+	// The actual server loop needs to be implemented, similar to cmd/gomcp-server/main.go
+	// using a chosen transport (like stdio).
 }
+
+// Added Default Logger definition
+type defaultLogger struct{}
+
+func (l *defaultLogger) Debug(msg string, args ...interface{}) { log.Printf("DEBUG: "+msg, args...) }
+func (l *defaultLogger) Info(msg string, args ...interface{})  { log.Printf("INFO: "+msg, args...) }
+func (l *defaultLogger) Warn(msg string, args ...interface{})  { log.Printf("WARN: "+msg, args...) }
+func (l *defaultLogger) Error(msg string, args ...interface{}) { log.Printf("ERROR: "+msg, args...) }
+
+func NewDefaultLogger() *defaultLogger { return &defaultLogger{} }
+
+var _ types.Logger = (*defaultLogger)(nil)
+
+// Ensure handlers match the expected type (defined in server package)
+var _ server.ToolHandlerFunc = echoHandler
+var _ server.ToolHandlerFunc = calculatorHandler
+var _ server.ToolHandlerFunc = filesystemHandler

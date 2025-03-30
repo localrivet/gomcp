@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context" // Added context
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"strings"
-	"time"
+	"time" // Added for timeout context
 
-	"github.com/localrivet/gomcp"
+	// Import new packages
+	"github.com/localrivet/gomcp/client"
+	"github.com/localrivet/gomcp/protocol"
+	// "github.com/localrivet/gomcp/transport/stdio" // No longer using stdio directly here
+	// "github.com/localrivet/gomcp/types" // Not needed directly here
 	// "github.com/google/uuid" // For progress token generation if needed
 )
 
@@ -29,25 +34,26 @@ func StringPtr(s string) *string {
 // runClientLogic connects the provided client and executes the example tool calls sequence.
 // Returns an error if any fatal step fails (connection, getting tool defs).
 // Tool usage errors are logged but do not cause this function to return an error.
-func runClientLogic(client *gomcp.Client) error { // Accept *gomcp.Client
+func runClientLogic(ctx context.Context, clt *client.Client) error { // Accept *client.Client, add ctx
 	// Connect and perform initialization
 	log.Println("Connecting to server...")
-	err := client.Connect() // Use the provided client
+	// Pass context to Connect
+	err := clt.Connect(ctx) // Use the provided client and ctx
 	if err != nil {
 		return fmt.Errorf("client failed to connect: %w", err)
 	}
-	defer client.Close() // Ensure connection is closed eventually
+	defer clt.Close() // Ensure connection is closed eventually
 
 	// Access server info and capabilities using the new getters
-	serverInfo := client.ServerInfo()
-	serverCaps := client.ServerCapabilities()
+	serverInfo := clt.ServerInfo()
+	serverCaps := clt.ServerCapabilities()
 	log.Printf("Client connected successfully to server: %s (Version: %s)", serverInfo.Name, serverInfo.Version)
 	log.Printf("Server Capabilities: %+v", serverCaps)
 
 	// --- Request Tool Definitions ---
 	log.Println("\n--- Requesting Tool Definitions ---")
-	listParams := gomcp.ListToolsRequestParams{} // No pagination/filtering in this example
-	toolsResult, err := client.ListTools(listParams)
+	listParams := protocol.ListToolsRequestParams{}
+	toolsResult, err := clt.ListTools(ctx, listParams) // Add ctx
 	if err != nil {
 		// Treat failure to get definitions as fatal for this example client
 		return fmt.Errorf("failed to get tool definitions: %w", err)
@@ -72,9 +78,9 @@ func runClientLogic(client *gomcp.Client) error { // Accept *gomcp.Client
 		log.Println("\n--- Testing Echo Tool ---")
 		echoMessage := "Hello from Go MCP Client!"
 		args := map[string]interface{}{"message": echoMessage}
-		callParams := gomcp.CallToolParams{Name: "echo", Arguments: args}
+		callParams := protocol.CallToolParams{Name: "echo", Arguments: args}
 		// Call tool without requesting progress
-		result, err := client.CallTool(callParams, nil)
+		result, err := clt.CallTool(ctx, callParams, nil) // Add ctx
 		if err != nil {
 			log.Printf("ERROR: Failed to use 'echo' tool: %v", err)
 		} else {
@@ -83,11 +89,12 @@ func runClientLogic(client *gomcp.Client) error { // Accept *gomcp.Client
 			log.Printf("  Received Content: %+v", result.Content) // Log the content slice
 			// Extract text from the first TextContent element
 			if len(result.Content) > 0 {
-				// Use type assertion on the Content interface
-				if textContent, ok := result.Content[0].(gomcp.TextContent); ok {
+				if textContent, ok := result.Content[0].(protocol.TextContent); ok {
 					log.Printf("  Extracted Text: %s", textContent.Text)
-					if textContent.Text != echoMessage {
-						log.Printf("WARNING: Echo result '%s' did not match sent message '%s'", textContent.Text, echoMessage)
+					// Note: The echo tool in kitchen-sink prepends "Echo: "
+					expectedEcho := "Echo: " + echoMessage
+					if textContent.Text != expectedEcho {
+						log.Printf("WARNING: Echo result '%s' did not match expected '%s'", textContent.Text, expectedEcho)
 					}
 				} else {
 					log.Printf("WARNING: Echo result content[0] was not TextContent: %T", result.Content[0])
@@ -101,238 +108,135 @@ func runClientLogic(client *gomcp.Client) error { // Accept *gomcp.Client
 	}
 	// --- End Use Echo Tool ---
 
-	// --- Use the Calculator Tool ---
+	// --- Use the Calculator Tool (Add) ---
 	calculatorToolFound := false
 	for _, tool := range tools {
-		if tool.Name == "calculator" {
+		if tool.Name == "add" { // Assuming kitchen-sink uses 'add' now
 			calculatorToolFound = true
 			break
 		}
 	}
 	if calculatorToolFound {
-		log.Println("\n--- Testing Calculator Tool ---")
+		log.Println("\n--- Testing Add Tool ---")
 		// Example 1: Add
-		calcArgs1 := map[string]interface{}{"operand1": 5.0, "operand2": 7.0, "operation": "add"}
-		calcParams1 := gomcp.CallToolParams{Name: "calculator", Arguments: calcArgs1}
-		result1, err1 := client.CallTool(calcParams1, nil)
+		calcArgs1 := map[string]interface{}{"a": 5.0, "b": 7.0} // Use 'a' and 'b' as per kitchen-sink
+		calcParams1 := protocol.CallToolParams{Name: "add", Arguments: calcArgs1}
+		result1, err1 := clt.CallTool(ctx, calcParams1, nil) // Add ctx
 		if err1 != nil {
-			log.Printf("ERROR: Failed to use 'calculator' tool (add): %v", err1)
+			log.Printf("ERROR: Failed to use 'add' tool: %v", err1)
 		} else {
-			log.Printf("Calculator(add) Content: %+v", result1.Content)
-			// Extract text, parse as float
+			log.Printf("Add Tool Content: %+v", result1.Content)
+			// Extract text, check result
 			if len(result1.Content) > 0 {
-				if textContent, ok := result1.Content[0].(gomcp.TextContent); ok {
-					var resNum float64
-					// Use fmt.Sscanf for safer parsing
-					if _, err := fmt.Sscanf(textContent.Text, "%f", &resNum); err != nil || resNum != 12.0 {
-						log.Printf("WARNING: Calculator(add) result unexpected or failed parse: %s (error: %v)", textContent.Text, err)
+				if textContent, ok := result1.Content[0].(protocol.TextContent); ok {
+					expectedResultStr := "The sum of 5.000000 and 7.000000 is 12.000000."
+					if textContent.Text != expectedResultStr {
+						log.Printf("WARNING: Add tool result unexpected: %s", textContent.Text)
 					} else {
-						log.Printf("  Parsed Result: %f", resNum)
+						log.Printf("  Parsed Result Correct: %s", textContent.Text)
 					}
 				} else {
-					log.Printf("WARNING: Calculator(add) result content[0] was not TextContent: %T", result1.Content[0])
+					log.Printf("WARNING: Add tool result content[0] was not TextContent: %T", result1.Content[0])
 				}
 			} else {
-				log.Printf("WARNING: Calculator(add) result content was empty!")
+				log.Printf("WARNING: Add tool result content was empty!")
 			}
 		}
-		// Example 2: Divide by zero (expecting error in result)
-		calcArgs2 := map[string]interface{}{"operand1": 10.0, "operand2": 0.0, "operation": "divide"}
-		calcParams2 := gomcp.CallToolParams{Name: "calculator", Arguments: calcArgs2}
-		result2, err2 := client.CallTool(calcParams2, nil)
-		if err2 == nil {
-			// Check IsError flag in the result
-			if result2.IsError != nil && *result2.IsError {
-				log.Printf("Calculator(divide by zero) failed as expected (IsError=true): Content=%+v", result2.Content)
-				// Optionally check the error message in content
-				if len(result2.Content) > 0 {
-					if textContent, ok := result2.Content[0].(gomcp.TextContent); ok {
-						if !strings.Contains(textContent.Text, "Division by zero") {
-							log.Printf("WARNING: Calculator(divide by zero) error message unexpected: %s", textContent.Text)
-						}
-					}
-				}
-			} else {
-				log.Printf("WARNING: Calculator(divide by zero) should have failed (IsError=true), but succeeded with result: %+v", result2)
-			}
-		} else {
-			// Protocol level error (e.g., timeout, connection issue, server error response)
-			log.Printf("ERROR: Calculator(divide by zero) failed with protocol error: %v", err2)
-		}
-
-		// Example 3: Missing argument (expecting error in result)
-		calcArgs3 := map[string]interface{}{"operand1": 10.0, "operation": "multiply"}
-		calcParams3 := gomcp.CallToolParams{Name: "calculator", Arguments: calcArgs3}
-		result3, err3 := client.CallTool(calcParams3, nil)
+		// Example 2: Missing argument (expecting error in result)
+		calcArgs3 := map[string]interface{}{"a": 10.0} // Missing 'b'
+		calcParams3 := protocol.CallToolParams{Name: "add", Arguments: calcArgs3}
+		result3, err3 := clt.CallTool(ctx, calcParams3, nil) // Add ctx
 		if err3 == nil {
 			if result3.IsError != nil && *result3.IsError {
-				log.Printf("Calculator(missing arg) failed as expected (IsError=true): Content=%+v", result3.Content)
+				log.Printf("Add(missing arg) failed as expected (IsError=true): Content=%+v", result3.Content)
 				if len(result3.Content) > 0 {
-					if textContent, ok := result3.Content[0].(gomcp.TextContent); ok {
-						if !strings.Contains(textContent.Text, "Missing required arguments") {
-							log.Printf("WARNING: Calculator(missing arg) error message unexpected: %s", textContent.Text)
+					if textContent, ok := result3.Content[0].(protocol.TextContent); ok {
+						if !strings.Contains(textContent.Text, "Invalid or missing") { // Check error message from handler
+							log.Printf("WARNING: Add(missing arg) error message unexpected: %s", textContent.Text)
 						}
 					}
 				}
 			} else {
-				log.Printf("WARNING: Calculator(missing arg) should have failed (IsError=true), but succeeded with result: %+v", result3)
+				log.Printf("WARNING: Add(missing arg) should have failed (IsError=true), but succeeded with result: %+v", result3)
 			}
 		} else {
-			log.Printf("ERROR: Calculator(missing arg) failed with protocol error: %v", err3)
+			log.Printf("ERROR: Add(missing arg) failed with protocol error: %v", err3)
 		}
 	} else {
-		log.Println("Could not find 'calculator' tool definition from server.")
+		log.Println("Could not find 'add' tool definition from server.")
 	}
 	// --- End Use Calculator Tool ---
 
-	// --- Use the Filesystem Tool ---
-	filesystemToolFound := false
+	// --- Use the GetTinyImage Tool ---
+	getTinyImageToolFound := false
 	for _, tool := range tools {
-		if tool.Name == "filesystem" {
-			filesystemToolFound = true
+		if tool.Name == "getTinyImage" {
+			getTinyImageToolFound = true
 			break
 		}
 	}
-	if filesystemToolFound {
-		log.Println("\n--- Testing Filesystem Tool ---")
-		fsToolName := "filesystem"
-		testFilePath := "test_dir/my_file.txt" // Relative path for the server's sandbox
-		testFileContent := "This is the content of the test file.\nIt has multiple lines."
-
-		// Example 1: List root
-		fsArgs1 := map[string]interface{}{"operation": "list_files", "path": "."}
-		fsParams1 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs1}
-		fsResult1, fsErr1 := client.CallTool(fsParams1, nil)
-		if fsErr1 != nil {
-			log.Printf("ERROR: Failed to use '%s' tool (list_files .): %v", fsToolName, fsErr1)
+	if getTinyImageToolFound {
+		log.Println("\n--- Testing GetTinyImage Tool ---")
+		callParams := protocol.CallToolParams{Name: "getTinyImage"}
+		result, err := clt.CallTool(ctx, callParams, nil) // Add ctx
+		if err != nil {
+			log.Printf("ERROR: Failed to use 'getTinyImage' tool: %v", err)
 		} else {
-			log.Printf("Filesystem(list .) Result Content: %+v", fsResult1.Content)
-			// Assuming the result is JSON text, try to unmarshal and print nicely
-			if len(fsResult1.Content) > 0 {
-				if textContent, ok := fsResult1.Content[0].(gomcp.TextContent); ok {
-					var listData interface{}
-					if err := json.Unmarshal([]byte(textContent.Text), &listData); err == nil {
-						prettyJSON, _ := json.MarshalIndent(listData, "  ", "  ")
-						log.Printf("  Formatted List: %s", string(prettyJSON))
-					} else {
-						log.Printf("  Raw Text: %s", textContent.Text)
-					}
+			log.Printf("Successfully used 'getTinyImage' tool.")
+			log.Printf("  Received Content Count: %d", len(result.Content))
+			foundImage := false
+			for i, contentItem := range result.Content {
+				log.Printf("  Content[%d]: Type=%T, Value=%+v", i, contentItem, contentItem)
+				if _, ok := contentItem.(protocol.ImageContent); ok {
+					foundImage = true
 				}
 			}
-		}
-
-		// Example 2: Write file
-		fsArgs2 := map[string]interface{}{"operation": "write_file", "path": testFilePath, "content": testFileContent}
-		fsParams2 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs2}
-		fsResult2, fsErr2 := client.CallTool(fsParams2, nil)
-		if fsErr2 != nil {
-			log.Printf("ERROR: Failed to use '%s' tool (write_file): %v", fsToolName, fsErr2)
-		} else {
-			log.Printf("Filesystem(write) Result Content: %+v", fsResult2.Content)
-		}
-
-		// Example 3: Read file back
-		fsArgs3 := map[string]interface{}{"operation": "read_file", "path": testFilePath}
-		fsParams3 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs3}
-		fsResult3, fsErr3 := client.CallTool(fsParams3, nil)
-		if fsErr3 != nil {
-			log.Printf("ERROR: Failed to use '%s' tool (read_file): %v", fsToolName, fsErr3)
-		} else {
-			log.Printf("Filesystem(read) Content: %+v", fsResult3.Content)
-			// Extract text content
-			if len(fsResult3.Content) > 0 {
-				if textContent, ok := fsResult3.Content[0].(gomcp.TextContent); ok {
-					log.Printf("  Extracted Content: %q", textContent.Text) // Quote to see newlines
-					if textContent.Text != testFileContent {
-						log.Printf("WARNING: Filesystem read content mismatch!")
-					} else {
-						log.Println("  Read content matches written content.")
-					}
-				} else {
-					log.Printf("WARNING: Filesystem read result content[0] was not TextContent: %T", fsResult3.Content[0])
-				}
-			} else {
-				log.Printf("WARNING: Filesystem read result content was empty!")
+			if !foundImage {
+				log.Println("WARNING: Did not find ImageContent in getTinyImage result.")
 			}
-		}
-
-		// Example 4: List dir
-		fsArgs4 := map[string]interface{}{"operation": "list_files", "path": "test_dir"}
-		fsParams4 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs4}
-		fsResult4, fsErr4 := client.CallTool(fsParams4, nil)
-		if fsErr4 != nil {
-			log.Printf("ERROR: Failed to use '%s' tool (list_files test_dir): %v", fsToolName, fsErr4)
-		} else {
-			log.Printf("Filesystem(list test_dir) Result Content: %+v", fsResult4.Content)
-			// Assuming the result is JSON text, try to unmarshal and print nicely
-			if len(fsResult4.Content) > 0 {
-				if textContent, ok := fsResult4.Content[0].(gomcp.TextContent); ok {
-					var listData interface{}
-					if err := json.Unmarshal([]byte(textContent.Text), &listData); err == nil {
-						prettyJSON, _ := json.MarshalIndent(listData, "  ", "  ")
-						log.Printf("  Formatted List: %s", string(prettyJSON))
-					} else {
-						log.Printf("  Raw Text: %s", textContent.Text)
-					}
-				}
-			}
-		}
-
-		// Example 5: Read non-existent (expecting tool error)
-		fsArgs5 := map[string]interface{}{"operation": "read_file", "path": "non_existent_file.txt"}
-		fsParams5 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs5}
-		result5, fsErr5 := client.CallTool(fsParams5, nil)
-		if fsErr5 == nil {
-			if result5.IsError != nil && *result5.IsError {
-				log.Printf("Filesystem(read non-existent) failed as expected (IsError=true): Content=%+v", result5.Content)
-				if len(result5.Content) > 0 {
-					if textContent, ok := result5.Content[0].(gomcp.TextContent); ok {
-						if !strings.Contains(textContent.Text, "not found") {
-							log.Printf("WARNING: Filesystem(read non-existent) error message unexpected: %s", textContent.Text)
-						}
-					}
-				}
-			} else {
-				log.Printf("WARNING: Filesystem(read non-existent) should have failed (IsError=true), but succeeded with result: %+v", result5)
-			}
-		} else {
-			log.Printf("ERROR: Filesystem(read non-existent) failed with protocol error: %v", fsErr5)
-		}
-
-		// Example 6: Write outside sandbox (expecting tool error)
-		fsArgs6 := map[string]interface{}{"operation": "write_file", "path": "../outside_sandbox.txt", "content": "attempt escape"}
-		fsParams6 := gomcp.CallToolParams{Name: fsToolName, Arguments: fsArgs6}
-		result6, fsErr6 := client.CallTool(fsParams6, nil)
-		if fsErr6 == nil {
-			if result6.IsError != nil && *result6.IsError {
-				log.Printf("Filesystem(write outside) failed as expected (IsError=true): Content=%+v", result6.Content)
-				if len(result6.Content) > 0 {
-					if textContent, ok := result6.Content[0].(gomcp.TextContent); ok {
-						if !strings.Contains(textContent.Text, "escape the sandbox") {
-							log.Printf("WARNING: Filesystem(write outside) error message unexpected: %s", textContent.Text)
-						}
-					}
-				}
-			} else {
-				log.Printf("WARNING: Filesystem(write outside) should have failed (IsError=true), but succeeded with result: %+v", result6)
-			}
-		} else {
-			log.Printf("ERROR: Filesystem(write outside) failed with protocol error: %v", fsErr6)
 		}
 	} else {
-		log.Println("Could not find 'filesystem' tool definition from server.")
+		log.Println("Could not find 'getTinyImage' tool definition from server.")
 	}
-	// --- End Use Filesystem Tool ---
+	// --- End Use GetTinyImage Tool ---
 
-	// --- Ping Server ---
-	log.Println("\n--- Testing Ping ---")
-	err = client.Ping(5 * time.Second)
-	if err != nil {
-		log.Printf("ERROR: Ping failed: %v", err)
-	} else {
-		log.Println("Ping successful!")
+	// --- Use the LongRunning Tool ---
+	longRunningToolFound := false
+	for _, tool := range tools {
+		if tool.Name == "longRunningOperation" {
+			longRunningToolFound = true
+			break
+		}
 	}
-	// --- End Ping Server ---
+	if longRunningToolFound {
+		log.Println("\n--- Testing LongRunning Tool (No Progress Requested) ---")
+		lrArgs := map[string]interface{}{"duration": 2.0, "steps": 4.0} // Shorter duration for test
+		lrParams := protocol.CallToolParams{Name: "longRunningOperation", Arguments: lrArgs}
+		lrResult, lrErr := clt.CallTool(ctx, lrParams, nil) // Add ctx, No progress token
+		if lrErr != nil {
+			log.Printf("ERROR: Failed to use 'longRunningOperation' tool: %v", lrErr)
+		} else {
+			log.Printf("LongRunning tool finished successfully.")
+			log.Printf("  Result Content: %+v", lrResult.Content)
+		}
+
+		// TODO: Add example requesting progress (requires client handling progress notifications)
+		// log.Println("\n--- Testing LongRunning Tool (With Progress Requested) ---")
+		// progressToken := protocol.ProgressToken(uuid.NewString())
+		// lrParamsWithProgress := protocol.CallToolParams{
+		// 	Name:      "longRunningOperation",
+		// 	Arguments: lrArgs,
+		// 	Meta:      &protocol.RequestMeta{ProgressToken: &progressToken},
+		// }
+		// // Need to register a progress handler before calling
+		// // clt.RegisterNotificationHandler(protocol.MethodProgress, func(ctx context.Context, params interface{}) error { ... })
+		// lrResultProg, lrErrProg := clt.CallTool(ctx, lrParamsWithProgress, &progressToken) // Pass token pointer? Check signature
+		// ... handle result and progress notifications ...
+
+	} else {
+		log.Println("Could not find 'longRunningOperation' tool definition from server.")
+	}
+	// --- End Use LongRunning Tool ---
 
 	log.Println("Client operations finished.")
 	return nil // Indicate success
@@ -341,16 +245,24 @@ func runClientLogic(client *gomcp.Client) error { // Accept *gomcp.Client
 // --- Main Function ---
 // Sets up logging and runs the client logic.
 func main() {
-	// Log informational messages to stderr so stdout can be used purely for MCP messages.
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.Ltime | log.Lshortfile)
 	log.Println("Starting Example MCP Client...")
 
 	clientName := "GoExampleClient-Refactored"
-	client := gomcp.NewClient(clientName) // Create client in main
+	// Create client assuming kitchen-sink server runs on 8080
+	clt, err := client.NewClient(clientName, client.ClientOptions{
+		ServerBaseURL: "http://127.0.0.1:8080",
+	})
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second) // Longer timeout for tests
+	defer cancel()
 
 	// Run the main client logic
-	err := runClientLogic(client) // Pass client instance
+	err = runClientLogic(ctx, clt) // Pass client instance and ctx
 	if err != nil {
 		// Log fatal error from the client logic run
 		log.Fatalf("Client exited with error: %v", err)

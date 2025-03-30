@@ -5,32 +5,32 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/localrivet/gomcp"
+	"github.com/localrivet/gomcp/protocol" // Use protocol package
+	"github.com/localrivet/gomcp/server"   // Needed for ToolHandlerFunc type matching
 )
 
 // calculatorToolDefinition defines the structure and schema for the calculator tool.
-var calculatorToolDefinition = gomcp.Tool{ // Use new Tool struct
+var calculatorToolDefinition = protocol.Tool{ // Use protocol.Tool
 	Name:        "calculator",
 	Description: "Performs basic arithmetic operations (add, subtract, multiply, divide).",
-	InputSchema: gomcp.ToolInputSchema{
+	InputSchema: protocol.ToolInputSchema{ // Use protocol.ToolInputSchema
 		Type: "object",
-		Properties: map[string]gomcp.PropertyDetail{
+		Properties: map[string]protocol.PropertyDetail{ // Use protocol.PropertyDetail
 			"operand1":  {Type: "number", Description: "The first number."},
 			"operand2":  {Type: "number", Description: "The second number."},
 			"operation": {Type: "string", Description: "The operation ('add', 'subtract', 'multiply', 'divide')."},
 		},
 		Required: []string{"operand1", "operand2", "operation"},
 	},
-	// OutputSchema removed
-	// Annotations: gomcp.ToolAnnotations{}, // Optional
+	// Annotations: protocol.ToolAnnotations{}, // Optional
 }
 
 // executeCalculator contains the actual logic for the calculator tool.
 // It now matches the ToolHandlerFunc signature.
-func executeCalculator(ctx context.Context, progressToken *gomcp.ProgressToken, args map[string]interface{}) ([]gomcp.Content, bool) {
+func executeCalculator(ctx context.Context, progressToken *protocol.ProgressToken, args map[string]interface{}) (content []protocol.Content, isError bool) { // Use protocol types
 	// Helper to create error response content
-	newErrorContent := func(msg string) []gomcp.Content {
-		return []gomcp.Content{gomcp.TextContent{Type: "text", Text: msg}}
+	newErrorContent := func(msg string) []protocol.Content { // Use protocol.Content
+		return []protocol.Content{protocol.TextContent{Type: "text", Text: msg}} // Use protocol.TextContent
 	}
 
 	// --- Argument Extraction and Type Validation ---
@@ -44,14 +44,12 @@ func executeCalculator(ctx context.Context, progressToken *gomcp.ProgressToken, 
 	}
 
 	// Validate the types of the arguments.
-	// MCP schema uses "number", which typically unmarshals to float64 in Go.
 	op1, ok1 := op1Arg.(float64)
 	op2, ok2 := op2Arg.(float64)
 	opStr, ok3 := opStrArg.(string)
 
 	// Check if type assertions were successful.
 	if !ok1 || !ok2 || !ok3 {
-		// Provide a more specific error message about type mismatches.
 		errMsg := "Invalid argument types:"
 		if !ok1 {
 			errMsg += " operand1 must be a number;"
@@ -76,20 +74,18 @@ func executeCalculator(ctx context.Context, progressToken *gomcp.ProgressToken, 
 	case "multiply":
 		result = op1 * op2
 	case "divide":
-		// Handle division by zero specifically.
 		if op2 == 0 {
 			return newErrorContent("Division by zero"), true // isError = true
 		}
 		result = op1 / op2
 	default:
-		// Handle unknown operation strings.
 		return newErrorContent(fmt.Sprintf("Invalid operation '%s'. Use 'add', 'subtract', 'multiply', or 'divide'.", opStr)), true // isError = true
 	}
 	// --- End Calculation ---
 
-	// Return the successful result wrapped in TextContent and isError=false
-	// Note: The schema technically expects a number, but CallToolResult content allows text.
-	// A stricter implementation might require a NumberContent type or similar.
-	resultContent := gomcp.TextContent{Type: "text", Text: fmt.Sprintf("%f", result)}
-	return []gomcp.Content{resultContent}, false
+	resultContent := protocol.TextContent{Type: "text", Text: fmt.Sprintf("%f", result)} // Use protocol.TextContent
+	return []protocol.Content{resultContent}, false                                      // Use protocol.Content
 }
+
+// Ensure executeCalculator matches the expected handler type
+var _ server.ToolHandlerFunc = executeCalculator

@@ -15,11 +15,11 @@ The primary goal of `gomcp` is to provide idiomatic Go tools for building applic
 - **MCP Servers:** Applications that expose tools or resources to MCP clients (often language models or agents).
 - **MCP Clients:** Applications that connect to MCP servers to utilize their offered tools and resources.
 
-## Core Components (Root Package)
+## Core Components
 
-The main library code resides in the root package (`github.com/localrivet/gomcp`).
+The library is structured into several key packages:
 
-1.  **`protocol.go`**:
+1.  **`protocol/`**:
 
     - Defines Go structs mapping to MCP concepts (e.g., `Tool`, `Resource`, `Prompt`, `ClientCapabilities`, `ServerCapabilities`).
     - Defines Go structs for specific request parameters and results (e.g., `InitializeRequestParams`, `InitializeResult`, `CallToolParams`, `CallToolResult`).
@@ -27,61 +27,84 @@ The main library code resides in the root package (`github.com/localrivet/gomcp`
     - Includes constants for MCP method names (e.g., `MethodInitialize`, `MethodCallTool`, `MethodCancelled`) and the supported protocol version (`CurrentProtocolVersion`).
     - Uses standard Go `encoding/json` tags.
 
-2.  **`transport.go`**:
+2.  **`server/`**:
 
-    - Handles low-level JSON-RPC 2.0 communication mechanics over stdio.
-    - Provides a `Connection` struct abstracting `io.Reader` and `io.Writer`.
-    - Implements methods for sending specific JSON-RPC message types: `SendRequest`, `SendResponse`, `SendErrorResponse`, `SendNotification`. These handle marshalling, unique ID generation (for requests), and writing newline-delimited JSON.
-    - Implements `ReceiveRawMessage` which reads a newline-delimited line and performs basic JSON validation.
-    - Includes a helper `UnmarshalPayload` to decode `interface{}` params/results into specific target structs.
-
-3.  **`server.go`**:
-
-    - Defines the `Server` struct, orchestrating server-side logic.
-    - `NewServer` initializes a server instance (using stdio `Connection` by default).
+    - Defines the `Server` struct, containing the core transport-agnostic MCP server logic.
+    - `NewServer` initializes a server instance, taking server info and options (like a logger).
     - `RegisterTool`, `RegisterResource`, `RegisterPrompt` allow adding capabilities dynamically. These methods trigger `list_changed` notifications if supported.
     - `RegisterNotificationHandler` allows handling client-sent notifications (e.g., `$/cancelled`).
-    - `Run` is the main entry point. It calls `handleInitialize` and then enters the main message loop.
-    - `handleInitialize` implements the server's part of the initialization sequence.
-    - The `Run` loop receives raw messages, determines if they are requests or notifications, and dispatches them to appropriate internal handlers (e.g., `handleCallToolRequest`, `handleSubscribeResource`) or registered notification handlers.
-    - Internal handlers (`handle...`) are responsible for unmarshalling parameters, performing actions (like calling a registered `ToolHandlerFunc`), and sending responses/errors.
-    - Includes `Send...` methods for server-initiated notifications (`SendProgress`, `SendResourceChanged`, etc.).
+    - `HandleMessage` is the main entry point for processing incoming raw messages (typically called by a transport implementation). It handles the initialization sequence and dispatches requests/notifications to internal handlers.
+    - Internal handlers (`handle...`) are responsible for unmarshalling parameters, performing actions (like calling a registered `ToolHandlerFunc`), and generating responses/errors.
+    - Includes `Send...` methods for server-initiated notifications (`SendProgress`, `SendResourceChanged`, etc.), which are typically invoked via a `ClientSession` interface implemented by the transport layer.
 
-4.  **`client.go`**:
-    - Defines the `Client` struct for managing the client-side connection.
-    - `NewClient` initializes a client instance.
-    - `RegisterRequestHandler`, `RegisterNotificationHandler` allow handling server-sent requests/notifications.
-    - `Connect` implements the client's part of the initialization sequence.
-    - Provides methods for sending specific MCP requests and waiting for responses (e.g., `ListTools`, `CallTool`, `SubscribeResources`, `Ping`). These methods use `sendRequestAndWait`.
-    - `sendRequestAndWait` handles sending the JSON-RPC request, managing pending requests, and waiting for the corresponding response or timeout.
-    - `processIncomingMessages` runs in a background goroutine to receive messages, dispatch responses to waiting callers, and dispatch incoming requests/notifications to registered handlers.
-    - Includes `Send...` methods for client-initiated notifications (`SendCancellation`, `SendProgress`, `SendRootsListChanged`).
+3.  **`client/`**:
 
-## Communication Flow (Stdio)
+    - Defines the `Client` struct for managing the client-side connection, currently implemented using the SSE+HTTP hybrid transport model.
+    - `NewClient` initializes a client instance, requiring the server's base URL and other options.
+    - `RegisterRequestHandler`, `RegisterNotificationHandler` allow handling server-sent requests/notifications received over SSE.
+    - `Connect` establishes the SSE connection and performs the MCP initialization handshake (sending `initialize` via HTTP POST, receiving response via SSE, sending `initialized` via HTTP POST).
+    - Provides methods for sending specific MCP requests (e.g., `ListTools`, `CallTool`, `SubscribeResources`). These methods typically send the request via HTTP POST and wait for the response via the SSE connection.
+    - Manages pending requests and dispatches incoming SSE messages (responses, notifications, requests) appropriately.
+    - Includes `Send...` methods for client-initiated notifications (`SendCancellation`, `SendRootsListChanged`).
 
-The library currently assumes communication over standard input and output:
+4.  **`transport/`**:
+
+    - Contains different transport implementations.
+    - **`stdio/`**: Provides a `StdioTransport` that implements the `types.Transport` interface for communication over standard input/output (newline-delimited JSON). Useful for simple cases or testing.
+    - **`sse/`**: Provides an `SSEServer` that handles the server-side of the SSE+HTTP hybrid transport (SSE for server->client, HTTP POST for client->server). The `client` package uses an SSE client library (`github.com/r3labs/sse/v2`) internally to connect to this.
+    - _(Other transports like WebSockets or TCP could be added here in the future.)_
+
+5.  **`types/`**:
+    - Defines core interfaces like `Transport` and `Logger` used across packages.
+
+## Communication Flow
+
+The library supports multiple communication methods:
+
+### Stdio Transport (`transport/stdio`)
 
 ```
 +--------------+        Stdio Pipe         +-------------+
 |              |  <--- JSON Lines ----    |             |
 |  MCP Client  |        (Stdin)           |  MCP Server |
-| (e.g., Agent)|                          | (Tool Host) |
+| (App/Script) |                          | (App/Script)|
 |              |    ---- JSON Lines --->  |             |
 +--------------+        (Stdout)          +-------------+
 ```
 
-- The server reads requests from its `stdin` and writes responses/notifications to its `stdout`.
-- The client reads responses/notifications from its `stdin` (which is connected to the server's `stdout`) and writes requests to its `stdout` (which is connected to the server's `stdin`).
-- Messages are single JSON objects per line.
+- Simple, direct communication via stdin/stdout.
+- Suitable for local inter-process communication or basic examples.
+- The `StdioTransport` handles reading/writing newline-delimited JSON.
+
+### SSE + HTTP Hybrid Transport (`transport/sse` + `client`)
+
+```
++--------------+                          +-----------------+
+|              | ---- HTTP POST Req ---> |                 |
+|  MCP Client  | (e.g., initialize,      |    MCP Server   |
+| (Using client|  callTool, initialized) | (Using sse pkg) |
+|    package)  |                          |                 |
+|              | <--- HTTP POST Resp ---  |                 |
++--------------+ (e.g., callTool result) +-----------------+
+       |                                       ^
+       | Establish & Maintain SSE Connection   | SSE Events
+       +--------<---- SSE Events --------------+ (e.g., endpoint,
+                 (e.g., initialize result,       message (notifications,
+                  notifications, server reqs))     server requests))
+```
+
+- **Client -> Server:** Requests (`initialize`, `callTool`) and Notifications (`initialized`, `$/cancelled`) are sent via HTTP POST requests to a specific message endpoint on the server. Responses to these requests (like `callTool` results) are sent back in the HTTP response body.
+- **Server -> Client:** The client establishes a persistent Server-Sent Events (SSE) connection. The server sends asynchronous messages (like `initialize` results, notifications, or server-to-client requests) over this SSE connection.
+- This is the primary transport used by the `client` package.
 
 ## Next Steps & Future Development
 
 The core library is now compliant with the defined features of the MCP 2025-03-26 specification. Future work includes:
 
-- **Example Updates:** Update all examples in `cmd/` and `examples/` to use the latest refactored library and demonstrate features like cancellation, progress, and subscriptions.
-- **Testing:** Add more comprehensive unit and integration tests, especially covering notifications, subscriptions, cancellation, and concurrency.
-- **Progress Reporting Helpers:** Consider adding server-side utilities to simplify sending progress updates from tool handlers.
+- **Example Updates:** Ensure all examples in `examples/` are up-to-date with the latest library structure and demonstrate features like cancellation, progress, and subscriptions effectively across different transports.
+- **Testing:** Add more comprehensive unit and integration tests, especially covering notifications, subscriptions, cancellation, concurrency, and different transport layers.
+- **Progress Reporting:** Address the issue where the `ToolHandlerFunc` doesn't have direct access to the `sessionID` needed for `server.SendProgress`. This might require API changes or alternative patterns.
 - **Protocol Enhancements:** Implement optional fields mentioned in the spec (e.g., `trace`, `workspaceFolders`, filtering options, content annotations).
 - **Error Handling:** Refine error reporting and potentially add more specific MCP error codes for implementation-defined errors.
-- **Alternative Transports:** Add examples or support for transports beyond stdio (e.g., WebSockets, TCP).
+- **Alternative Transports:** Add examples or support for transports beyond stdio and SSE (e.g., WebSockets, TCP).
 - **Documentation:** Enhance GoDoc comments and keep `/docs` guides up-to-date.
