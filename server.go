@@ -6,7 +6,9 @@ import (
 	// Required for UnmarshalPayload usage within server logic
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings" // Needed for error check in loop
@@ -419,12 +421,14 @@ func (s *Server) Run() error {
 		// Receive raw JSON
 		rawJSON, err := s.conn.ReceiveRawMessage()
 		if err != nil {
-			if err.Error() == "failed to read message line: EOF" || strings.Contains(err.Error(), "EOF") {
-				log.Println("Client disconnected (EOF received). Server shutting down.")
-				return nil // Clean exit
+			// Use errors.Is for robust EOF check, also check for common pipe errors
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrClosedPipe) || strings.Contains(err.Error(), "pipe closed") {
+				log.Println("Client disconnected (EOF or pipe error received). Server shutting down.")
+				return nil // Clean exit on expected closure
 			}
+			// Log and return unexpected errors
 			log.Printf("Error receiving message: %v. Server shutting down.", err)
-			return err
+			return err // Return the actual error
 		}
 
 		// Attempt to unmarshal into a generic structure to determine type (Req/Notif)

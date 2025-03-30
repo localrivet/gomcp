@@ -1,7 +1,7 @@
 package main
 
 import (
-	"context" // Needed for simulating JSON in filesystem tool response
+	"context" // Needed for logging complex results
 	"fmt"
 	"log"
 	"os"
@@ -10,7 +10,7 @@ import (
 	"time"
 
 	mcp "github.com/localrivet/gomcp" // Import our library
-	// "github.com/google/uuid" // Keep commented for now
+	// "github.com/google/uuid" // Keep commented for now, client usually generates progress tokens
 )
 
 // Define constants for clarity
@@ -190,8 +190,7 @@ func handleGetPromptCustom(s *mcp.Server, requestID interface{}, params interfac
 					providedArgs[argDef.Name] = strVal
 				} else {
 					log.Printf("Warning: Argument '%s' for prompt '%s' expected string, got %T", argDef.Name, requestParams.URI, val)
-					// Handle type mismatch - for simplicity, convert to string
-					providedArgs[argDef.Name] = fmt.Sprintf("%v", val)
+					providedArgs[argDef.Name] = fmt.Sprintf("%v", val) // Convert non-string to string
 				}
 			} else if argDef.Required {
 				return s.Conn().SendErrorResponse(requestID, mcp.ErrorPayload{
@@ -213,9 +212,8 @@ func handleGetPromptCustom(s *mcp.Server, requestID interface{}, params interfac
 	}
 
 	// Iterate through messages and content to render templates
-	for i := range renderedMessages { // Iterate using index to modify the slice
-		msg := promptTmpl.Messages[i]                            // Get the original message template
-		renderedContent := make([]mcp.Content, len(msg.Content)) // Create the slice for the new message
+	for i, msg := range promptTmpl.Messages { // Iterate over the original template messages
+		renderedContent := make([]mcp.Content, len(msg.Content)) // Create the slice for the new message's content
 		for j, contentItem := range msg.Content {
 			if textContent, ok := contentItem.(mcp.TextContent); ok {
 				renderedText := textContent.Text // Start with original text
@@ -254,7 +252,8 @@ func handleGetPromptCustom(s *mcp.Server, requestID interface{}, params interfac
 					Annotations: textContent.Annotations, // Preserve annotations
 				}
 			} else {
-				renderedContent[j] = contentItem // Keep non-text content as is
+				// For non-text content (like ImageContent), just copy it over
+				renderedContent[j] = contentItem
 			}
 		}
 		// Assign the fully rendered content slice to the message in the renderedMessages slice
@@ -263,7 +262,7 @@ func handleGetPromptCustom(s *mcp.Server, requestID interface{}, params interfac
 	// --- End Templating Logic ---
 
 	// Create the final prompt result with rendered messages
-	responsePrompt := promptTmpl               // Copy base prompt info
+	responsePrompt := promptTmpl               // Copy base prompt info (URI, Title, etc.)
 	responsePrompt.Messages = renderedMessages // Use the rendered messages
 
 	responsePayload := mcp.GetPromptResult{Prompt: responsePrompt}
@@ -334,7 +333,7 @@ func handleReadResourceCustom(s *mcp.Server, requestID interface{}, params inter
 		// In a real scenario, you'd likely base64 encode binary file content here
 		resourceContents = mcp.BlobResourceContents{
 			ContentType: contentType,
-			Blob:        content, // Assuming content is already base64 encoded if not text
+			Blob:        content, // Use Blob field name
 		}
 	}
 
@@ -472,7 +471,7 @@ func main() {
 			{Role: "system", Content: []mcp.Content{mcp.TextContent{Type: "text", Text: "You are a helpful assistant."}}},
 			{Role: "user", Content: []mcp.Content{
 				mcp.TextContent{Type: "text", Text: "Please explain ${topic} in a ${style:-casual} style."},
-				mcp.ImageContent{Type: "image", Data: MCP_TINY_IMAGE_BASE64, MediaType: "image/png"},
+				mcp.ImageContent{Type: "image", Data: MCP_TINY_IMAGE_BASE64, MediaType: "image/png"}, // Use Data field
 			}},
 		},
 	}
@@ -514,7 +513,6 @@ func BoolPtr(b bool) *bool {
 }
 
 // StringPtr returns a pointer to a string value.
-// Keep this as ContentAnnotations.Title is *string
 func StringPtr(s string) *string {
 	return &s
 }

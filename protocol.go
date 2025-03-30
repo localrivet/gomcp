@@ -3,7 +3,11 @@
 // and basic client/server logic for establishing connections via the MCP handshake.
 package mcp
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+)
 
 // --- Core Message Structures ---
 
@@ -98,7 +102,7 @@ type ServerCapabilities struct {
 	Experimental map[string]interface{} `json:"experimental,omitempty"`
 	// Add other known capability fields as needed, e.g.:
 	Logging *struct{} `json:"logging,omitempty"` // Add Logging capability field
-	// Completions *struct{} `json:"completions,omitempty"`
+	// Completions *struct{} `json:"completions,omitempty"` // TODO: Add completions capability
 	Prompts *struct { // Add Prompts capability field
 		ListChanged bool `json:"listChanged,omitempty"` // Server supports notifications/prompts/list_changed
 	} `json:"prompts,omitempty"`
@@ -107,7 +111,7 @@ type ServerCapabilities struct {
 		ListChanged bool `json:"listChanged,omitempty"` // Server supports notifications/resources/list_changed
 	} `json:"resources,omitempty"`
 	Tools *struct {
-		ListChanged bool `json:"listChanged,omitempty"`
+		ListChanged bool `json:"listChanged,omitempty"` // Server supports notifications/tools/list_changed
 	} `json:"tools,omitempty"` // Add Tools capability field
 }
 
@@ -116,8 +120,8 @@ type InitializeRequestParams struct {
 	ProtocolVersion  string             `json:"protocolVersion"` // Note camelCase from schema
 	Capabilities     ClientCapabilities `json:"capabilities"`
 	ClientInfo       Implementation     `json:"clientInfo"`
-	Trace            *string            `json:"trace,omitempty"`            // "off" | "messages" | "verbose"
-	WorkspaceFolders []WorkspaceFolder  `json:"workspaceFolders,omitempty"` // Information about workspace folders
+	Trace            *string            `json:"trace,omitempty"`            // Optional: "off" | "messages" | "verbose"
+	WorkspaceFolders []WorkspaceFolder  `json:"workspaceFolders,omitempty"` // Optional: Information about workspace folders
 }
 
 // WorkspaceFolder represents a workspace folder as defined by LSP.
@@ -184,7 +188,7 @@ type PropertyDetail struct {
 
 // ToolAnnotations provides optional hints about tool behavior.
 type ToolAnnotations struct {
-	Title           string `json:"title,omitempty"`
+	Title           string `json:"title,omitempty"`           // Optional human-readable title for the tool.
 	ReadOnlyHint    *bool  `json:"readOnlyHint,omitempty"`    // Use pointer for optional boolean
 	DestructiveHint *bool  `json:"destructiveHint,omitempty"` // Use pointer for optional boolean
 	IdempotentHint  *bool  `json:"idempotentHint,omitempty"`  // Use pointer for optional boolean
@@ -204,6 +208,7 @@ type Tool struct {
 // ListToolsRequestParams defines the parameters for a 'tools/list' request (includes pagination).
 type ListToolsRequestParams struct {
 	Cursor string `json:"cursor,omitempty"` // Opaque pagination cursor
+	// TODO: Add filtering options if needed
 }
 
 // ListToolsRequest asks the server for its available tools.
@@ -252,6 +257,7 @@ type Content interface {
 
 // ContentAnnotations defines optional metadata for content parts.
 // Based on https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#markupContent
+// and https://github.com/modelcontextprotocol/specification/blob/main/schema/2025-03-26/schema.json#L100
 type ContentAnnotations struct {
 	Title    *string  `json:"title,omitempty"`    // Optional human-readable title.
 	Audience []string `json:"audience,omitempty"` // Intended audience (e.g., "user", "assistant").
@@ -270,7 +276,7 @@ func (tc TextContent) GetType() string { return tc.Type }
 // ImageContent represents image content.
 type ImageContent struct {
 	Type        string              `json:"type"`      // Should always be "image"
-	Data        string              `json:"data"`      // Base64 encoded data (or potentially URI? Spec is ambiguous here vs. ResourceContents)
+	Data        string              `json:"data"`      // Base64 encoded data (Schema name is 'data')
 	MediaType   string              `json:"mediaType"` // e.g., "image/png", "image/jpeg"
 	Annotations *ContentAnnotations `json:"annotations,omitempty"`
 }
@@ -280,7 +286,7 @@ func (ic ImageContent) GetType() string { return ic.Type }
 // AudioContent represents audio content.
 type AudioContent struct {
 	Type        string              `json:"type"`      // Should always be "audio"
-	Data        string              `json:"data"`      // Base64 encoded data (or potentially URI?)
+	Data        string              `json:"data"`      // Base64 encoded data (Schema name is 'data')
 	MediaType   string              `json:"mediaType"` // e.g., "audio/mpeg", "audio/wav"
 	Annotations *ContentAnnotations `json:"annotations,omitempty"`
 }
@@ -303,6 +309,70 @@ type CallToolResult struct {
 	Content []Content    `json:"content"`           // Array of content parts (e.g., TextContent)
 	IsError *bool        `json:"isError,omitempty"` // Pointer to boolean for optional field
 	Meta    *RequestMeta `json:"_meta,omitempty"`   // Optional metadata (e.g., for future use)
+}
+
+// UnmarshalJSON implements custom unmarshalling for CallToolResult to handle the Content interface slice.
+func (r *CallToolResult) UnmarshalJSON(data []byte) error {
+	// 1. Define an auxiliary type to prevent recursion
+	type Alias CallToolResult
+	aux := &struct {
+		Content []json.RawMessage `json:"content"` // Unmarshal Content into RawMessage first
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+
+	// 2. Unmarshal into the auxiliary type
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return fmt.Errorf("failed to unmarshal base CallToolResult: %w", err)
+	}
+
+	// 3. Iterate over RawMessages and unmarshal into concrete types
+	r.Content = make([]Content, 0, len(aux.Content)) // Initialize the slice
+	for _, raw := range aux.Content {
+		var typeDetect struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &typeDetect); err != nil {
+			return fmt.Errorf("failed to detect content type: %w", err)
+		}
+
+		var actualContent Content
+		switch typeDetect.Type {
+		case "text":
+			var tc TextContent
+			if err := json.Unmarshal(raw, &tc); err != nil {
+				return fmt.Errorf("failed to unmarshal TextContent: %w", err)
+			}
+			actualContent = tc
+		case "image":
+			var ic ImageContent
+			if err := json.Unmarshal(raw, &ic); err != nil {
+				return fmt.Errorf("failed to unmarshal ImageContent: %w", err)
+			}
+			actualContent = ic
+		case "audio":
+			var ac AudioContent
+			if err := json.Unmarshal(raw, &ac); err != nil {
+				return fmt.Errorf("failed to unmarshal AudioContent: %w", err)
+			}
+			actualContent = ac
+		case "resource":
+			var erc EmbeddedResourceContent
+			if err := json.Unmarshal(raw, &erc); err != nil {
+				return fmt.Errorf("failed to unmarshal EmbeddedResourceContent: %w", err)
+			}
+			actualContent = erc
+		default:
+			// Handle unknown content types if necessary, maybe return an error or skip
+			log.Printf("Warning: Unknown content type '%s' encountered during unmarshalling", typeDetect.Type)
+			// Or return fmt.Errorf("unknown content type '%s'", typeDetect.Type)
+			continue // Skip unknown types for now
+		}
+		r.Content = append(r.Content, actualContent)
+	}
+
+	return nil
 }
 
 // CallToolResponse represents the successful server response to a CallToolRequest.
@@ -341,7 +411,7 @@ func (trc TextResourceContents) GetContentType() string { return trc.ContentType
 // BlobResourceContents holds binary resource content (base64 encoded).
 type BlobResourceContents struct {
 	ContentType string `json:"contentType"` // e.g., "image/png", "application/octet-stream"
-	Blob        string `json:"blob"`        // Base64 encoded string
+	Blob        string `json:"blob"`        // Base64 encoded string - ALIGNED WITH SCHEMA
 }
 
 func (brc BlobResourceContents) GetContentType() string { return brc.ContentType }
@@ -385,6 +455,75 @@ type PromptArgument struct {
 type PromptMessage struct {
 	Role    string    `json:"role"`    // e.g., "system", "user", "assistant"
 	Content []Content `json:"content"` // Array of content parts
+}
+
+// UnmarshalJSON implements custom unmarshalling for PromptMessage to handle the Content interface slice.
+func (pm *PromptMessage) UnmarshalJSON(data []byte) error {
+	// 1. Define an auxiliary type to prevent recursion
+	type Alias PromptMessage
+	aux := &struct {
+		Content []json.RawMessage `json:"content"` // Unmarshal Content into RawMessage first
+		*Alias
+	}{
+		Alias: (*Alias)(pm),
+	}
+
+	// 2. Unmarshal into the auxiliary type
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return fmt.Errorf("failed to unmarshal base PromptMessage: %w", err)
+	}
+
+	// 3. Iterate over RawMessages and unmarshal into concrete types
+	pm.Content = make([]Content, 0, len(aux.Content)) // Initialize the slice
+	for _, raw := range aux.Content {
+		var typeDetect struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &typeDetect); err != nil {
+			// Fallback for potential plain text content without explicit type (though spec implies type field)
+			var tc TextContent
+			if errText := json.Unmarshal(raw, &tc); errText == nil && tc.Type == "text" { // Check type again after unmarshal
+				pm.Content = append(pm.Content, tc)
+				continue
+			}
+			// If it wasn't text or failed, report the original type detection error
+			return fmt.Errorf("failed to detect content type in prompt message: %w", err)
+		}
+
+		var actualContent Content
+		switch typeDetect.Type {
+		case "text":
+			var tc TextContent
+			if err := json.Unmarshal(raw, &tc); err != nil {
+				return fmt.Errorf("failed to unmarshal TextContent in prompt message: %w", err)
+			}
+			actualContent = tc
+		case "image":
+			var ic ImageContent
+			if err := json.Unmarshal(raw, &ic); err != nil {
+				return fmt.Errorf("failed to unmarshal ImageContent in prompt message: %w", err)
+			}
+			actualContent = ic
+		case "audio":
+			var ac AudioContent
+			if err := json.Unmarshal(raw, &ac); err != nil {
+				return fmt.Errorf("failed to unmarshal AudioContent in prompt message: %w", err)
+			}
+			actualContent = ac
+		case "resource":
+			var erc EmbeddedResourceContent
+			if err := json.Unmarshal(raw, &erc); err != nil {
+				return fmt.Errorf("failed to unmarshal EmbeddedResourceContent in prompt message: %w", err)
+			}
+			actualContent = erc
+		default:
+			log.Printf("Warning: Unknown content type '%s' encountered in prompt message", typeDetect.Type)
+			continue // Skip unknown types
+		}
+		pm.Content = append(pm.Content, actualContent)
+	}
+
+	return nil
 }
 
 // Prompt represents a prompt template available from the server.

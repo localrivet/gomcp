@@ -58,7 +58,15 @@ func NewClient(clientName string) *Client {
 		roots:                make(map[string]Root),                                           // Initialize map
 	}
 	// Register default handlers
-	c.RegisterRequestHandler(MethodRootsList, c.handleListRootsRequest) // Add default handler for roots/list
+	c := &Client{ // Assign to c first
+		conn:                 NewStdioConnection(), // Assumes stdio for now
+		clientName:           clientName,
+		pendingRequests:      make(map[string]chan *JSONRPCResponse),                          // Initialize map
+		requestHandlers:      make(map[string]func(id interface{}, params interface{}) error), // Initialize map
+		notificationHandlers: make(map[string]func(params interface{})),                       // Initialize map
+		roots:                make(map[string]Root),                                           // Initialize map
+	}
+	c.RegisterRequestHandler(MethodRootsList, c.handleListRootsRequest) // Now c is defined
 	return c
 }
 
@@ -308,6 +316,11 @@ func (c *Client) GenerateProgressToken() ProgressToken {
 // sendRequestAndWait sends a request, registers it, and waits for a response.
 // Returns the received JSONRPCResponse or an error (including timeout).
 func (c *Client) sendRequestAndWait(method string, params interface{}, timeout time.Duration) (*JSONRPCResponse, error) {
+	// Use a reasonable default timeout if none is provided
+	if timeout <= 0 {
+		timeout = 30 * time.Second // Default to 30 seconds
+	}
+
 	// 1. Create response channel
 	respChan := make(chan *JSONRPCResponse, 1) // Buffered channel
 
@@ -343,8 +356,8 @@ func (c *Client) sendRequestAndWait(method string, params interface{}, timeout t
 
 // ListTools sends a 'tools/list' request and waits for the response.
 func (c *Client) ListTools(params ListToolsRequestParams) (*ListToolsResult, error) {
-	// Use a default timeout, e.g., 10 seconds
-	timeout := 10 * time.Second
+	// Use a reasonable timeout
+	timeout := 15 * time.Second // Increased timeout
 
 	response, err := c.sendRequestAndWait(MethodListTools, params, timeout)
 	if err != nil {
@@ -376,8 +389,8 @@ func (c *Client) ListTools(params ListToolsRequestParams) (*ListToolsResult, err
 // CallTool sends a 'tools/call' request and waits for the response.
 // It optionally includes a progress token in the request's _meta field.
 func (c *Client) CallTool(params CallToolParams, progressToken *ProgressToken) (*CallToolResult, error) {
-	// Use a default timeout, e.g., 30 seconds (tool calls might take longer)
-	timeout := 30 * time.Second
+	// Use a longer default timeout for tool calls
+	timeout := 60 * time.Second // Increased timeout to 60 seconds
 
 	// Add progress token to meta if provided
 	if progressToken != nil {
@@ -621,6 +634,21 @@ func (c *Client) SendProgress(params ProgressParams) error {
 // SendRootsListChanged sends a 'notifications/roots/list_changed' notification to the server.
 func (c *Client) SendRootsListChanged() error {
 	return c.conn.SendNotification(MethodNotifyRootsListChanged, RootsListChangedParams{})
+}
+
+// handleListRootsRequest is the default internal handler for server-sent 'roots/list' requests.
+func (c *Client) handleListRootsRequest(requestID interface{}, params interface{}) error {
+	log.Printf("Client handling internal %s request (ID: %v)", MethodRootsList, requestID)
+	c.rootsMu.Lock()
+	rootsList := make([]Root, 0, len(c.roots))
+	for _, root := range c.roots {
+		rootsList = append(rootsList, root)
+	}
+	c.rootsMu.Unlock()
+
+	result := ListRootsResult{Roots: rootsList}
+	log.Printf("Client sending ListRoots response with %d roots.", len(rootsList))
+	return c.conn.SendResponse(requestID, result)
 }
 
 // processIncomingMessages runs in a separate goroutine to handle responses and notifications.
