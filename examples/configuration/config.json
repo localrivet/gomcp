@@ -1,0 +1,15 @@
+{
+    "server_name": "ConfiguredMCPServer-JSON",
+    "logger_level": "info",
+    "transport": {
+        "type": "websocket",
+        "address": "127.0.0.1:8095",
+        "path": "/mcp-ws"
+    },
+    "tools": [
+        {
+            "name": "echo",
+            "description": "Simple echo tool (from config)"
+        }
+    ]
+}

@@ -1,0 +1,31 @@
+go 1.24.0
+
+use (
+	.
+	// ./client // Remove if not a module itself
+	./examples/auth
+	./examples/basic
+	./examples/billing
+	./examples/cmd // Module is defined here
+	// ./examples/cmd/gomcp-server // Not a module dir
+	./examples/configuration/json/server // Added JSON server module
+	./examples/configuration/yaml/server // Added YAML server module
+	./examples/configuration/toml/server // Added TOML server module
+	// ./examples/configuration/server // Removed old path
+	./examples/http/beego/server
+	./examples/http/chi/server
+	./examples/http/echo/server
+	./examples/http/fiber/server
+	./examples/http/gin/server
+	./examples/http/go-zero/server
+	./examples/http/gorillamux/server
+	./examples/http/httprouter/server
+	./examples/http/iris/server
+	./examples/http/nethttp/server
+	./examples/kitchen-sink
+	./examples/rate-limit
+	./examples/websocket/server
+// Add other top-level example client/server dirs if they are modules
+)
+
+// replace github.com/localrivet/gomcp => ./ // Removed, 'use .' handles this

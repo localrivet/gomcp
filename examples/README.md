@@ -4,26 +4,42 @@ This directory contains example MCP servers and clients demonstrating the usage 
 
 ## Directory Structure
 
-- **`basic/`**: The primary example demonstrating a server offering multiple tools (`echo`, `calculator`, `filesystem`) and a client that uses them all.
-- **`auth/`**: Demonstrates a simple API key authentication mechanism.
-- **`rate-limit/`**: Builds on the auth example, adding simple global rate limiting.
-- **`billing/`**: Builds on the auth example, simulating billing/tracking by logging structured events.
-- **`kitchen-sink/`**: A comprehensive server example demonstrating various MCP features.
-- **`sqlite/`**: Demonstrates using a SQLite database to store and query user data.
+Each subdirectory contains an example demonstrating a specific feature or transport. Most examples are now self-contained Go modules.
+
+- **`basic/`**: Demonstrates stdio communication with multiple tools (`echo`, `calculator`, `filesystem`).
+- **`http/`**: Contains subdirectories for various HTTP frameworks/routers (Chi, Echo, Fiber, Gin, Go-Zero, Gorilla/Mux, HttpRouter, Beego, Iris, Net/HTTP) integrated with the SSE transport.
+- **`websocket/`**: Demonstrates the WebSocket transport.
+- **`configuration/`**: Shows loading server configuration from JSON, YAML, and TOML files, with separate server examples for each format.
+- **`cmd/`**: Provides generic command-line client and server implementations (using stdio by default, potentially configurable).
+- **`auth/`**: Demonstrates simple API key authentication (stdio).
+- **`rate-limit/`**: Builds on the auth example, adding simple global rate limiting (stdio).
+- **`billing/`**: Builds on the auth example, simulating billing/tracking (stdio).
+- **`kitchen-sink/`**: A comprehensive server example combining multiple features (stdio).
+<!-- - **`sqlite/`**: (Removed - verify existence if needed) -->
 
 ## Running the Examples
 
-The examples are designed to communicate over standard input/output (stdio). To run them, you typically need two terminals or use shell piping to connect the server's stdout to the client's stdin and vice-versa.
+Most examples are now Go modules. The general way to run them is:
 
-### Basic Multi-Tool Example (`basic/server/` and `basic/client/`)
+1.  Navigate (`cd`) into the specific example's directory (e.g., `examples/basic/server`).
+2.  Run the server using `go run .`.
+3.  If the example has a corresponding client within the same parent directory (e.g., `examples/basic/client`), open another terminal, `cd` into the client directory, and run it using `go run .`.
+
+**Note:**
+
+- Examples using **stdio** (`basic`, `auth`, `billing`, `rate-limit`, `kitchen-sink`) require the client and server to be connected. You can run them in separate terminals and manually copy/paste, or use shell piping (see specific examples below).
+- Examples using **network transports** (SSE in `http/`, `websocket/`) require the server to be running first, and then a compatible client needs to connect to the specified address and port. The generic client in `examples/cmd/gomcp-client` might be adaptable, or you might need a specific client (e.g., a browser for SSE/WebSocket).
+- The **configuration** examples (`configuration/{json,yaml,toml}/server/`) load their respective config files (`../config.{json,yaml,toml}`) and start the transport specified within that file.
+
+### Basic Multi-Tool Example (`basic/`)
 
 This is the main example demonstrating multiple tools.
 
 **Using Piping:**
 
 ```bash
-# This command runs the multi-tool server and the standard client
-go run ./examples/basic/server/*.go | go run ./examples/basic/client/main.go
+# cd into the examples directory first if you aren't already there
+(cd basic/server && go run .) | (cd basic/client && go run .)
 ```
 
 **Expected Output:**
@@ -55,11 +71,11 @@ When run successfully, you will see log messages printed to **stderr** from both
 ```bash
 # Set the required API key and run the auth server and client
 export MCP_API_KEY="test-key-123"
-go run ./examples/auth/server/main.go | go run ./examples/auth/client/main.go
+(cd auth/server && go run .) | (cd auth/client && go run .)
 
-# Example of running with the wrong key (server will fail to start)
+# Example of running with the wrong key (server will likely exit quickly)
 export MCP_API_KEY="wrong-key"
-go run ./examples/auth/server/main.go | go run ./examples/auth/client/main.go
+(cd auth/server && go run .) | (cd auth/client && go run .)
 ```
 
 ### Rate Limit Example (`rate-limit/server/` and `rate-limit/client/`)
@@ -69,7 +85,7 @@ go run ./examples/auth/server/main.go | go run ./examples/auth/client/main.go
 ```bash
 # Set the required API key and run the rate-limited server and client
 export MCP_API_KEY="test-key-123"
-go run ./examples/rate-limit/server/main.go | go run ./examples/rate-limit/client/main.go
+(cd rate-limit/server && go run .) | (cd rate-limit/client && go run .)
 ```
 
 ### Billing/Tracking Simulation Example (`billing/server/` and `billing/client/`)
@@ -79,36 +95,48 @@ go run ./examples/rate-limit/server/main.go | go run ./examples/rate-limit/clien
 ```bash
 # Set the required API key and run the billing server and client
 export MCP_API_KEY="test-key-123"
-go run ./examples/billing/server/main.go | go run ./examples/billing/client/main.go
+(cd billing/server && go run .) | (cd billing/client && go run .)
 ```
 
-### SQLite Database Example (`sqlite/server/` and `sqlite/client/`)
-
-This example demonstrates using a SQLite database to store and query user data.
-
-**Using Piping:**
-
-```bash
-# Run the SQLite server and client
-go run ./examples/sqlite/server/main.go | go run ./examples/sqlite/client/main.go
-```
-
-The server provides the following tools:
-
-- `getUserById`: Get a user by their ID
-- `listUsers`: List all users, optionally filtered by active status
-- `searchUsers`: Search for users by name or email
-
-The client demonstrates using all of these tools to query the database.
-
-### Kitchen Sink Server Example (`kitchen-sink/server/`)
+### Kitchen Sink Server Example (`kitchen-sink/`)
 
 This is a comprehensive server example demonstrating various MCP features.
 
 ```bash
-# Run the kitchen-sink server
-go run ./examples/kitchen-sink/server/main.go
+# Run the kitchen-sink server and client (assuming a client exists)
+# Replace client command if needed
+(cd kitchen-sink/server && go run .) | (cd kitchen-sink/client && go run .)
 ```
+
+### HTTP Framework Examples (`http/`)
+
+These examples demonstrate integrating `gomcp` with various Go web frameworks using the SSE transport.
+
+1.  Choose a framework (e.g., `gin`).
+2.  Start the server: `cd examples/http/gin/server && go run .`
+3.  Connect using an SSE-compatible MCP client (e.g., configure and run `examples/cmd/gomcp-client` or use a browser-based client) targeting the server's address (e.g., `http://127.0.0.1:8084`).
+
+### WebSocket Example (`websocket/`)
+
+This example demonstrates the WebSocket transport.
+
+1.  Start the server: `cd examples/websocket/server && go run .`
+2.  Connect using a WebSocket-compatible MCP client (e.g., configure and run `examples/cmd/gomcp-client` or use a browser-based client) targeting the server's WebSocket endpoint (e.g., `ws://127.0.0.1:8092/mcp`).
+
+### Configuration Examples (`configuration/`)
+
+These examples show loading server settings from different file formats.
+
+1.  Choose a format (e.g., `json`).
+2.  Start the server: `cd examples/configuration/json/server && go run .`
+3.  The server will load `../config.json` and start the transport specified within (e.g., WebSocket for the default JSON config).
+4.  Connect using a client compatible with the transport defined in the config file.
+
+---
+
+## Deployment Examples (Docker, Kubernetes, systemd)
+
+**Note:** The following deployment examples currently target the **`basic/server`** (stdio multi-tool) example. Adapting them for network-based transports (SSE, WebSocket) would require additional configuration (e.g., exposing ports, handling network clients).
 
 ## Running the Basic Multi-Tool Server with Docker
 

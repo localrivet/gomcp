@@ -14,7 +14,7 @@ This library facilitates building MCP clients (applications that consume tools/r
 The core library implements the features defined in the [MCP Specification version 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26/):
 
 - **Transport Agnostic Core:** Server (`server/`) and Client (`client/`) logic is separated from the transport layer.
-- **Transports:** Implementations for Stdio (`transport/stdio/`) and SSE (`transport/sse/`) are provided.
+- **Transports:** Implementations for Stdio (`transport/stdio/`), SSE (`transport/sse/`), and WebSocket (`transport/websocket/`) are provided.
 - **Protocol Structures:** Defines Go structs for all specified MCP methods, notifications, and content types (`protocol/`).
 - **Initialization:** Full client/server initialization sequence, including capability exchange.
 - **Tooling:** `tools/list`, `tools/call` methods and handlers.
@@ -244,22 +244,32 @@ func main() {
 }
 ```
 
-## Example Executables
+## Examples
 
-The `examples/` directory contains more elaborate client/server pairs demonstrating specific features like authentication, rate limiting, different transports (SSE), and various tool implementations. These provide a more comprehensive demonstration of the library's capabilities.
+The `examples/` directory contains various client/server pairs demonstrating specific features and transports. Each example is a self-contained Go module.
 
-To run the basic stdio server/client example:
+**Running Examples:**
 
-1.  Build the server: `go build -o mcp_server ./examples/server/`
-2.  Build the client: `go build -o mcp_client ./examples/client/`
-3.  Run them connected via a pipe: `./mcp_server | ./mcp_client`
+Most examples follow a similar pattern. To run an example:
 
-_(Check the log output on stderr for details)_
+1.  Navigate to the example's directory (e.g., `cd examples/basic/server`).
+2.  Run the server using `go run .`.
+3.  In another terminal, navigate to the corresponding client directory (e.g., `cd examples/basic/client`).
+4.  Run the client using `go run .`.
 
-To run the SSE example:
+**Example Categories:**
 
-1.  Start the server: `go run ./examples/sse-server/main.go` (or build and run)
-2.  In another terminal, start the client: `go run ./examples/sse-client/main.go` (or build and run)
+- **`examples/basic/`**: Demonstrates simple stdio communication.
+- **`examples/http/`**: Shows integration with various Go HTTP frameworks/routers (Chi, Echo, Fiber, Gin, Go-Zero, Gorilla/Mux, HttpRouter, Beego, Iris, Net/HTTP) using the SSE transport. Run the server from `examples/http/<framework>/server/` and use a generic SSE client (like the one in `examples/cmd/gomcp-client` configured for SSE) or a browser-based client.
+- **`examples/websocket/`**: Demonstrates the WebSocket transport. Run the server from `examples/websocket/server/` and use a generic WebSocket client (like `examples/cmd/gomcp-client` configured for WebSocket).
+- **`examples/configuration/`**: Shows how to load server configuration from JSON, YAML, or TOML files. Run the specific server (e.g., `cd examples/configuration/json/server && go run .`) which loads the corresponding config file (e.g., `examples/configuration/json/config.json`).
+- **`examples/auth/`**: Example demonstrating authentication concepts (details TBD).
+- **`examples/billing/`**: Example demonstrating billing/quota concepts (details TBD).
+- **`examples/rate-limit/`**: Example demonstrating rate limiting (details TBD).
+- **`examples/kitchen-sink/`**: A more complex example combining multiple features (details TBD).
+- **`examples/cmd/`**: Contains generic command-line client and server implementations that can be configured for different transports.
+
+_(Check the specific README within each example directory for more detailed instructions if available.)_
 
 ## Documentation
 
