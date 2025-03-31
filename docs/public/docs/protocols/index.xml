@@ -1,0 +1,388 @@
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>GoMCP – Protocols</title>
+    <link>http://localhost:1313/docs/protocols/</link>
+    <description>Recent content in Protocols on GoMCP</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    
+	  <atom:link href="http://localhost:1313/docs/protocols/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+      
+        
+      
+    
+    
+    <item>
+      <title>Protocol Messages</title>
+      <link>http://localhost:1313/docs/protocols/protocol_messages/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://localhost:1313/docs/protocols/protocol_messages/</guid>
+      <description>
+        
+        
+        &lt;p&gt;This document describes the core JSON-RPC messages used in the Model Context Protocol (MCP).&lt;/p&gt;
+&lt;h2&gt;Request Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;request-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#request-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;initialize&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;initialize&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#initialize&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to initiate the connection and exchange capabilities.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;InitializeRequestParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;protocolVersion&lt;/code&gt; (string, required): The protocol version the client supports.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;capabilities&lt;/code&gt; (object, required): The capabilities the client supports (&lt;code&gt;ClientCapabilities&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;clientInfo&lt;/code&gt; (object, required): Information about the client implementation (&lt;code&gt;Implementation&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;trace&lt;/code&gt; (string, optional): Trace setting (&amp;lsquo;off&amp;rsquo;, &amp;lsquo;messages&amp;rsquo;, &amp;lsquo;verbose&amp;rsquo;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;workspaceFolders&lt;/code&gt; (array, optional): Workspace folders opened by the client (&lt;code&gt;WorkspaceFolder[]&lt;/code&gt;).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Result (&lt;code&gt;InitializeResult&lt;/code&gt;):&lt;/strong&gt; See Response Messages section.&lt;/p&gt;
+&lt;h3&gt;&lt;code&gt;logging/set_level&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;loggingset_level&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#loggingset_level&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to request a change in the server&amp;rsquo;s logging verbosity.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;SetLevelRequestParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;level&lt;/code&gt; (string, required): The desired logging level (&lt;code&gt;&amp;quot;error&amp;quot;&lt;/code&gt;, &lt;code&gt;&amp;quot;warn&amp;quot;&lt;/code&gt;, &lt;code&gt;&amp;quot;info&amp;quot;&lt;/code&gt;, &lt;code&gt;&amp;quot;debug&amp;quot;&lt;/code&gt;, &lt;code&gt;&amp;quot;trace&amp;quot;&lt;/code&gt;).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Result:&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - A successful response has an empty result.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;sampling/create_message&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;samplingcreate_message&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#samplingcreate_message&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to request a model-generated message based on a provided context.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;CreateMessageRequestParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;context&lt;/code&gt; (array, required): A list of messages (&lt;code&gt;SamplingMessage[]&lt;/code&gt;) providing the conversation history or context. Each message has &lt;code&gt;role&lt;/code&gt; (string), &lt;code&gt;content&lt;/code&gt; (array of &lt;code&gt;Content&lt;/code&gt; objects), and optional &lt;code&gt;name&lt;/code&gt; (string).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;preferences&lt;/code&gt; (object, optional): Desired model characteristics (&lt;code&gt;ModelPreferences&lt;/code&gt;), including &lt;code&gt;modelUri&lt;/code&gt;, &lt;code&gt;temperature&lt;/code&gt;, &lt;code&gt;topP&lt;/code&gt;, &lt;code&gt;topK&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Result (&lt;code&gt;CreateMessageResult&lt;/code&gt;):&lt;/strong&gt; See Response Messages section.&lt;/p&gt;
+&lt;h3&gt;&lt;code&gt;roots/list&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;rootslist&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#rootslist&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the server to the client to request the list of available root contexts (e.g., workspace folders, open files).&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ListRootsRequestParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The params object is currently empty.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Result (&lt;code&gt;ListRootsResult&lt;/code&gt;):&lt;/strong&gt; See Response Messages section.&lt;/p&gt;
+&lt;p&gt;&lt;em&gt;(Other request message details will go here)&lt;/em&gt;&lt;/p&gt;
+&lt;h2&gt;Response Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;response-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#response-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;initialize&lt;/code&gt; (Result)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;initialize-result&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#initialize-result&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to an &lt;code&gt;initialize&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;InitializeResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;protocolVersion&lt;/code&gt; (string, required): The protocol version the server supports.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;capabilities&lt;/code&gt; (object, required): The capabilities the server supports (&lt;code&gt;ServerCapabilities&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;serverInfo&lt;/code&gt; (object, required): Information about the server implementation (&lt;code&gt;Implementation&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;instructions&lt;/code&gt; (string, optional): Optional instructions for the client after initialization.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;sampling/create_message&lt;/code&gt; (Result)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;samplingcreate_message-result&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#samplingcreate_message-result&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to a &lt;code&gt;sampling/create_message&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;CreateMessageResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;message&lt;/code&gt; (object, required): The generated message from the model (&lt;code&gt;SamplingMessage&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;modelHint&lt;/code&gt; (object, optional): Information about the model used (&lt;code&gt;ModelHint&lt;/code&gt;), including &lt;code&gt;modelUri&lt;/code&gt;, &lt;code&gt;inputTokens&lt;/code&gt;, &lt;code&gt;outputTokens&lt;/code&gt;, &lt;code&gt;finishReason&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;roots/list&lt;/code&gt; (Result)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;rootslist-result&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#rootslist-result&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to a &lt;code&gt;roots/list&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;ListRootsResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;roots&lt;/code&gt; (array, required): A list of root contexts (&lt;code&gt;Root[]&lt;/code&gt;) available on the client. Each root has &lt;code&gt;uri&lt;/code&gt;, optional &lt;code&gt;kind&lt;/code&gt;, &lt;code&gt;title&lt;/code&gt;, &lt;code&gt;description&lt;/code&gt;, and &lt;code&gt;metadata&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;em&gt;(Other response message details will go here)&lt;/em&gt;&lt;/p&gt;
+&lt;h2&gt;Notification Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notification-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notification-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;initialized&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;initialized&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#initialized&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server after the client has received and processed the &lt;code&gt;initialize&lt;/code&gt; result, indicating readiness.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;InitializedNotificationParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The params object is empty.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;notifications/message&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notificationsmessage&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notificationsmessage&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the server to the client to provide a log message. This is typically used when the server&amp;rsquo;s logging capabilities are enabled.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;LoggingMessageParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;level&lt;/code&gt; (string, required): The severity level of the log message (&lt;code&gt;&amp;quot;error&amp;quot;&lt;/code&gt;, &lt;code&gt;&amp;quot;warn&amp;quot;&lt;/code&gt;, &lt;code&gt;&amp;quot;info&amp;quot;&lt;/code&gt;, &lt;code&gt;&amp;quot;debug&amp;quot;&lt;/code&gt;, &lt;code&gt;&amp;quot;trace&amp;quot;&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;message&lt;/code&gt; (string, required): The log message content.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;$/cancelled&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;cancelled&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#cancelled&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to indicate that a previously sent request should be cancelled.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;CancelledParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;id&lt;/code&gt; (integer | string, required): The ID of the request to be cancelled.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;$/progress&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;progress&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#progress&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the server to the client to report progress on a long-running operation initiated by a request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ProgressParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;token&lt;/code&gt; (string, required): The progress token associated with the request.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;value&lt;/code&gt; (any, required): The progress payload, specific to the operation being reported.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;notifications/roots/list_changed&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notificationsrootslist_changed&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notificationsrootslist_changed&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server when the list of available roots has changed.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;RootsListChangedParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The params object is empty.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;notifications/tools/list_changed&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notificationstoolslist_changed&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notificationstoolslist_changed&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the server to the client when the list of available tools has changed.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ToolsListChangedParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The params object is empty.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;notifications/resources/list_changed&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notificationsresourceslist_changed&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notificationsresourceslist_changed&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the server to the client when the list of available resources has changed.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ResourcesListChangedParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The params object is empty.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;notifications/prompts/list_changed&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notificationspromptslist_changed&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notificationspromptslist_changed&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the server to the client when the list of available prompts has changed.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;PromptsListChangedParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The params object is empty.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;em&gt;(Other notification message details will go here)&lt;/em&gt;&lt;/p&gt;
+
+      </description>
+    </item>
+    
+    <item>
+      <title>Protocol Tools</title>
+      <link>http://localhost:1313/docs/protocols/protocol_tools/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://localhost:1313/docs/protocols/protocol_tools/</guid>
+      <description>
+        
+        
+        &lt;p&gt;MCP servers can expose tools that clients can execute. This document describes the protocol messages related to tool discovery and execution.&lt;/p&gt;
+&lt;h2&gt;Tool Definition (&lt;code&gt;Tool&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;tool-definition-tool&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#tool-definition-tool&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Represents a tool offered by the server.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;name&lt;/code&gt; (string, required): The unique identifier for the tool.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;description&lt;/code&gt; (string, optional): A human-readable description of what the tool does.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;inputSchema&lt;/code&gt; (object, required): A JSON Schema (&lt;code&gt;ToolInputSchema&lt;/code&gt;) defining the expected arguments for the tool.
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;type&lt;/code&gt; (string, required): Typically &amp;ldquo;object&amp;rdquo;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;properties&lt;/code&gt; (object, optional): A map where keys are argument names and values are &lt;code&gt;PropertyDetail&lt;/code&gt; objects describing the argument (type, description, enum, format).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;required&lt;/code&gt; (array, optional): A list of required argument names (strings).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;annotations&lt;/code&gt; (object, optional): Optional hints about the tool&amp;rsquo;s behavior (&lt;code&gt;ToolAnnotations&lt;/code&gt;).
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;title&lt;/code&gt; (string, optional): Human-readable title.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;readOnlyHint&lt;/code&gt; (boolean, optional): Indicates if the tool only reads data.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;destructiveHint&lt;/code&gt; (boolean, optional): Indicates if the tool might modify or delete data.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;idempotentHint&lt;/code&gt; (boolean, optional): Indicates if calling the tool multiple times with the same arguments has the same effect as calling it once.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;openWorldHint&lt;/code&gt; (boolean, optional): Indicates if the tool interacts with external systems or the real world.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Request Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;request-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#request-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;tools/list&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;toolslist&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#toolslist&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to retrieve the list of available tools. Supports pagination.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ListToolsRequestParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;cursor&lt;/code&gt; (string, optional): A cursor returned from a previous &lt;code&gt;tools/list&lt;/code&gt; response to fetch the next page of results.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;tools/call&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;toolscall&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#toolscall&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to execute a specific tool with provided arguments.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;CallToolParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;name&lt;/code&gt; (string, required): The name of the tool to execute.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;arguments&lt;/code&gt; (object, optional): A map containing the arguments for the tool, conforming to the tool&amp;rsquo;s &lt;code&gt;inputSchema&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;_meta&lt;/code&gt; (object, optional): Metadata associated with the request (&lt;code&gt;RequestMeta&lt;/code&gt;), potentially including a &lt;code&gt;progressToken&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Response Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;response-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#response-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;tools/list&lt;/code&gt; (Result)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;toolslist-result&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#toolslist-result&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to a &lt;code&gt;tools/list&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;ListToolsResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;tools&lt;/code&gt; (array, required): A list of available tools (&lt;code&gt;Tool[]&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;nextCursor&lt;/code&gt; (string, optional): A cursor to use in a subsequent &lt;code&gt;tools/list&lt;/code&gt; request to fetch the next page of results. If omitted, there are no more tools.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;tools/call&lt;/code&gt; (Result)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;toolscall-result&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#toolscall-result&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to a &lt;code&gt;tools/call&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;CallToolResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;content&lt;/code&gt; (array, required): The result of the tool execution, represented as an array of &lt;code&gt;Content&lt;/code&gt; objects (e.g., &lt;code&gt;TextContent&lt;/code&gt;, &lt;code&gt;ImageContent&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;isError&lt;/code&gt; (boolean, optional): If true, indicates the &lt;code&gt;content&lt;/code&gt; represents an error message rather than a successful result.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;_meta&lt;/code&gt; (object, optional): Metadata associated with the response (&lt;code&gt;RequestMeta&lt;/code&gt;).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Notification Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notification-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notification-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;notifications/tools/list_changed&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notificationstoolslist_changed&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notificationstoolslist_changed&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the server to the client when the set of available tools has changed (e.g., tools added or removed). The client should typically re-fetch the tool list using &lt;code&gt;tools/list&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ToolsListChangedParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The params object is empty.&lt;/li&gt;
+&lt;/ul&gt;
+
+      </description>
+    </item>
+    
+    <item>
+      <title>Protocol Resources</title>
+      <link>http://localhost:1313/docs/protocols/protocol_resources/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://localhost:1313/docs/protocols/protocol_resources/</guid>
+      <description>
+        
+        
+        &lt;p&gt;MCP servers can expose resources, which represent data sources that clients can access or subscribe to. This document describes the protocol messages related to resource discovery and access.&lt;/p&gt;
+&lt;h2&gt;Resource Definition (&lt;code&gt;Resource&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;resource-definition-resource&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#resource-definition-resource&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Represents a data source provided by the server.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;uri&lt;/code&gt; (string, required): A unique identifier for the resource (e.g., &lt;code&gt;file:///path/to/file&lt;/code&gt;, &lt;code&gt;api://service/endpoint&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;kind&lt;/code&gt; (string, optional): A category or type hint for the resource (e.g., &amp;ldquo;file&amp;rdquo;, &amp;ldquo;api_spec&amp;rdquo;, &amp;ldquo;database_table&amp;rdquo;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;title&lt;/code&gt; (string, optional): A short, human-readable title for the resource.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;description&lt;/code&gt; (string, optional): A longer description of the resource.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;version&lt;/code&gt; (string, optional): An opaque string representing the current version of the resource content. This should change whenever the content changes.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;metadata&lt;/code&gt; (object, optional): Additional arbitrary key-value pairs associated with the resource.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Request Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;request-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#request-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;resources/list&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;resourceslist&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#resourceslist&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to retrieve a list of available resources, potentially filtered. Supports pagination.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ListResourcesRequestParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;filter&lt;/code&gt; (object, optional): Criteria to filter the resources (specific filter structure not defined by the core protocol).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cursor&lt;/code&gt; (string, optional): A cursor from a previous response to fetch the next page.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;resources/get&lt;/code&gt; (Corresponds to &lt;code&gt;resources/read&lt;/code&gt; in Go code)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;resourcesget-corresponds-to-resourcesread-in-go-code&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#resourcesget-corresponds-to-resourcesread-in-go-code&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to retrieve the content of a specific resource.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ReadResourceRequestParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;uri&lt;/code&gt; (string, required): The URI of the resource to retrieve.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;version&lt;/code&gt; (string, optional): If provided, the server may return a &amp;ldquo;Not Modified&amp;rdquo; error if the resource version matches.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;resources/subscribe&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;resourcessubscribe&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#resourcessubscribe&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to request notifications when the content of specific resources changes.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;SubscribeResourceParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;uris&lt;/code&gt; (array of strings, required): A list of resource URIs to subscribe to.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;resources/unsubscribe&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;resourcesunsubscribe&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#resourcesunsubscribe&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to stop receiving notifications for specific resources.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;UnsubscribeResourceParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;uris&lt;/code&gt; (array of strings, required): A list of resource URIs to unsubscribe from.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Response Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;response-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#response-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;resources/list&lt;/code&gt; (Result)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;resourceslist-result&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#resourceslist-result&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to a &lt;code&gt;resources/list&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;ListResourcesResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;resources&lt;/code&gt; (array, required): A list of resources (&lt;code&gt;Resource[]&lt;/code&gt;) matching the filter criteria for the current page.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;nextCursor&lt;/code&gt; (string, optional): A cursor for fetching the next page. Omitted if this is the last page.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;resources/get&lt;/code&gt; (Result - Corresponds to &lt;code&gt;resources/read&lt;/code&gt; in Go code)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;resourcesget-result---corresponds-to-resourcesread-in-go-code&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#resourcesget-result---corresponds-to-resourcesread-in-go-code&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to a &lt;code&gt;resources/get&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;ReadResourceResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;resource&lt;/code&gt; (object, required): The &lt;code&gt;Resource&lt;/code&gt; object containing metadata (including the current &lt;code&gt;version&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;contents&lt;/code&gt; (object, required): The actual content of the resource (&lt;code&gt;ResourceContents&lt;/code&gt;). This will be either:
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;TextResourceContents&lt;/code&gt;: Contains &lt;code&gt;contentType&lt;/code&gt; (string) and &lt;code&gt;content&lt;/code&gt; (string).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;BlobResourceContents&lt;/code&gt;: Contains &lt;code&gt;contentType&lt;/code&gt; (string) and &lt;code&gt;blob&lt;/code&gt; (string, base64 encoded).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;resources/subscribe&lt;/code&gt; (Result)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;resourcessubscribe-result&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#resourcessubscribe-result&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to a &lt;code&gt;resources/subscribe&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;SubscribeResourceResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The result object is currently empty upon success.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;resources/unsubscribe&lt;/code&gt; (Result)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;resourcesunsubscribe-result&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#resourcesunsubscribe-result&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to an &lt;code&gt;resources/unsubscribe&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;UnsubscribeResourceResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The result object is currently empty upon success.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Notification Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notification-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notification-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;notifications/resources/list_changed&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notificationsresourceslist_changed&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notificationsresourceslist_changed&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the server to the client when the set of available resources changes (e.g., resources added or removed). The client should typically re-fetch the resource list using &lt;code&gt;resources/list&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ResourcesListChangedParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The params object is empty.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;notifications/resources/content_changed&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notificationsresourcescontent_changed&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notificationsresourcescontent_changed&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the server to the client when the content (and thus version) of a subscribed resource has changed.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ResourceUpdatedParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;resource&lt;/code&gt; (object, required): The updated &lt;code&gt;Resource&lt;/code&gt; object, containing the new &lt;code&gt;version&lt;/code&gt; and potentially other changed metadata. The client should typically use &lt;code&gt;resources/get&lt;/code&gt; to fetch the new content if needed.&lt;/li&gt;
+&lt;/ul&gt;
+
+      </description>
+    </item>
+    
+    <item>
+      <title>Protocol Prompts</title>
+      <link>http://localhost:1313/docs/protocols/protocol_prompts/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://localhost:1313/docs/protocols/protocol_prompts/</guid>
+      <description>
+        
+        
+        &lt;p&gt;MCP servers can expose named prompts, which represent pre-defined instructions or templates that clients can utilize, often in conjunction with sampling requests. This document describes the protocol messages related to prompt discovery.&lt;/p&gt;
+&lt;h2&gt;Prompt Definition (&lt;code&gt;Prompt&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;prompt-definition-prompt&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#prompt-definition-prompt&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Represents a named prompt template provided by the server.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;uri&lt;/code&gt; (string, required): A unique identifier for the prompt.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;title&lt;/code&gt; (string, optional): A short, human-readable title.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;description&lt;/code&gt; (string, optional): A longer description of the prompt&amp;rsquo;s purpose.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;arguments&lt;/code&gt; (array, optional): A list of arguments (&lt;code&gt;PromptArgument[]&lt;/code&gt;) that can be used to customize the prompt template. Each argument has:
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;name&lt;/code&gt; (string, required)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;description&lt;/code&gt; (string, optional)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;type&lt;/code&gt; (string, required): e.g., &amp;ldquo;string&amp;rdquo;, &amp;ldquo;number&amp;rdquo;, &amp;ldquo;boolean&amp;rdquo;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;required&lt;/code&gt; (boolean, optional)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;messages&lt;/code&gt; (array, required): The sequence of messages (&lt;code&gt;PromptMessage[]&lt;/code&gt;) that make up the prompt template. Each message has:
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;role&lt;/code&gt; (string, required): e.g., &amp;ldquo;system&amp;rdquo;, &amp;ldquo;user&amp;rdquo;, &amp;ldquo;assistant&amp;rdquo;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;content&lt;/code&gt; (array, required): The content parts (&lt;code&gt;Content[]&lt;/code&gt;) for the message. Content within prompts often includes template variables (syntax not defined by MCP core).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;metadata&lt;/code&gt; (object, optional): Additional arbitrary key-value pairs.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Request Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;request-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#request-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;prompts/list&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;promptslist&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#promptslist&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to retrieve a list of available prompts, potentially filtered. Supports pagination.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;ListPromptsRequestParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;filter&lt;/code&gt; (object, optional): Criteria to filter the prompts (specific filter structure not defined by the core protocol).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;cursor&lt;/code&gt; (string, optional): A cursor from a previous response to fetch the next page.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;prompts/get&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;promptsget&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#promptsget&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the client to the server to retrieve a specific prompt definition, potentially resolving template arguments.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;GetPromptRequestParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;uri&lt;/code&gt; (string, required): The URI of the prompt to retrieve.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;arguments&lt;/code&gt; (object, optional): Values for the prompt&amp;rsquo;s arguments, used for server-side template resolution if supported.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Response Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;response-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#response-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;prompts/list&lt;/code&gt; (Result)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;promptslist-result&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#promptslist-result&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to a &lt;code&gt;prompts/list&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;ListPromptsResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;prompts&lt;/code&gt; (array, required): A list of prompts (&lt;code&gt;Prompt[]&lt;/code&gt;) matching the filter criteria for the current page.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;nextCursor&lt;/code&gt; (string, optional): A cursor for fetching the next page. Omitted if this is the last page.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;&lt;code&gt;prompts/get&lt;/code&gt; (Result)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;promptsget-result&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#promptsget-result&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;The successful response to a &lt;code&gt;prompts/get&lt;/code&gt; request.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Payload (&lt;code&gt;GetPromptResult&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;prompt&lt;/code&gt; (object, required): The requested &lt;code&gt;Prompt&lt;/code&gt; definition. If arguments were provided in the request and the server supports template resolution, the &lt;code&gt;messages&lt;/code&gt; content may be resolved.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Notification Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notification-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notification-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;h3&gt;&lt;code&gt;notifications/prompts/list_changed&lt;/code&gt;&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;notificationspromptslist_changed&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#notificationspromptslist_changed&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;p&gt;Sent from the server to the client when the set of available prompts has changed (e.g., prompts added or removed). The client should typically re-fetch the prompt list using &lt;code&gt;prompts/list&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Parameters (&lt;code&gt;PromptsListChangedParams&lt;/code&gt;):&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;em&gt;(None)&lt;/em&gt; - The params object is empty.&lt;/li&gt;
+&lt;/ul&gt;
+
+      </description>
+    </item>
+    
+  </channel>
+</rss>
