@@ -30,13 +30,12 @@ jobs:
   # Build job
   build:
     runs-on: ubuntu-latest
-    env:
-      HUGO_VERSION: 0.134.2 # Use a recent version, adjust if needed
     steps:
-      - name: Install Hugo CLI
-        run: |
-          wget -O ${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.deb \
-          && sudo dpkg -i ${{ runner.temp }}/hugo.deb
+      - name: Install Hugo CLI using peaceiris/actions-hugo
+        uses: peaceiris/actions-hugo@v3 # Use the action
+        with:
+          version: "0.134.2" # Specify the desired version
+          extended: true # Ensure the extended version is installed
       - name: Verify Hugo Version
         run: hugo version
       - name: Install Dart Sass
