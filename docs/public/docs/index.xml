@@ -15,21 +15,6 @@
     
     
     <item>
-      <title>About GoMCP</title>
-      <link>http://localhost:1313/about/</link>
-      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
-      
-      <guid>http://localhost:1313/about/</guid>
-      <description>
-        
-        
-        &lt;p&gt;GoMCP is a Go library designed to facilitate the implementation of the &lt;a href=&#34;https://modelcontextprotocol.io/&#34; target=&#34;_blank&#34; rel=&#34;noopener&#34;&gt;Model Context Protocol (MCP)&lt;/a&gt;.&lt;/p&gt;
-&lt;p&gt;&lt;em&gt;(More details about the project&amp;rsquo;s goals, history, or maintainers can be added here.)&lt;/em&gt;&lt;/p&gt;
-
-      </description>
-    </item>
-    
-    <item>
       <title>Basic (Stdio)</title>
       <link>http://localhost:1313/examples/basic/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>

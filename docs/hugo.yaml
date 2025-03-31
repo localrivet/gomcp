@@ -7,8 +7,8 @@ menu:
     - name: Documentation
       pageRef: /docs
       weight: 1
-    - name: About
-      pageRef: /about
+    - name: License
+      pageRef: /license # Points to the new license page
       weight: 2
     - name: Search
       weight: 3
