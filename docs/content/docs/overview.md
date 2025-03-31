@@ -1,7 +1,6 @@
 ---
-layout: default
 title: Overview
-nav_order: 2 # Appears after Home (nav_order: 1)
+weight: 20 # Controls order in sidebar/menu
 ---
 
 # GoMCP Library Overview
@@ -26,6 +25,11 @@ The library is structured into several key packages:
     - Defines Go structs for JSON-RPC 2.0 base messages (`JSONRPCRequest`, `JSONRPCResponse`, `JSONRPCNotification`) and error payloads (`ErrorPayload`).
     - Includes constants for MCP method names (e.g., `MethodInitialize`, `MethodCallTool`, `MethodCancelled`) and the supported protocol version (`CurrentProtocolVersion`).
     - Uses standard Go `encoding/json` tags.
+    - For detailed descriptions of the protocol messages and structures, see:
+      - [Protocol Messages]({{< ref "protocol_messages" >}})
+      - [Protocol Tools]({{< ref "protocol_tools" >}})
+      - [Protocol Resources]({{< ref "protocol_resources" >}})
+      - [Protocol Prompts]({{< ref "protocol_prompts" >}})
 
 2.  **`server/`**:
 

@@ -1,7 +1,6 @@
 ---
-layout: default
 title: Installation
-nav_order: 3 # After Home and Overview
+weight: 30
 ---
 
 # Installation

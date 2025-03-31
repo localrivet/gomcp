@@ -1,7 +1,7 @@
 ---
-layout: default
 title: Basic Usage
-nav_order: 4 # After Installation
+weight: 40
+layout: docs
 ---
 
 # Basic Usage

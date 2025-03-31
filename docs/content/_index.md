@@ -1,7 +1,6 @@
 ---
-layout: home # Use 'home' layout for the main page with this theme
 title: Home
-nav_order: 1
+weight: 10 # Homepage, appears first
 ---
 
 # GoMCP - Go Model Context Protocol Library
@@ -12,10 +11,10 @@ This library provides the building blocks for creating MCP servers (tool provide
 
 ## Getting Started
 
-- **[Overview](./overview.md):** Learn about the library's architecture and core components.
-- **[Installation](./installation.md):** How to add the library to your Go project.
-- **[Basic Usage](./basic_usage.md):** Simple examples of implementing a client and server.
-- **[Examples](../examples/README.md):** Explore runnable examples demonstrating different tools (echo, calculator, filesystem).
+- **[Overview](./overview):** Learn about the library's architecture and core components.
+- **[Installation](./installation):** How to add the library to your Go project.
+- **[Basic Usage](./basic_usage):** Simple examples of implementing a client and server.
+- **[Examples](./examples/):** Explore runnable examples demonstrating different tools (echo, calculator, filesystem).
 - **[Go Reference](https://pkg.go.dev/github.com/localrivet/gomcp):** Detailed Go package documentation.
 
 ## Repository
