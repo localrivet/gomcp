@@ -13,7 +13,7 @@ The Model Context Protocol enables powerful interactions between language models
 
 ## Specification
 
-GoMCP aims to be fully compliant with the official **Model Context Protocol specification**. It supports core features like initialization, tool definition and execution, resource discovery and access, prompts, progress reporting, and cancellation.
+GoMCP aims to be fully compliant with the official **Model Context Protocol specification (Protocol Revision: 2025-03-26)**. It supports core features like initialization, tool definition and execution, resource discovery and access, prompts, progress reporting, and cancellation.
 
 ## Getting Started
 
