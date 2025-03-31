@@ -5,8 +5,6 @@ cascade:
   type: docs
 ---
 
-## Goal
-
 The primary goal of `gomcp` is to provide idiomatic Go tools for building applications that communicate using the Model Context Protocol (MCP). This includes:
 
 - **MCP Servers:** Applications that expose tools or resources to MCP clients (often language models or agents).

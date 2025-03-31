@@ -1,9 +1,9 @@
 ---
 title: GoMCP - Go Model Context Protocol Library
 weight: 1
+cascade:
+  type: docs
 ---
-
-# GoMCP: Idiomatic Go for the Model Context Protocol
 
 **GoMCP** is a comprehensive Go library designed to provide idiomatic tools for building applications that communicate using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
 
@@ -21,8 +21,8 @@ Dive into the documentation to learn more:
 
 - **[Documentation Home]({{< ref "docs" >}}):** Start here for an overview and detailed guides.
   - **[Getting Started]({{< ref "docs/getting-started" >}}):** Installation and your first server/client.
-  - **[Client Implementation]({{< ref "docs/client" >}}):** Building applications that consume MCP capabilities.
-  - **[Server Implementation]({{< ref "docs/server" >}}):** Building applications that provide MCP capabilities.
+  - **[Server Implementation]({{< ref "docs/create-server" >}}):** Building applications that provide MCP capabilities.
+  - **[Client Implementation]({{< ref "docs/create-client" >}}):** Building applications that consume MCP capabilities.
   - **[Protocols]({{< ref "docs/protocols" >}}):** Detailed breakdown of MCP messages and structures.
 - **[Examples]({{< ref "examples" >}}):** Explore runnable examples demonstrating various features and transports.
 - **[Go Reference](https://pkg.go.dev/github.com/localrivet/gomcp):** Detailed Go package documentation.

@@ -128,148 +128,61 @@
     </item>
     
     <item>
-      <title>Defining and Registering Tools</title>
-      <link>http://localhost:1313/docs/server/defining-tools/</link>
+      <title>Getting Started</title>
+      <link>http://localhost:1313/docs/getting-started/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/docs/server/defining-tools/</guid>
+      <guid>http://localhost:1313/docs/getting-started/</guid>
       <description>
         
         
-        &lt;p&gt;One of the core features of MCP is the ability for servers to expose &amp;ldquo;tools&amp;rdquo; that clients can execute. This guide explains how to define and register tools in your &lt;code&gt;gomcp&lt;/code&gt; server application.&lt;/p&gt;
-&lt;h2&gt;1. Define the Tool Structure (&lt;code&gt;protocol.Tool&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;1-define-the-tool-structure-protocoltool&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#1-define-the-tool-structure-protocoltool&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;First, you need to define the metadata for your tool using the &lt;code&gt;protocol.Tool&lt;/code&gt; struct. This includes:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;Name&lt;/code&gt;&lt;/strong&gt;: A unique string identifier for the tool (e.g., &amp;ldquo;calculate_sum&amp;rdquo;, &amp;ldquo;read_file&amp;rdquo;).&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;Description&lt;/code&gt;&lt;/strong&gt;: (Optional) A human-readable description of what the tool does.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;InputSchema&lt;/code&gt;&lt;/strong&gt;: A &lt;code&gt;protocol.ToolInputSchema&lt;/code&gt; defining the expected arguments. This uses a subset of JSON Schema:
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;Type&lt;/code&gt;: Should typically be &amp;ldquo;object&amp;rdquo;.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;Properties&lt;/code&gt;: A map where keys are argument names and values are &lt;code&gt;protocol.PropertyDetail&lt;/code&gt; structs describing the argument&amp;rsquo;s &lt;code&gt;Type&lt;/code&gt; (e.g., &amp;ldquo;string&amp;rdquo;, &amp;ldquo;number&amp;rdquo;, &amp;ldquo;boolean&amp;rdquo;, &amp;ldquo;array&amp;rdquo;, &amp;ldquo;object&amp;rdquo;), &lt;code&gt;Description&lt;/code&gt;, allowed &lt;code&gt;Enum&lt;/code&gt; values, or &lt;code&gt;Format&lt;/code&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;Required&lt;/code&gt;: A slice of strings listing the names of mandatory arguments.&lt;/li&gt;
+        &lt;p&gt;This guide will walk you through the initial steps to get up and running with the &lt;code&gt;gomcp&lt;/code&gt; library.&lt;/p&gt;
+&lt;h2&gt;Prerequisites&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;prerequisites&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#prerequisites&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Go:&lt;/strong&gt; Ensure you have a recent version of Go installed (version 1.18 or later is recommended). You can download it from &lt;a href=&#34;https://golang.org/dl/&#34; target=&#34;_blank&#34; rel=&#34;noopener&#34;&gt;golang.org&lt;/a&gt;.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;Annotations&lt;/code&gt;&lt;/strong&gt;: (Optional) A &lt;code&gt;protocol.ToolAnnotations&lt;/code&gt; struct providing hints about the tool&amp;rsquo;s behavior (e.g., &lt;code&gt;ReadOnlyHint&lt;/code&gt;, &lt;code&gt;DestructiveHint&lt;/code&gt;).&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;&lt;strong&gt;Example: An &amp;ldquo;echo&amp;rdquo; tool definition&lt;/strong&gt;&lt;/p&gt;
+&lt;h2&gt;Installation&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;installation&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#installation&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;First, you need to add the &lt;code&gt;gomcp&lt;/code&gt; library to your Go project. Please follow the instructions on the &lt;a href=&#34;http://localhost:1313/docs/installation/&#34; &gt;Installation&lt;/a&gt; page.&lt;/p&gt;
+&lt;h2&gt;Your First MCP Server&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;your-first-mcp-server&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#your-first-mcp-server&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Here&amp;rsquo;s a minimal example of how to create a basic MCP server using the &lt;code&gt;stdio&lt;/code&gt; transport (communicating over standard input/output):&lt;/p&gt;
 &lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
 
-&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/protocol&amp;#34;&lt;/span&gt;
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;package&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;var&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt; = &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Tool&lt;/span&gt;{
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;:        &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;echo&amp;#34;&lt;/span&gt;,
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;Description&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Simple tool that echoes back the input text.&amp;#34;&lt;/span&gt;,
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;InputSchema&lt;/span&gt;: &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ToolInputSchema&lt;/span&gt;{
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;object&amp;#34;&lt;/span&gt;,
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Properties&lt;/span&gt;: &lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;]&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;PropertyDetail&lt;/span&gt;{
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;input&amp;#34;&lt;/span&gt;: {
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;:        &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;string&amp;#34;&lt;/span&gt;,
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#a6e22e&#34;&gt;Description&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;The text to be echoed back by the server.&amp;#34;&lt;/span&gt;,
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			},
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;prefix&amp;#34;&lt;/span&gt;: {
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;:        &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;string&amp;#34;&lt;/span&gt;,
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#a6e22e&#34;&gt;Description&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;An optional prefix to add to the echoed text.&amp;#34;&lt;/span&gt;,
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#75715e&#34;&gt;// Note: Not listed in &amp;#39;Required&amp;#39;, so it&amp;#39;s optional.&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			},
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		},
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Required&lt;/span&gt;: []&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;{&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;input&amp;#34;&lt;/span&gt;}, &lt;span style=&#34;color:#75715e&#34;&gt;// Only &amp;#39;input&amp;#39; is mandatory&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	},
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;Annotations&lt;/span&gt;: &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ToolAnnotations&lt;/span&gt;{
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Example annotation: This tool doesn&amp;#39;t modify state&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;ReadOnlyHint&lt;/span&gt;: &lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;b&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;bool&lt;/span&gt;) &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;bool&lt;/span&gt; { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;b&lt;/span&gt; }(&lt;span style=&#34;color:#66d9ef&#34;&gt;true&lt;/span&gt;),
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	},
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
-  &lt;button
-    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
-    title=&#34;Copy code&#34;
-  &gt;
-    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
-    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
-  &lt;/button&gt;
-&lt;/div&gt;
-&lt;/div&gt;
-&lt;h2&gt;2. Implement the Tool Handler Function (&lt;code&gt;server.ToolHandlerFunc&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;2-implement-the-tool-handler-function-servertoolhandlerfunc&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#2-implement-the-tool-handler-function-servertoolhandlerfunc&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Next, create a function that implements the actual logic of your tool. This function must match the &lt;code&gt;server.ToolHandlerFunc&lt;/code&gt; signature:&lt;/p&gt;
-&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
-
-&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;type&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;ToolHandlerFunc&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;context&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Context&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;arguments&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;]&lt;span style=&#34;color:#66d9ef&#34;&gt;interface&lt;/span&gt;{}) (&lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt; []&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Content&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt;)&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
-  &lt;button
-    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
-    title=&#34;Copy code&#34;
-  &gt;
-    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
-    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
-  &lt;/button&gt;
-&lt;/div&gt;
-&lt;/div&gt;
-&lt;ul&gt;
-&lt;li&gt;It receives a &lt;code&gt;context.Context&lt;/code&gt; for cancellation/deadlines.&lt;/li&gt;
-&lt;li&gt;It receives the &lt;code&gt;arguments&lt;/code&gt; provided by the client in the &lt;code&gt;tools/call&lt;/code&gt; request as a &lt;code&gt;map[string]interface{}&lt;/code&gt;. You&amp;rsquo;ll need to perform type assertions to access argument values safely.&lt;/li&gt;
-&lt;li&gt;It returns a slice of &lt;code&gt;protocol.Content&lt;/code&gt; objects (e.g., &lt;code&gt;protocol.TextContent&lt;/code&gt;, &lt;code&gt;protocol.ImageContent&lt;/code&gt;) representing the successful result of the tool execution.&lt;/li&gt;
-&lt;li&gt;It returns an &lt;code&gt;error&lt;/code&gt; if the tool execution fails. This error will be converted into a JSON-RPC error response sent back to the client.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;&lt;strong&gt;Example: Handler for the &amp;ldquo;echo&amp;rdquo; tool&lt;/strong&gt;&lt;/p&gt;
-&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
-
-&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; (
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;context&amp;#34;&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;fmt&amp;#34;&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/protocol&amp;#34;&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;handleEchoTool&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;context&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Context&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;args&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;]&lt;span style=&#34;color:#66d9ef&#34;&gt;interface&lt;/span&gt;{}) ([]&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Content&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt;) {
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Safely get the required &amp;#39;input&amp;#39; argument&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;inputText&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;ok&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;args&lt;/span&gt;[&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;input&amp;#34;&lt;/span&gt;].(&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; !&lt;span style=&#34;color:#a6e22e&#34;&gt;ok&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;inputText&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;==&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;&amp;#34;&lt;/span&gt; {
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Return an error if &amp;#39;input&amp;#39; is missing, empty, or wrong type&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;fmt&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Errorf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;required argument &amp;#39;input&amp;#39; (string) is missing or invalid&amp;#34;&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Safely get the optional &amp;#39;prefix&amp;#39; argument&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;prefixText&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;_&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;args&lt;/span&gt;[&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;prefix&amp;#34;&lt;/span&gt;].(&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;) &lt;span style=&#34;color:#75715e&#34;&gt;// Ignore error if missing/wrong type, default to &amp;#34;&amp;#34;&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Construct the result message&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;resultText&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;prefixText&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;inputText&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Return the result as TextContent&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; []&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Content&lt;/span&gt;{
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;TextContent&lt;/span&gt;{
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;text&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#75715e&#34;&gt;// Always specify the content type&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;Text&lt;/span&gt;: &lt;span style=&#34;color:#a6e22e&#34;&gt;resultText&lt;/span&gt;,
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		},
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; &lt;span style=&#34;color:#75715e&#34;&gt;// Return nil error on success&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
-  &lt;button
-    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
-    title=&#34;Copy code&#34;
-  &gt;
-    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
-    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
-  &lt;/button&gt;
-&lt;/div&gt;
-&lt;/div&gt;
-&lt;h2&gt;3. Register the Tool with the Server&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;3-register-the-tool-with-the-server&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#3-register-the-tool-with-the-server&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Finally, use the &lt;code&gt;RegisterTool&lt;/code&gt; method on your &lt;code&gt;server.Server&lt;/code&gt; instance &lt;em&gt;before&lt;/em&gt; running the server. Pass the &lt;code&gt;protocol.Tool&lt;/code&gt; definition and the corresponding handler function.&lt;/p&gt;
-&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
-
-&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; (
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; (
 &lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;log&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;os&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/server&amp;#34;&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ... other imports&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/transport/stdio&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/types&amp;#34;&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;)
 &lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;() {
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ... (Initialize serverInfo, opts, srv as shown in server.md) ...&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Register the echo tool and its handler&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;RegisterTool&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;handleEchoTool&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fatalf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Failed to register tool &amp;#39;%s&amp;#39;: %v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Define server information&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;types&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Implementation&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;:    &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;my-simple-server&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Version&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;0.1.0&amp;#34;&lt;/span&gt;,
 &lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Printf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Registered tool: %s&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;)
 &lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ... (Create transport and run server) ...&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Create server options (using default logger)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;server&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewServerOptions&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Create a new server instance&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;server&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewServer&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Create a stdio transport&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;transport&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;stdio&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewStdioTransport&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stdin&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stdout&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;) &lt;span style=&#34;color:#75715e&#34;&gt;// Using default logger&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Println&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Starting simple MCP server on stdio...&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Run the server with the transport&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// This will block until the transport closes (e.g., stdin is closed)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Run&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;transport&lt;/span&gt;); &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fatalf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Server exited with error: %v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Println&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Server stopped.&amp;#34;&lt;/span&gt;)
 &lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
   &lt;button
     class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
@@ -280,7 +193,27 @@
   &lt;/button&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-&lt;p&gt;Now, when a client connects and sends a &lt;code&gt;tools/call&lt;/code&gt; request for the &amp;ldquo;echo&amp;rdquo; tool with valid arguments, the &lt;code&gt;handleEchoTool&lt;/code&gt; function will be executed, and its result will be sent back to the client. If the client sends a &lt;code&gt;tools/list&lt;/code&gt; request, the &lt;code&gt;echoTool&lt;/code&gt; definition will be included in the response.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;To run this:&lt;/strong&gt;&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Save the code as &lt;code&gt;main.go&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Run &lt;code&gt;go mod init my-simple-server&lt;/code&gt; (if you haven&amp;rsquo;t already initialized a module).&lt;/li&gt;
+&lt;li&gt;Run &lt;code&gt;go mod tidy&lt;/code&gt; to fetch dependencies.&lt;/li&gt;
+&lt;li&gt;Run &lt;code&gt;go run main.go&lt;/code&gt;.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;The server will now listen for MCP JSON-RPC messages on standard input and send responses/notifications to standard output.&lt;/p&gt;
+&lt;h2&gt;Next Steps&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;next-steps&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#next-steps&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;Explore the guides on implementing a &lt;a href=&#34;http://localhost:1313/docs/create-server/&#34; &gt;Server&lt;/a&gt; and &lt;a href=&#34;http://localhost:1313/docs/create-client/&#34; &gt;Client&lt;/a&gt;.&lt;/li&gt;
+&lt;li&gt;Learn how to define and register &lt;a href=&#34;http://localhost:1313/docs/defining-tools/&#34; &gt;Tools&lt;/a&gt;.&lt;/li&gt;
+&lt;li&gt;Check out the protocol details in the &lt;a href=&#34;http://localhost:1313/docs/protocols/&#34; &gt;Protocols&lt;/a&gt; section:
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_messages/&#34; &gt;Messages&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_tools/&#34; &gt;Tools&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_resources/&#34; &gt;Resources&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_prompts/&#34; &gt;Prompts&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
 
       </description>
     </item>
@@ -1285,92 +1218,120 @@
     </item>
     
     <item>
-      <title>Documentation</title>
-      <link>http://localhost:1313/docs/organization/</link>
+      <title>Creating a Server</title>
+      <link>http://localhost:1313/docs/create-server/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/docs/organization/</guid>
+      <guid>http://localhost:1313/docs/create-server/</guid>
       <description>
         
         
-        &lt;h2&gt;Goal&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;goal&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#goal&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The primary goal of &lt;code&gt;gomcp&lt;/code&gt; is to provide idiomatic Go tools for building applications that communicate using the Model Context Protocol (MCP). This includes:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;MCP Servers:&lt;/strong&gt; Applications that expose tools or resources to MCP clients (often language models or agents).&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;MCP Clients:&lt;/strong&gt; Applications that connect to MCP servers to utilize their offered tools and resources.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h2&gt;Core Components&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;core-components&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#core-components&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The library is structured into several key packages:&lt;/p&gt;
+        &lt;p&gt;The &lt;code&gt;gomcp&lt;/code&gt; library provides the core logic for building applications that act as MCP servers, exposing capabilities like tools, resources, and prompts to connected clients.&lt;/p&gt;
+&lt;p&gt;The main server logic resides in the &lt;code&gt;server&lt;/code&gt; package. This package is transport-agnostic, meaning the core server doesn&amp;rsquo;t care how messages are sent or received; that&amp;rsquo;s handled by a separate &lt;code&gt;Transport&lt;/code&gt; implementation.&lt;/p&gt;
+&lt;h2&gt;Server Role&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;server-role&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#server-role&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;An MCP server typically:&lt;/p&gt;
 &lt;ol&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;&lt;code&gt;protocol/&lt;/code&gt;&lt;/strong&gt;:&lt;/p&gt;
+&lt;li&gt;Listens for incoming client connections via a specific transport (e.g., Stdio, SSE+HTTP, WebSockets).&lt;/li&gt;
+&lt;li&gt;Handles the initialization handshake (&lt;code&gt;initialize&lt;/code&gt; / &lt;code&gt;initialized&lt;/code&gt;) with connecting clients.&lt;/li&gt;
+&lt;li&gt;Exposes its capabilities (server info, supported protocol features).&lt;/li&gt;
+&lt;li&gt;Registers and makes available its specific offerings:
 &lt;ul&gt;
-&lt;li&gt;Defines Go structs mapping to MCP concepts (e.g., &lt;code&gt;Tool&lt;/code&gt;, &lt;code&gt;Resource&lt;/code&gt;, &lt;code&gt;Prompt&lt;/code&gt;, &lt;code&gt;ClientCapabilities&lt;/code&gt;, &lt;code&gt;ServerCapabilities&lt;/code&gt;).&lt;/li&gt;
-&lt;li&gt;Defines Go structs for specific request parameters and results (e.g., &lt;code&gt;InitializeRequestParams&lt;/code&gt;, &lt;code&gt;InitializeResult&lt;/code&gt;, &lt;code&gt;CallToolParams&lt;/code&gt;, &lt;code&gt;CallToolResult&lt;/code&gt;).&lt;/li&gt;
-&lt;li&gt;Defines Go structs for JSON-RPC 2.0 base messages (&lt;code&gt;JSONRPCRequest&lt;/code&gt;, &lt;code&gt;JSONRPCResponse&lt;/code&gt;, &lt;code&gt;JSONRPCNotification&lt;/code&gt;) and error payloads (&lt;code&gt;ErrorPayload&lt;/code&gt;).&lt;/li&gt;
-&lt;li&gt;Includes constants for MCP method names (e.g., &lt;code&gt;MethodInitialize&lt;/code&gt;, &lt;code&gt;MethodCallTool&lt;/code&gt;, &lt;code&gt;MethodCancelled&lt;/code&gt;) and the supported protocol version (&lt;code&gt;CurrentProtocolVersion&lt;/code&gt;).&lt;/li&gt;
-&lt;li&gt;Uses standard Go &lt;code&gt;encoding/json&lt;/code&gt; tags.&lt;/li&gt;
-&lt;li&gt;For detailed descriptions of the protocol messages and structures, see the &lt;a href=&#34;http://localhost:1313/docs/protocols/&#34; &gt;Protocols&lt;/a&gt; section, including:
-&lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_messages/&#34; &gt;Messages&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_tools/&#34; &gt;Tools&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_resources/&#34; &gt;Resources&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_prompts/&#34; &gt;Prompts&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Tools that clients can execute.&lt;/li&gt;
+&lt;li&gt;Resources that clients can access or subscribe to.&lt;/li&gt;
+&lt;li&gt;Prompts that clients can list or retrieve.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;&lt;code&gt;server/&lt;/code&gt;&lt;/strong&gt;:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Defines the &lt;code&gt;Server&lt;/code&gt; struct, containing the core transport-agnostic MCP server logic.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;NewServer&lt;/code&gt; initializes a server instance, taking server info and options (like a logger).&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;RegisterTool&lt;/code&gt;, &lt;code&gt;RegisterResource&lt;/code&gt;, &lt;code&gt;RegisterPrompt&lt;/code&gt; allow adding capabilities dynamically. These methods trigger &lt;code&gt;list_changed&lt;/code&gt; notifications if supported.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;RegisterNotificationHandler&lt;/code&gt; allows handling client-sent notifications (e.g., &lt;code&gt;$/cancelled&lt;/code&gt;).&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;HandleMessage&lt;/code&gt; is the main entry point for processing incoming raw messages (typically called by a transport implementation). It handles the initialization sequence and dispatches requests/notifications to internal handlers.&lt;/li&gt;
-&lt;li&gt;Internal handlers (&lt;code&gt;handle...&lt;/code&gt;) are responsible for unmarshalling parameters, performing actions (like calling a registered &lt;code&gt;ToolHandlerFunc&lt;/code&gt;), and generating responses/errors.&lt;/li&gt;
-&lt;li&gt;Includes &lt;code&gt;Send...&lt;/code&gt; methods for server-initiated notifications (&lt;code&gt;SendProgress&lt;/code&gt;, &lt;code&gt;SendResourceChanged&lt;/code&gt;, etc.), which are typically invoked via a &lt;code&gt;ClientSession&lt;/code&gt; interface implemented by the transport layer.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;&lt;code&gt;client/&lt;/code&gt;&lt;/strong&gt;:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Defines the &lt;code&gt;Client&lt;/code&gt; struct for managing the client-side connection, currently implemented using the SSE+HTTP hybrid transport model.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;NewClient&lt;/code&gt; initializes a client instance, requiring the server&amp;rsquo;s base URL and other options.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;RegisterRequestHandler&lt;/code&gt;, &lt;code&gt;RegisterNotificationHandler&lt;/code&gt; allow handling server-sent requests/notifications received over SSE.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;Connect&lt;/code&gt; establishes the SSE connection and performs the MCP initialization handshake (sending &lt;code&gt;initialize&lt;/code&gt; via HTTP POST, receiving response via SSE, sending &lt;code&gt;initialized&lt;/code&gt; via HTTP POST).&lt;/li&gt;
-&lt;li&gt;Provides methods for sending specific MCP requests (e.g., &lt;code&gt;ListTools&lt;/code&gt;, &lt;code&gt;CallTool&lt;/code&gt;, &lt;code&gt;SubscribeResources&lt;/code&gt;). These methods typically send the request via HTTP POST and wait for the response via the SSE connection.&lt;/li&gt;
-&lt;li&gt;Manages pending requests and dispatches incoming SSE messages (responses, notifications, requests) appropriately.&lt;/li&gt;
-&lt;li&gt;Includes &lt;code&gt;Send...&lt;/code&gt; methods for client-initiated notifications (&lt;code&gt;SendCancellation&lt;/code&gt;, &lt;code&gt;SendRootsListChanged&lt;/code&gt;).&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;&lt;code&gt;transport/&lt;/code&gt;&lt;/strong&gt;:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Contains different transport implementations.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;stdio/&lt;/code&gt;&lt;/strong&gt;: Provides a &lt;code&gt;StdioTransport&lt;/code&gt; that implements the &lt;code&gt;types.Transport&lt;/code&gt; interface for communication over standard input/output (newline-delimited JSON). Useful for simple cases or testing.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;&lt;code&gt;sse/&lt;/code&gt;&lt;/strong&gt;: Provides an &lt;code&gt;SSEServer&lt;/code&gt; that handles the server-side of the SSE+HTTP hybrid transport (SSE for server-&amp;gt;client, HTTP POST for client-&amp;gt;server). The &lt;code&gt;client&lt;/code&gt; package uses an SSE client library (&lt;code&gt;github.com/r3labs/sse/v2&lt;/code&gt;) internally to connect to this.&lt;/li&gt;
-&lt;li&gt;&lt;em&gt;(Other transports like WebSockets or TCP could be added here in the future.)&lt;/em&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;li&gt;
-&lt;p&gt;&lt;strong&gt;&lt;code&gt;types/&lt;/code&gt;&lt;/strong&gt;:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Defines core interfaces like &lt;code&gt;Transport&lt;/code&gt; and &lt;code&gt;Logger&lt;/code&gt; used across packages.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
+&lt;li&gt;Handles client requests (&lt;code&gt;tools/call&lt;/code&gt;, &lt;code&gt;resources/get&lt;/code&gt;, etc.) and sends back responses or errors.&lt;/li&gt;
+&lt;li&gt;Handles client notifications (&lt;code&gt;$/cancelled&lt;/code&gt;, &lt;code&gt;initialized&lt;/code&gt;, etc.).&lt;/li&gt;
+&lt;li&gt;Sends server-initiated notifications to clients (&lt;code&gt;$/progress&lt;/code&gt;, &lt;code&gt;notifications/message&lt;/code&gt;, &lt;code&gt;notifications/resources/content_changed&lt;/code&gt;, etc.).&lt;/li&gt;
 &lt;/ol&gt;
-&lt;h2&gt;Communication Flow&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;communication-flow&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#communication-flow&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The library supports multiple communication methods:&lt;/p&gt;
-&lt;h3&gt;Stdio Transport (&lt;code&gt;transport/stdio&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;stdio-transport-transportstdio&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#stdio-transport-transportstdio&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
+&lt;h2&gt;Initializing the Server (&lt;code&gt;server&lt;/code&gt; package)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;initializing-the-server-server-package&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#initializing-the-server-server-package&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The &lt;code&gt;server.Server&lt;/code&gt; struct holds the state and logic for the MCP server.&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
 
-&lt;div&gt;&lt;pre&gt;&lt;code&gt;&amp;#43;--------------&amp;#43;        Stdio Pipe         &amp;#43;-------------&amp;#43;
-|              |  &amp;lt;--- JSON Lines ----    |             |
-|  MCP Client  |        (Stdin)           |  MCP Server |
-| (App/Script) |                          | (App/Script)|
-|              |    ---- JSON Lines ---&amp;gt;  |             |
-&amp;#43;--------------&amp;#43;        (Stdout)          &amp;#43;-------------&amp;#43;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;package&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; (
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;context&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;log&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;os&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;time&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/protocol&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/server&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/transport/stdio&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/types&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// Example Tool Handler Function&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;handleEchoTool&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;context&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Context&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;args&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;]&lt;span style=&#34;color:#66d9ef&#34;&gt;interface&lt;/span&gt;{}) ([]&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Content&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt;) {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;inputText&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;ok&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;args&lt;/span&gt;[&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;input&amp;#34;&lt;/span&gt;].(&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; !&lt;span style=&#34;color:#a6e22e&#34;&gt;ok&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;fmt&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Errorf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;missing or invalid &amp;#39;input&amp;#39; argument&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; []&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Content&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;TextContent&lt;/span&gt;{&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;text&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;Text&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Echo: &amp;#34;&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;inputText&lt;/span&gt;},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}, &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;() {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// 1. Define Server Information &amp;amp; Capabilities&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;types&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Implementation&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;:    &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;my-gomcp-server&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Version&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;1.0.0&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;serverCapabilities&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ServerCapabilities&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Indicate which optional features are supported&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Tools&lt;/span&gt;: &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ToolsCaps&lt;/span&gt;{&lt;span style=&#34;color:#a6e22e&#34;&gt;ListChanged&lt;/span&gt;: &lt;span style=&#34;color:#66d9ef&#34;&gt;true&lt;/span&gt;}, &lt;span style=&#34;color:#75715e&#34;&gt;// Example: We support tool list changes&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Resources: &amp;amp;protocol.ResourcesCaps{Subscribe: true, ListChanged: true},&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Prompts:   &amp;amp;protocol.PromptsCaps{ListChanged: true},&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Logging:   &amp;amp;protocol.LoggingCaps{},&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// 2. Create Server Options&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;server&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewServerOptions&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Capabilities&lt;/span&gt; = &lt;span style=&#34;color:#a6e22e&#34;&gt;serverCapabilities&lt;/span&gt; &lt;span style=&#34;color:#75715e&#34;&gt;// Set the defined capabilities&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// opts.Logger = /* provide a custom logger if desired */&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// opts.Instruction = &amp;#34;Welcome! Use tools/list to see available tools.&amp;#34; // Optional instruction sent during init&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// 3. Create the Server Instance&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;server&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewServer&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// 4. Register Capabilities (Tools, Resources, Prompts)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Tool&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;:        &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;echo&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Description&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Simple tool that echoes back the input text.&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;InputSchema&lt;/span&gt;: &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ToolInputSchema&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;object&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;Properties&lt;/span&gt;: &lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;]&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;PropertyDetail&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;input&amp;#34;&lt;/span&gt;: {&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;string&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;Description&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Text to echo&amp;#34;&lt;/span&gt;},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;Required&lt;/span&gt;: []&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;{&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;input&amp;#34;&lt;/span&gt;},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// The handler function executes the tool&amp;#39;s logic&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;RegisterTool&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;handleEchoTool&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fatalf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Failed to register tool: %v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Printf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Registered tool: %s&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Register resources and prompts similarly using srv.RegisterResource(...) and srv.RegisterPrompt(...)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// 5. Choose and Create a Transport&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Using Stdio for simplicity in this example&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;transport&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;stdio&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewStdioTransport&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stdin&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stdout&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Logger&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// 6. Run the Server&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Println&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Starting MCP server on stdio...&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Run&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;transport&lt;/span&gt;); &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Run blocks until the transport is closed or an error occurs&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fatalf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Server exited with error: %v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Println&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Server stopped.&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
   &lt;button
     class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
     title=&#34;Copy code&#34;
@@ -1380,51 +1341,21 @@
   &lt;/button&gt;
 &lt;/div&gt;
 &lt;/div&gt;
-&lt;ul&gt;
-&lt;li&gt;Simple, direct communication via stdin/stdout.&lt;/li&gt;
-&lt;li&gt;Suitable for local inter-process communication or basic examples.&lt;/li&gt;
-&lt;li&gt;The &lt;code&gt;StdioTransport&lt;/code&gt; handles reading/writing newline-delimited JSON.&lt;/li&gt;
+&lt;h2&gt;Registering Capabilities&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;registering-capabilities&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#registering-capabilities&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;RegisterTool(tool protocol.Tool, handler server.ToolHandlerFunc)&lt;/code&gt;:&lt;/strong&gt; Registers a tool definition and the function that implements its logic. The handler receives the arguments provided by the client.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;RegisterResource(resource protocol.Resource, provider server.ResourceProvider)&lt;/code&gt;:&lt;/strong&gt; Registers a resource and a provider responsible for fetching its content.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;RegisterPrompt(prompt protocol.Prompt)&lt;/code&gt;:&lt;/strong&gt; Registers a predefined prompt template.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;h3&gt;SSE + HTTP Hybrid Transport (&lt;code&gt;transport/sse&lt;/code&gt; + &lt;code&gt;client&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;sse--http-hybrid-transport-transportsse--client&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#sse--http-hybrid-transport-transportsse--client&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
-
-&lt;div&gt;&lt;pre&gt;&lt;code&gt;&amp;#43;--------------&amp;#43;                          &amp;#43;-----------------&amp;#43;
-|              | ---- HTTP POST Req ---&amp;gt; |                 |
-|  MCP Client  | (e.g., initialize,      |    MCP Server   |
-| (Using client|  callTool, initialized) | (Using sse pkg) |
-|    package)  |                          |                 |
-|              | &amp;lt;--- HTTP POST Resp ---  |                 |
-&amp;#43;--------------&amp;#43; (e.g., callTool result) &amp;#43;-----------------&amp;#43;
-       |                                       ^
-       | Establish &amp;amp; Maintain SSE Connection   | SSE Events
-       &amp;#43;--------&amp;lt;---- SSE Events --------------&amp;#43; (e.g., endpoint,
-                 (e.g., initialize result,       message (notifications,
-                  notifications, server reqs))     server requests))&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
-  &lt;button
-    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
-    title=&#34;Copy code&#34;
-  &gt;
-    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
-    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
-  &lt;/button&gt;
-&lt;/div&gt;
-&lt;/div&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Client -&amp;gt; Server:&lt;/strong&gt; Requests (&lt;code&gt;initialize&lt;/code&gt;, &lt;code&gt;callTool&lt;/code&gt;) and Notifications (&lt;code&gt;initialized&lt;/code&gt;, &lt;code&gt;$/cancelled&lt;/code&gt;) are sent via HTTP POST requests to a specific message endpoint on the server. Responses to these requests (like &lt;code&gt;callTool&lt;/code&gt; results) are sent back in the HTTP response body.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Server -&amp;gt; Client:&lt;/strong&gt; The client establishes a persistent Server-Sent Events (SSE) connection. The server sends asynchronous messages (like &lt;code&gt;initialize&lt;/code&gt; results, notifications, or server-to-client requests) over this SSE connection.&lt;/li&gt;
-&lt;li&gt;This is the primary transport used by the &lt;code&gt;client&lt;/code&gt; package.&lt;/li&gt;
+&lt;p&gt;See &lt;a href=&#34;http://localhost:1313/docs/defining-tools/&#34; &gt;Defining Tools&lt;/a&gt; for more details on tool registration. (Resource and Prompt registration follow similar patterns).&lt;/p&gt;
+&lt;h2&gt;Running the Server&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;running-the-server&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#running-the-server&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;Run(transport types.Transport)&lt;/code&gt;:&lt;/strong&gt; Starts the server&amp;rsquo;s main loop, using the provided transport to receive messages from clients and send messages back. This method typically blocks until the transport is closed or an unrecoverable error occurs.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;h2&gt;Next Steps &amp;amp; Future Development&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;next-steps--future-development&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#next-steps--future-development&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The core library is now compliant with the defined features of the MCP 2025-03-26 specification. Future work includes:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;strong&gt;Example Updates:&lt;/strong&gt; Ensure all examples in &lt;code&gt;examples/&lt;/code&gt; are up-to-date with the latest library structure and demonstrate features like cancellation, progress, and subscriptions effectively across different transports.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Testing:&lt;/strong&gt; Add more comprehensive unit and integration tests, especially covering notifications, subscriptions, cancellation, concurrency, and different transport layers.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Progress Reporting:&lt;/strong&gt; Address the issue where the &lt;code&gt;ToolHandlerFunc&lt;/code&gt; doesn&amp;rsquo;t have direct access to the &lt;code&gt;sessionID&lt;/code&gt; needed for &lt;code&gt;server.SendProgress&lt;/code&gt;. This might require API changes or alternative patterns.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Protocol Enhancements:&lt;/strong&gt; Implement optional fields mentioned in the spec (e.g., &lt;code&gt;trace&lt;/code&gt;, &lt;code&gt;workspaceFolders&lt;/code&gt;, filtering options, content annotations).&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Error Handling:&lt;/strong&gt; Refine error reporting and potentially add more specific MCP error codes for implementation-defined errors.&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Alternative Transports:&lt;/strong&gt; Add examples or support for transports beyond stdio and SSE (e.g., WebSockets, TCP).&lt;/li&gt;
-&lt;li&gt;&lt;strong&gt;Documentation:&lt;/strong&gt; Enhance GoDoc comments and keep &lt;code&gt;/docs&lt;/code&gt; guides up-to-date.&lt;/li&gt;
-&lt;/ul&gt;
+&lt;h2&gt;Handling Client Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;handling-client-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#handling-client-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The &lt;code&gt;server.Server&lt;/code&gt; automatically handles incoming JSON-RPC requests and notifications based on the registered capabilities and standard protocol methods (&lt;code&gt;initialize&lt;/code&gt;, &lt;code&gt;$/cancelled&lt;/code&gt;, etc.). You generally don&amp;rsquo;t need to handle raw messages directly unless implementing custom notifications or requests.&lt;/p&gt;
+&lt;h2&gt;Sending Server Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;sending-server-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#sending-server-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The server can send notifications or requests to connected clients. This is usually done via the &lt;code&gt;ClientSession&lt;/code&gt; interface, which is managed internally by the server and implemented by the transport layer. Methods like &lt;code&gt;srv.SendProgress(sessionID, token, value)&lt;/code&gt; or &lt;code&gt;srv.NotifyResourceChanged(uri)&lt;/code&gt; facilitate this. Accessing the correct &lt;code&gt;sessionID&lt;/code&gt; often requires careful context management within handlers.&lt;/p&gt;
 
       </description>
     </item>
@@ -1704,6 +1635,164 @@
     </item>
     
     <item>
+      <title>Defining Server Tools</title>
+      <link>http://localhost:1313/docs/defining-tools/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://localhost:1313/docs/defining-tools/</guid>
+      <description>
+        
+        
+        &lt;p&gt;One of the core features of MCP is the ability for servers to expose &amp;ldquo;tools&amp;rdquo; that clients can execute. This guide explains how to define and register tools in your &lt;code&gt;gomcp&lt;/code&gt; server application.&lt;/p&gt;
+&lt;h2&gt;1. Define the Tool Structure (&lt;code&gt;protocol.Tool&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;1-define-the-tool-structure-protocoltool&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#1-define-the-tool-structure-protocoltool&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;First, you need to define the metadata for your tool using the &lt;code&gt;protocol.Tool&lt;/code&gt; struct. This includes:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;Name&lt;/code&gt;&lt;/strong&gt;: A unique string identifier for the tool (e.g., &amp;ldquo;calculate_sum&amp;rdquo;, &amp;ldquo;read_file&amp;rdquo;).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;Description&lt;/code&gt;&lt;/strong&gt;: (Optional) A human-readable description of what the tool does.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;InputSchema&lt;/code&gt;&lt;/strong&gt;: A &lt;code&gt;protocol.ToolInputSchema&lt;/code&gt; defining the expected arguments. This uses a subset of JSON Schema:
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;Type&lt;/code&gt;: Should typically be &amp;ldquo;object&amp;rdquo;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Properties&lt;/code&gt;: A map where keys are argument names and values are &lt;code&gt;protocol.PropertyDetail&lt;/code&gt; structs describing the argument&amp;rsquo;s &lt;code&gt;Type&lt;/code&gt; (e.g., &amp;ldquo;string&amp;rdquo;, &amp;ldquo;number&amp;rdquo;, &amp;ldquo;boolean&amp;rdquo;, &amp;ldquo;array&amp;rdquo;, &amp;ldquo;object&amp;rdquo;), &lt;code&gt;Description&lt;/code&gt;, allowed &lt;code&gt;Enum&lt;/code&gt; values, or &lt;code&gt;Format&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Required&lt;/code&gt;: A slice of strings listing the names of mandatory arguments.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;Annotations&lt;/code&gt;&lt;/strong&gt;: (Optional) A &lt;code&gt;protocol.ToolAnnotations&lt;/code&gt; struct providing hints about the tool&amp;rsquo;s behavior (e.g., &lt;code&gt;ReadOnlyHint&lt;/code&gt;, &lt;code&gt;DestructiveHint&lt;/code&gt;).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Example: An &amp;ldquo;echo&amp;rdquo; tool definition&lt;/strong&gt;&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/protocol&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;var&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt; = &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Tool&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;:        &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;echo&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;Description&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Simple tool that echoes back the input text.&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;InputSchema&lt;/span&gt;: &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ToolInputSchema&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;object&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Properties&lt;/span&gt;: &lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;]&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;PropertyDetail&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;input&amp;#34;&lt;/span&gt;: {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;:        &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;string&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#a6e22e&#34;&gt;Description&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;The text to be echoed back by the server.&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;prefix&amp;#34;&lt;/span&gt;: {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;:        &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;string&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#a6e22e&#34;&gt;Description&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;An optional prefix to add to the echoed text.&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;				&lt;span style=&#34;color:#75715e&#34;&gt;// Note: Not listed in &amp;#39;Required&amp;#39;, so it&amp;#39;s optional.&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Required&lt;/span&gt;: []&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;{&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;input&amp;#34;&lt;/span&gt;}, &lt;span style=&#34;color:#75715e&#34;&gt;// Only &amp;#39;input&amp;#39; is mandatory&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;Annotations&lt;/span&gt;: &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ToolAnnotations&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Example annotation: This tool doesn&amp;#39;t modify state&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;ReadOnlyHint&lt;/span&gt;: &lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;b&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;bool&lt;/span&gt;) &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;bool&lt;/span&gt; { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;b&lt;/span&gt; }(&lt;span style=&#34;color:#66d9ef&#34;&gt;true&lt;/span&gt;),
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h2&gt;2. Implement the Tool Handler Function (&lt;code&gt;server.ToolHandlerFunc&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;2-implement-the-tool-handler-function-servertoolhandlerfunc&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#2-implement-the-tool-handler-function-servertoolhandlerfunc&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Next, create a function that implements the actual logic of your tool. This function must match the &lt;code&gt;server.ToolHandlerFunc&lt;/code&gt; signature:&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;type&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;ToolHandlerFunc&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;context&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Context&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;arguments&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;]&lt;span style=&#34;color:#66d9ef&#34;&gt;interface&lt;/span&gt;{}) (&lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt; []&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Content&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt;)&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;ul&gt;
+&lt;li&gt;It receives a &lt;code&gt;context.Context&lt;/code&gt; for cancellation/deadlines.&lt;/li&gt;
+&lt;li&gt;It receives the &lt;code&gt;arguments&lt;/code&gt; provided by the client in the &lt;code&gt;tools/call&lt;/code&gt; request as a &lt;code&gt;map[string]interface{}&lt;/code&gt;. You&amp;rsquo;ll need to perform type assertions to access argument values safely.&lt;/li&gt;
+&lt;li&gt;It returns a slice of &lt;code&gt;protocol.Content&lt;/code&gt; objects (e.g., &lt;code&gt;protocol.TextContent&lt;/code&gt;, &lt;code&gt;protocol.ImageContent&lt;/code&gt;) representing the successful result of the tool execution.&lt;/li&gt;
+&lt;li&gt;It returns an &lt;code&gt;error&lt;/code&gt; if the tool execution fails. This error will be converted into a JSON-RPC error response sent back to the client.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;strong&gt;Example: Handler for the &amp;ldquo;echo&amp;rdquo; tool&lt;/strong&gt;&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; (
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;context&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;fmt&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/protocol&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;handleEchoTool&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;context&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Context&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;args&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;map&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;]&lt;span style=&#34;color:#66d9ef&#34;&gt;interface&lt;/span&gt;{}) ([]&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Content&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt;) {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Safely get the required &amp;#39;input&amp;#39; argument&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;inputText&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;ok&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;args&lt;/span&gt;[&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;input&amp;#34;&lt;/span&gt;].(&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; !&lt;span style=&#34;color:#a6e22e&#34;&gt;ok&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;inputText&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;==&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;&amp;#34;&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Return an error if &amp;#39;input&amp;#39; is missing, empty, or wrong type&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;fmt&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Errorf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;required argument &amp;#39;input&amp;#39; (string) is missing or invalid&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Safely get the optional &amp;#39;prefix&amp;#39; argument&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;prefixText&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;_&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;args&lt;/span&gt;[&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;prefix&amp;#34;&lt;/span&gt;].(&lt;span style=&#34;color:#66d9ef&#34;&gt;string&lt;/span&gt;) &lt;span style=&#34;color:#75715e&#34;&gt;// Ignore error if missing/wrong type, default to &amp;#34;&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Construct the result message&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;resultText&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;prefixText&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;inputText&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Return the result as TextContent&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; []&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Content&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;TextContent&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;Type&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;text&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#75715e&#34;&gt;// Always specify the content type&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;Text&lt;/span&gt;: &lt;span style=&#34;color:#a6e22e&#34;&gt;resultText&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		},
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;result&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; &lt;span style=&#34;color:#75715e&#34;&gt;// Return nil error on success&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;h2&gt;3. Register the Tool with the Server&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;3-register-the-tool-with-the-server&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#3-register-the-tool-with-the-server&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Finally, use the &lt;code&gt;RegisterTool&lt;/code&gt; method on your &lt;code&gt;server.Server&lt;/code&gt; instance &lt;em&gt;before&lt;/em&gt; running the server. Pass the &lt;code&gt;protocol.Tool&lt;/code&gt; definition and the corresponding handler function.&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; (
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;log&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/server&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ... other imports&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;() {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ... (Initialize serverInfo, opts, srv as shown in server.md) ...&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Register the echo tool and its handler&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;RegisterTool&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;handleEchoTool&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fatalf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Failed to register tool &amp;#39;%s&amp;#39;: %v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Printf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Registered tool: %s&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;echoTool&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ... (Create transport and run server) ...&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;Now, when a client connects and sends a &lt;code&gt;tools/call&lt;/code&gt; request for the &amp;ldquo;echo&amp;rdquo; tool with valid arguments, the &lt;code&gt;handleEchoTool&lt;/code&gt; function will be executed, and its result will be sent back to the client. If the client sends a &lt;code&gt;tools/list&lt;/code&gt; request, the &lt;code&gt;echoTool&lt;/code&gt; definition will be included in the response.&lt;/p&gt;
+
+      </description>
+    </item>
+    
+    <item>
       <title>Protocol Prompts</title>
       <link>http://localhost:1313/docs/protocols/protocol_prompts/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
@@ -1877,6 +1966,149 @@
     </item>
     
     <item>
+      <title>Creating a Client</title>
+      <link>http://localhost:1313/docs/create-client/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://localhost:1313/docs/create-client/</guid>
+      <description>
+        
+        
+        &lt;p&gt;The &lt;code&gt;gomcp&lt;/code&gt; library provides tools for building applications that act as MCP clients, connecting to MCP servers to utilize their capabilities (tools, resources, prompts).&lt;/p&gt;
+&lt;p&gt;The primary implementation for a client is found in the &lt;code&gt;client&lt;/code&gt; package, which uses the SSE+HTTP hybrid transport model.&lt;/p&gt;
+&lt;h2&gt;Client Role&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;client-role&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#client-role&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;An MCP client typically:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Connects to a known MCP server endpoint.&lt;/li&gt;
+&lt;li&gt;Performs the initialization handshake (&lt;code&gt;initialize&lt;/code&gt; / &lt;code&gt;initialized&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Discovers available server capabilities (tools, resources, prompts) using &lt;code&gt;list&lt;/code&gt; requests.&lt;/li&gt;
+&lt;li&gt;Executes server tools (&lt;code&gt;tools/call&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Accesses server resources (&lt;code&gt;resources/get&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Subscribes to resource updates (&lt;code&gt;resources/subscribe&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Handles server-sent notifications (e.g., &lt;code&gt;$/progress&lt;/code&gt;, &lt;code&gt;notifications/message&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Handles server-sent requests (if the server needs to request actions from the client, though less common).&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2&gt;Initializing the Client (&lt;code&gt;client&lt;/code&gt; package)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;initializing-the-client-client-package&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#initializing-the-client-client-package&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The &lt;code&gt;client&lt;/code&gt; package provides a &lt;code&gt;Client&lt;/code&gt; struct that manages the connection and communication flow using the SSE+HTTP transport.&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;package&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; (
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;context&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;log&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;time&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/client&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/protocol&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/types&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;() {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Server&amp;#39;s base URL (adjust as needed)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;serverURL&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;http://localhost:8080&amp;#34;&lt;/span&gt; &lt;span style=&#34;color:#75715e&#34;&gt;// Example URL&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Define client information&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;clientInfo&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;types&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Implementation&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;:    &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;my-simple-client&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;Version&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;0.1.0&amp;#34;&lt;/span&gt;,
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Define client capabilities (optional, customize as needed)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;clientCapabilities&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ClientCapabilities&lt;/span&gt;{
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Add specific capabilities your client supports&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Create client options&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;client&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewClientOptions&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;clientInfo&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;clientCapabilities&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// opts.Logger = /* provide a custom logger if desired */&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Create a new client instance&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;client&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewClient&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;serverURL&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Optional: Register handlers for server-sent messages ---&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Example: Handle log messages from the server&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;RegisterNotificationHandler&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;MethodLogMessage&lt;/span&gt;, &lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;context&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Context&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;params&lt;/span&gt; []&lt;span style=&#34;color:#66d9ef&#34;&gt;byte&lt;/span&gt;) &lt;span style=&#34;color:#66d9ef&#34;&gt;error&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;var&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;logParams&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;LoggingMessageParams&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;json&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Unmarshal&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;params&lt;/span&gt;, &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;logParams&lt;/span&gt;); &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Printf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Error unmarshalling log message params: %v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; &lt;span style=&#34;color:#75715e&#34;&gt;// Don&amp;#39;t kill connection for bad log message&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Printf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;SERVER LOG [%s]: %s&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;logParams&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Level&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;logParams&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Message&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	})
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Register other handlers for notifications or server requests as needed...&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Connect and Initialize ---&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;cancel&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;context&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;WithTimeout&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;context&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Background&lt;/span&gt;(), &lt;span style=&#34;color:#ae81ff&#34;&gt;30&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;time&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Second&lt;/span&gt;) &lt;span style=&#34;color:#75715e&#34;&gt;// Add a timeout&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;defer&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;cancel&lt;/span&gt;()
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Connect&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fatalf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Failed to connect and initialize with server: %v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Printf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Connected to server: %s v%s&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Version&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Printf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Server capabilities: %+v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ServerCapabilities&lt;/span&gt;()) &lt;span style=&#34;color:#75715e&#34;&gt;// Access cached capabilities&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Client is now ready to make requests ---&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Example: List available tools&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;listToolsCtx&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;listToolsCancel&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;context&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;WithTimeout&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;context&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Background&lt;/span&gt;(), &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;time&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Second&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;defer&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;listToolsCancel&lt;/span&gt;()
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;toolsResult&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ListTools&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;listToolsCtx&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;protocol&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;ListToolsRequestParams&lt;/span&gt;{})
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Printf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Error listing tools: %v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	} &lt;span style=&#34;color:#66d9ef&#34;&gt;else&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Printf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Available tools (%d):&amp;#34;&lt;/span&gt;, len(&lt;span style=&#34;color:#a6e22e&#34;&gt;toolsResult&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Tools&lt;/span&gt;))
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;_&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;tool&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;range&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;toolsResult&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Tools&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;			&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Printf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;- %s: %s&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;tool&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;tool&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Description&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Add more client logic here (CallTool, GetResource, etc.)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Keep the client running (e.g., wait for user input or another signal)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Println&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Client running. Press Ctrl+C to exit.&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;-&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;ctx&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Done&lt;/span&gt;() &lt;span style=&#34;color:#75715e&#34;&gt;// Wait for context cancellation (e.g., timeout or manual cancel)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Disconnect (optional, closes SSE connection)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;c&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Disconnect&lt;/span&gt;()
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Println&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Client disconnected.&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;em&gt;Note: This example assumes a server is running at &lt;code&gt;http://localhost:8080&lt;/code&gt; using the SSE+HTTP transport.&lt;/em&gt;&lt;/p&gt;
+&lt;h2&gt;Making Requests&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;making-requests&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#making-requests&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Once connected, you can use the methods provided by the &lt;code&gt;client.Client&lt;/code&gt; struct to interact with the server:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;ListTools(ctx, params)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;CallTool(ctx, params)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;ListResources(ctx, params)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;GetResource(ctx, params)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;SubscribeResources(ctx, params)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;UnsubscribeResources(ctx, params)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;ListPrompts(ctx, params)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;GetPrompt(ctx, params)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;SendCancellation(ctx, id)&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;SendProgress(ctx, params)&lt;/code&gt; // If client needs to report progress&lt;/li&gt;
+&lt;li&gt;// &amp;hellip; and others&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Each method takes a &lt;code&gt;context.Context&lt;/code&gt; for cancellation and deadlines, and the corresponding parameter struct defined in the &lt;code&gt;protocol&lt;/code&gt; package.&lt;/p&gt;
+&lt;h2&gt;Handling Server Messages&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;handling-server-messages&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#handling-server-messages&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;Use &lt;code&gt;RegisterNotificationHandler&lt;/code&gt; and &lt;code&gt;RegisterRequestHandler&lt;/code&gt; &lt;em&gt;before&lt;/em&gt; calling &lt;code&gt;Connect&lt;/code&gt; to set up functions that will be called when the server sends asynchronous notifications or requests over the SSE connection.&lt;/p&gt;
+
+      </description>
+    </item>
+    
+    <item>
       <title>Billing / Usage Tracking</title>
       <link>http://localhost:1313/examples/billing/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
@@ -1984,100 +2216,15 @@
     </item>
     
     <item>
-      <title>Command-Line (CLI)</title>
-      <link>http://localhost:1313/examples/cmd/</link>
+      <title>Calling Tools</title>
+      <link>http://localhost:1313/docs/calling-tools/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
       
-      <guid>http://localhost:1313/examples/cmd/</guid>
+      <guid>http://localhost:1313/docs/calling-tools/</guid>
       <description>
         
         
-        &lt;p&gt;This page details the example found in the &lt;code&gt;/examples/cmd&lt;/code&gt; directory, demonstrating how to build command-line interface (CLI) applications that function as MCP servers or clients.&lt;/p&gt;
-&lt;p&gt;This is useful for creating standalone tools that can be invoked from the terminal and communicate using MCP, often over the &lt;code&gt;stdio&lt;/code&gt; transport.&lt;/p&gt;
-&lt;h2&gt;CLI Server (&lt;code&gt;examples/cmd/server&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;cli-server-examplescmdserver&#34;&gt;&lt;/span&gt;
-    &lt;a href=&#34;#cli-server-examplescmdserver&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;This example likely uses the standard Go &lt;code&gt;flag&lt;/code&gt; package or a library like &lt;a href=&#34;https://github.com/spf13/cobra&#34; target=&#34;_blank&#34; rel=&#34;noopener&#34;&gt;Cobra&lt;/a&gt; to parse command-line arguments and then starts an MCP server (probably using &lt;code&gt;stdio&lt;/code&gt; transport) based on those arguments.&lt;/p&gt;
-&lt;p&gt;&lt;strong&gt;Conceptual Snippets (Illustrative - check &lt;code&gt;main.go&lt;/code&gt; for actual implementation):&lt;/strong&gt;&lt;/p&gt;
-&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
-
-&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;package&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; (
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;flag&amp;#34;&lt;/span&gt; &lt;span style=&#34;color:#75715e&#34;&gt;// Or &amp;#34;github.com/spf13/cobra&amp;#34;&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;log&amp;#34;&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;os&amp;#34;&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ... other imports: server, protocol, types, stdio ...&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/types&amp;#34;&lt;/span&gt; &lt;span style=&#34;color:#75715e&#34;&gt;// Added for types.Transport&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;() {
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Define Command-Line Flags ---&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Example using standard &amp;#39;flag&amp;#39; package&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;port&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;flag&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Int&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;port&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Port to listen on (if using TCP/WebSocket transport, 0 for stdio)&amp;#34;&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;serverName&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;flag&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;String&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;name&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;cli-server&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Name of the server&amp;#34;&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Add flags for tool definitions, config files, etc.&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;flag&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Parse&lt;/span&gt;() &lt;span style=&#34;color:#75715e&#34;&gt;// Parse the flags&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Setup MCP Server ---&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;types&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Implementation&lt;/span&gt;{&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;: &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;serverName&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;Version&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;0.1.0&amp;#34;&lt;/span&gt;}
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;server&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewServerOptions&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Configure capabilities based on flags...&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;server&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewServer&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Register tools based on flags or config files...&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Choose Transport Based on Flags ---&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;var&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;transport&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;types&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Transport&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;port&lt;/span&gt; &amp;gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt; {
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Setup TCP or WebSocket transport on the specified port (example)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// log.Printf(&amp;#34;Starting TCP server on port %d&amp;#34;, *port)&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// transport = tcp.NewFactory(srv, opts.Logger).Listen(fmt.Sprintf(&amp;#34;:%d&amp;#34;, *port)) // Hypothetical&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fatalf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;TCP/WebSocket transport not fully implemented in this snippet&amp;#34;&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	} &lt;span style=&#34;color:#66d9ef&#34;&gt;else&lt;/span&gt; {
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Println&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Starting stdio MCP server...&amp;#34;&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;transport&lt;/span&gt; = &lt;span style=&#34;color:#a6e22e&#34;&gt;stdio&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewStdioTransport&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stdin&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stdout&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Logger&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Run the Server ---&lt;/span&gt;
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Run&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;transport&lt;/span&gt;); &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fatalf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Server error: %v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Println&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Server stopped.&amp;#34;&lt;/span&gt;)
-&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
-  &lt;button
-    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
-    title=&#34;Copy code&#34;
-  &gt;
-    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
-    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
-  &lt;/button&gt;
-&lt;/div&gt;
-&lt;/div&gt;
-&lt;p&gt;&lt;strong&gt;To Run:&lt;/strong&gt;&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;Navigate to &lt;code&gt;examples/cmd/server&lt;/code&gt;.&lt;/li&gt;
-&lt;li&gt;Build the binary: &lt;code&gt;go build -o my-mcp-server&lt;/code&gt;&lt;/li&gt;
-&lt;li&gt;Run it:
-&lt;ul&gt;
-&lt;li&gt;&lt;code&gt;./my-mcp-server&lt;/code&gt; (Uses stdio transport by default)&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;./my-mcp-server -name &amp;quot;My Custom Server&amp;quot;&lt;/code&gt; (Overrides server name)&lt;/li&gt;
-&lt;li&gt;&lt;em&gt;(Add other flags as defined in the actual &lt;code&gt;main.go&lt;/code&gt;)&lt;/em&gt;&lt;/li&gt;
-&lt;/ul&gt;
-&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;This pattern allows creating flexible MCP servers or clients whose behavior can be controlled via command-line arguments.&lt;/p&gt;
-
-      </description>
-    </item>
-    
-    <item>
-      <title>Defining and Registering Tools</title>
-      <link>http://localhost:1313/docs/client/defining-tools/</link>
-      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
-      
-      <guid>http://localhost:1313/docs/client/defining-tools/</guid>
-      <description>
-        
-        
-        &lt;h1&gt;Defining and Registering Tools&lt;/h1&gt;&lt;p&gt;One of the core features of MCP is the ability for servers to expose &amp;ldquo;tools&amp;rdquo; that clients can execute. This guide explains how to define and register tools in your &lt;code&gt;gomcp&lt;/code&gt; server application.&lt;/p&gt;
+        &lt;p&gt;One of the core features of MCP is the ability for servers to expose &amp;ldquo;tools&amp;rdquo; that clients can execute. This guide explains how to define and register tools in your &lt;code&gt;gomcp&lt;/code&gt; server application.&lt;/p&gt;
 &lt;h2&gt;1. Define the Tool Structure (&lt;code&gt;protocol.Tool&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;1-define-the-tool-structure-protocoltool&#34;&gt;&lt;/span&gt;
     &lt;a href=&#34;#1-define-the-tool-structure-protocoltool&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;First, you need to define the metadata for your tool using the &lt;code&gt;protocol.Tool&lt;/code&gt; struct. This includes:&lt;/p&gt;
 &lt;ul&gt;
@@ -2227,6 +2374,91 @@
     </item>
     
     <item>
+      <title>Command-Line (CLI)</title>
+      <link>http://localhost:1313/examples/cmd/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://localhost:1313/examples/cmd/</guid>
+      <description>
+        
+        
+        &lt;p&gt;This page details the example found in the &lt;code&gt;/examples/cmd&lt;/code&gt; directory, demonstrating how to build command-line interface (CLI) applications that function as MCP servers or clients.&lt;/p&gt;
+&lt;p&gt;This is useful for creating standalone tools that can be invoked from the terminal and communicate using MCP, often over the &lt;code&gt;stdio&lt;/code&gt; transport.&lt;/p&gt;
+&lt;h2&gt;CLI Server (&lt;code&gt;examples/cmd/server&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;cli-server-examplescmdserver&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#cli-server-examplescmdserver&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;This example likely uses the standard Go &lt;code&gt;flag&lt;/code&gt; package or a library like &lt;a href=&#34;https://github.com/spf13/cobra&#34; target=&#34;_blank&#34; rel=&#34;noopener&#34;&gt;Cobra&lt;/a&gt; to parse command-line arguments and then starts an MCP server (probably using &lt;code&gt;stdio&lt;/code&gt; transport) based on those arguments.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Conceptual Snippets (Illustrative - check &lt;code&gt;main.go&lt;/code&gt; for actual implementation):&lt;/strong&gt;&lt;/p&gt;
+&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
+
+&lt;div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-go&#34; data-lang=&#34;go&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;package&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;import&lt;/span&gt; (
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;flag&amp;#34;&lt;/span&gt; &lt;span style=&#34;color:#75715e&#34;&gt;// Or &amp;#34;github.com/spf13/cobra&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;log&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;os&amp;#34;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// ... other imports: server, protocol, types, stdio ...&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;github.com/localrivet/gomcp/types&amp;#34;&lt;/span&gt; &lt;span style=&#34;color:#75715e&#34;&gt;// Added for types.Transport&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;func&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;() {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Define Command-Line Flags ---&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Example using standard &amp;#39;flag&amp;#39; package&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;port&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;flag&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Int&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;port&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Port to listen on (if using TCP/WebSocket transport, 0 for stdio)&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;serverName&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;flag&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;String&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;name&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;cli-server&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Name of the server&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Add flags for tool definitions, config files, etc.&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;flag&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Parse&lt;/span&gt;() &lt;span style=&#34;color:#75715e&#34;&gt;// Parse the flags&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Setup MCP Server ---&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;types&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Implementation&lt;/span&gt;{&lt;span style=&#34;color:#a6e22e&#34;&gt;Name&lt;/span&gt;: &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;serverName&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;Version&lt;/span&gt;: &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;0.1.0&amp;#34;&lt;/span&gt;}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;server&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewServerOptions&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;serverInfo&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Configure capabilities based on flags...&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;server&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewServer&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// Register tools based on flags or config files...&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Choose Transport Based on Flags ---&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;var&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;transport&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;types&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Transport&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;port&lt;/span&gt; &amp;gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// Setup TCP or WebSocket transport on the specified port (example)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// log.Printf(&amp;#34;Starting TCP server on port %d&amp;#34;, *port)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#75715e&#34;&gt;// transport = tcp.NewFactory(srv, opts.Logger).Listen(fmt.Sprintf(&amp;#34;:%d&amp;#34;, *port)) // Hypothetical&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fatalf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;TCP/WebSocket transport not fully implemented in this snippet&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	} &lt;span style=&#34;color:#66d9ef&#34;&gt;else&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Println&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Starting stdio MCP server...&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;transport&lt;/span&gt; = &lt;span style=&#34;color:#a6e22e&#34;&gt;stdio&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;NewStdioTransport&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stdin&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;os&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Stdout&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;opts&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Logger&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#75715e&#34;&gt;// --- Run the Server ---&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;:=&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;srv&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Run&lt;/span&gt;(&lt;span style=&#34;color:#a6e22e&#34;&gt;transport&lt;/span&gt;); &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;nil&lt;/span&gt; {
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;		&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Fatalf&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Server error: %v&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#a6e22e&#34;&gt;err&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	}
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;	&lt;span style=&#34;color:#a6e22e&#34;&gt;log&lt;/span&gt;.&lt;span style=&#34;color:#a6e22e&#34;&gt;Println&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Server stopped.&amp;#34;&lt;/span&gt;)
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;}&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;p&gt;&lt;strong&gt;To Run:&lt;/strong&gt;&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Navigate to &lt;code&gt;examples/cmd/server&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Build the binary: &lt;code&gt;go build -o my-mcp-server&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Run it:
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;./my-mcp-server&lt;/code&gt; (Uses stdio transport by default)&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;./my-mcp-server -name &amp;quot;My Custom Server&amp;quot;&lt;/code&gt; (Overrides server name)&lt;/li&gt;
+&lt;li&gt;&lt;em&gt;(Add other flags as defined in the actual &lt;code&gt;main.go&lt;/code&gt;)&lt;/em&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;This pattern allows creating flexible MCP servers or clients whose behavior can be controlled via command-line arguments.&lt;/p&gt;
+
+      </description>
+    </item>
+    
+    <item>
       <title>Kitchen Sink</title>
       <link>http://localhost:1313/examples/kitchen-sink/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
@@ -2354,6 +2586,151 @@
     </item>
     
     <item>
+      <title>Package Organization</title>
+      <link>http://localhost:1313/docs/code-organization/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://localhost:1313/docs/code-organization/</guid>
+      <description>
+        
+        
+        &lt;h2&gt;Goal&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;goal&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#goal&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The primary goal of &lt;code&gt;gomcp&lt;/code&gt; is to provide idiomatic Go tools for building applications that communicate using the Model Context Protocol (MCP). This includes:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;MCP Servers:&lt;/strong&gt; Applications that expose tools or resources to MCP clients (often language models or agents).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;MCP Clients:&lt;/strong&gt; Applications that connect to MCP servers to utilize their offered tools and resources.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Core Components&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;core-components&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#core-components&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The library is structured into several key packages:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;protocol/&lt;/code&gt;&lt;/strong&gt;:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Defines Go structs mapping to MCP concepts (e.g., &lt;code&gt;Tool&lt;/code&gt;, &lt;code&gt;Resource&lt;/code&gt;, &lt;code&gt;Prompt&lt;/code&gt;, &lt;code&gt;ClientCapabilities&lt;/code&gt;, &lt;code&gt;ServerCapabilities&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Defines Go structs for specific request parameters and results (e.g., &lt;code&gt;InitializeRequestParams&lt;/code&gt;, &lt;code&gt;InitializeResult&lt;/code&gt;, &lt;code&gt;CallToolParams&lt;/code&gt;, &lt;code&gt;CallToolResult&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Defines Go structs for JSON-RPC 2.0 base messages (&lt;code&gt;JSONRPCRequest&lt;/code&gt;, &lt;code&gt;JSONRPCResponse&lt;/code&gt;, &lt;code&gt;JSONRPCNotification&lt;/code&gt;) and error payloads (&lt;code&gt;ErrorPayload&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Includes constants for MCP method names (e.g., &lt;code&gt;MethodInitialize&lt;/code&gt;, &lt;code&gt;MethodCallTool&lt;/code&gt;, &lt;code&gt;MethodCancelled&lt;/code&gt;) and the supported protocol version (&lt;code&gt;CurrentProtocolVersion&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;Uses standard Go &lt;code&gt;encoding/json&lt;/code&gt; tags.&lt;/li&gt;
+&lt;li&gt;For detailed descriptions of the protocol messages and structures, see the &lt;a href=&#34;http://localhost:1313/docs/protocols/&#34; &gt;Protocols&lt;/a&gt; section, including:
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_messages/&#34; &gt;Messages&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_tools/&#34; &gt;Tools&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_resources/&#34; &gt;Resources&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://localhost:1313/docs/protocols/protocol_prompts/&#34; &gt;Prompts&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;server/&lt;/code&gt;&lt;/strong&gt;:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Defines the &lt;code&gt;Server&lt;/code&gt; struct, containing the core transport-agnostic MCP server logic.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;NewServer&lt;/code&gt; initializes a server instance, taking server info and options (like a logger).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;RegisterTool&lt;/code&gt;, &lt;code&gt;RegisterResource&lt;/code&gt;, &lt;code&gt;RegisterPrompt&lt;/code&gt; allow adding capabilities dynamically. These methods trigger &lt;code&gt;list_changed&lt;/code&gt; notifications if supported.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;RegisterNotificationHandler&lt;/code&gt; allows handling client-sent notifications (e.g., &lt;code&gt;$/cancelled&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;HandleMessage&lt;/code&gt; is the main entry point for processing incoming raw messages (typically called by a transport implementation). It handles the initialization sequence and dispatches requests/notifications to internal handlers.&lt;/li&gt;
+&lt;li&gt;Internal handlers (&lt;code&gt;handle...&lt;/code&gt;) are responsible for unmarshalling parameters, performing actions (like calling a registered &lt;code&gt;ToolHandlerFunc&lt;/code&gt;), and generating responses/errors.&lt;/li&gt;
+&lt;li&gt;Includes &lt;code&gt;Send...&lt;/code&gt; methods for server-initiated notifications (&lt;code&gt;SendProgress&lt;/code&gt;, &lt;code&gt;SendResourceChanged&lt;/code&gt;, etc.), which are typically invoked via a &lt;code&gt;ClientSession&lt;/code&gt; interface implemented by the transport layer.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;client/&lt;/code&gt;&lt;/strong&gt;:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Defines the &lt;code&gt;Client&lt;/code&gt; struct for managing the client-side connection, currently implemented using the SSE+HTTP hybrid transport model.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;NewClient&lt;/code&gt; initializes a client instance, requiring the server&amp;rsquo;s base URL and other options.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;RegisterRequestHandler&lt;/code&gt;, &lt;code&gt;RegisterNotificationHandler&lt;/code&gt; allow handling server-sent requests/notifications received over SSE.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;Connect&lt;/code&gt; establishes the SSE connection and performs the MCP initialization handshake (sending &lt;code&gt;initialize&lt;/code&gt; via HTTP POST, receiving response via SSE, sending &lt;code&gt;initialized&lt;/code&gt; via HTTP POST).&lt;/li&gt;
+&lt;li&gt;Provides methods for sending specific MCP requests (e.g., &lt;code&gt;ListTools&lt;/code&gt;, &lt;code&gt;CallTool&lt;/code&gt;, &lt;code&gt;SubscribeResources&lt;/code&gt;). These methods typically send the request via HTTP POST and wait for the response via the SSE connection.&lt;/li&gt;
+&lt;li&gt;Manages pending requests and dispatches incoming SSE messages (responses, notifications, requests) appropriately.&lt;/li&gt;
+&lt;li&gt;Includes &lt;code&gt;Send...&lt;/code&gt; methods for client-initiated notifications (&lt;code&gt;SendCancellation&lt;/code&gt;, &lt;code&gt;SendRootsListChanged&lt;/code&gt;).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;transport/&lt;/code&gt;&lt;/strong&gt;:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Contains different transport implementations.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;stdio/&lt;/code&gt;&lt;/strong&gt;: Provides a &lt;code&gt;StdioTransport&lt;/code&gt; that implements the &lt;code&gt;types.Transport&lt;/code&gt; interface for communication over standard input/output (newline-delimited JSON). Useful for simple cases or testing.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;sse/&lt;/code&gt;&lt;/strong&gt;: Provides an &lt;code&gt;SSEServer&lt;/code&gt; that handles the server-side of the SSE+HTTP hybrid transport (SSE for server-&amp;gt;client, HTTP POST for client-&amp;gt;server). The &lt;code&gt;client&lt;/code&gt; package uses an SSE client library (&lt;code&gt;github.com/r3labs/sse/v2&lt;/code&gt;) internally to connect to this.&lt;/li&gt;
+&lt;li&gt;&lt;em&gt;(Other transports like WebSockets or TCP could be added here in the future.)&lt;/em&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;
+&lt;p&gt;&lt;strong&gt;&lt;code&gt;types/&lt;/code&gt;&lt;/strong&gt;:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Defines core interfaces like &lt;code&gt;Transport&lt;/code&gt; and &lt;code&gt;Logger&lt;/code&gt; used across packages.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2&gt;Communication Flow&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;communication-flow&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#communication-flow&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The library supports multiple communication methods:&lt;/p&gt;
+&lt;h3&gt;Stdio Transport (&lt;code&gt;transport/stdio&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;stdio-transport-transportstdio&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#stdio-transport-transportstdio&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
+
+&lt;div&gt;&lt;pre&gt;&lt;code&gt;&amp;#43;--------------&amp;#43;        Stdio Pipe         &amp;#43;-------------&amp;#43;
+|              |  &amp;lt;--- JSON Lines ----    |             |
+|  MCP Client  |        (Stdin)           |  MCP Server |
+| (App/Script) |                          | (App/Script)|
+|              |    ---- JSON Lines ---&amp;gt;  |             |
+&amp;#43;--------------&amp;#43;        (Stdout)          &amp;#43;-------------&amp;#43;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;ul&gt;
+&lt;li&gt;Simple, direct communication via stdin/stdout.&lt;/li&gt;
+&lt;li&gt;Suitable for local inter-process communication or basic examples.&lt;/li&gt;
+&lt;li&gt;The &lt;code&gt;StdioTransport&lt;/code&gt; handles reading/writing newline-delimited JSON.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;SSE + HTTP Hybrid Transport (&lt;code&gt;transport/sse&lt;/code&gt; + &lt;code&gt;client&lt;/code&gt;)&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;sse--http-hybrid-transport-transportsse--client&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#sse--http-hybrid-transport-transportsse--client&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h3&gt;&lt;div class=&#34;hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code&#34;&gt;
+
+&lt;div&gt;&lt;pre&gt;&lt;code&gt;&amp;#43;--------------&amp;#43;                          &amp;#43;-----------------&amp;#43;
+|              | ---- HTTP POST Req ---&amp;gt; |                 |
+|  MCP Client  | (e.g., initialize,      |    MCP Server   |
+| (Using client|  callTool, initialized) | (Using sse pkg) |
+|    package)  |                          |                 |
+|              | &amp;lt;--- HTTP POST Resp ---  |                 |
+&amp;#43;--------------&amp;#43; (e.g., callTool result) &amp;#43;-----------------&amp;#43;
+       |                                       ^
+       | Establish &amp;amp; Maintain SSE Connection   | SSE Events
+       &amp;#43;--------&amp;lt;---- SSE Events --------------&amp;#43; (e.g., endpoint,
+                 (e.g., initialize result,       message (notifications,
+                  notifications, server reqs))     server requests))&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class=&#34;hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0&#34;&gt;
+  &lt;button
+    class=&#34;hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50&#34;
+    title=&#34;Copy code&#34;
+  &gt;
+    &lt;div class=&#34;copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+    &lt;div class=&#34;success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4&#34;&gt;&lt;/div&gt;
+  &lt;/button&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Client -&amp;gt; Server:&lt;/strong&gt; Requests (&lt;code&gt;initialize&lt;/code&gt;, &lt;code&gt;callTool&lt;/code&gt;) and Notifications (&lt;code&gt;initialized&lt;/code&gt;, &lt;code&gt;$/cancelled&lt;/code&gt;) are sent via HTTP POST requests to a specific message endpoint on the server. Responses to these requests (like &lt;code&gt;callTool&lt;/code&gt; results) are sent back in the HTTP response body.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Server -&amp;gt; Client:&lt;/strong&gt; The client establishes a persistent Server-Sent Events (SSE) connection. The server sends asynchronous messages (like &lt;code&gt;initialize&lt;/code&gt; results, notifications, or server-to-client requests) over this SSE connection.&lt;/li&gt;
+&lt;li&gt;This is the primary transport used by the &lt;code&gt;client&lt;/code&gt; package.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Next Steps &amp;amp; Future Development&lt;span class=&#34;hx:absolute hx:-mt-20&#34; id=&#34;next-steps--future-development&#34;&gt;&lt;/span&gt;
+    &lt;a href=&#34;#next-steps--future-development&#34; class=&#34;subheading-anchor&#34; aria-label=&#34;Permalink for this section&#34;&gt;&lt;/a&gt;&lt;/h2&gt;&lt;p&gt;The core library is now compliant with the defined features of the MCP 2025-03-26 specification. Future work includes:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Example Updates:&lt;/strong&gt; Ensure all examples in &lt;code&gt;examples/&lt;/code&gt; are up-to-date with the latest library structure and demonstrate features like cancellation, progress, and subscriptions effectively across different transports.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Testing:&lt;/strong&gt; Add more comprehensive unit and integration tests, especially covering notifications, subscriptions, cancellation, concurrency, and different transport layers.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Progress Reporting:&lt;/strong&gt; Address the issue where the &lt;code&gt;ToolHandlerFunc&lt;/code&gt; doesn&amp;rsquo;t have direct access to the &lt;code&gt;sessionID&lt;/code&gt; needed for &lt;code&gt;server.SendProgress&lt;/code&gt;. This might require API changes or alternative patterns.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Protocol Enhancements:&lt;/strong&gt; Implement optional fields mentioned in the spec (e.g., &lt;code&gt;trace&lt;/code&gt;, &lt;code&gt;workspaceFolders&lt;/code&gt;, filtering options, content annotations).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Error Handling:&lt;/strong&gt; Refine error reporting and potentially add more specific MCP error codes for implementation-defined errors.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Alternative Transports:&lt;/strong&gt; Add examples or support for transports beyond stdio and SSE (e.g., WebSockets, TCP).&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Documentation:&lt;/strong&gt; Enhance GoDoc comments and keep &lt;code&gt;/docs&lt;/code&gt; guides up-to-date.&lt;/li&gt;
+&lt;/ul&gt;
+
+      </description>
+    </item>
+    
+    <item>
       <title>Rate Limiting</title>
       <link>http://localhost:1313/examples/rate-limit/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
@@ -2468,6 +2845,35 @@
 &lt;li&gt;Use an MCP client (like the one in &lt;code&gt;examples/rate-limit/client&lt;/code&gt;) to send multiple requests quickly to &lt;code&gt;/message&lt;/code&gt;. Observe that after a few successful requests, subsequent requests will receive a &lt;code&gt;429 Too Many Requests&lt;/code&gt; error until the rate limit interval passes.&lt;/li&gt;
 &lt;/ol&gt;
 &lt;p&gt;&lt;strong&gt;Note:&lt;/strong&gt; This is a basic IP-based limiter. Real-world applications might require more sophisticated rate limiting based on authenticated users, API keys, or specific resources being accessed.&lt;/p&gt;
+
+      </description>
+    </item>
+    
+    <item>
+      <title>MIT License</title>
+      <link>http://localhost:1313/license/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>http://localhost:1313/license/</guid>
+      <description>
+        
+        
+        &lt;p&gt;Copyright (c) 2025 localrivet&lt;/p&gt;
+&lt;p&gt;Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the &amp;ldquo;Software&amp;rdquo;), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:&lt;/p&gt;
+&lt;p&gt;The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.&lt;/p&gt;
+&lt;p&gt;THE SOFTWARE IS PROVIDED &amp;ldquo;AS IS&amp;rdquo;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.&lt;/p&gt;
 
       </description>
     </item>

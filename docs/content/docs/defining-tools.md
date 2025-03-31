@@ -1,9 +1,7 @@
 ---
-title: Defining and Registering Tools
-weight: 70
+title: Defining Server Tools
+weight: 40
 ---
-
-# Defining and Registering Tools
 
 One of the core features of MCP is the ability for servers to expose "tools" that clients can execute. This guide explains how to define and register tools in your `gomcp` server application.
 

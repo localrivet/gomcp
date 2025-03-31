@@ -1,6 +1,6 @@
 ---
-title: Documentation
-weight: 30
+title: Package Organization
+weight: 90
 cascade:
   type: docs
 ---

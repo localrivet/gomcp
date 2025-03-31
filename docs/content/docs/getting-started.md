@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-weight: 30 # Position after main Docs index
+weight: 10 # Position after main Docs index
 ---
 
 This guide will walk you through the initial steps to get up and running with the `gomcp` library.
@@ -69,8 +69,8 @@ The server will now listen for MCP JSON-RPC messages on standard input and send 
 
 ## Next Steps
 
-- Explore the guides on implementing a [Server]({{< ref "docs/server" >}}) and [Client]({{< ref "docs/client" >}}).
-- Learn how to define and register [Tools]({{< ref "docs/server/defining-tools" >}}).
+- Explore the guides on implementing a [Server]({{< ref "docs/create-server" >}}) and [Client]({{< ref "docs/create-client" >}}).
+- Learn how to define and register [Tools]({{< ref "docs/defining-tools" >}}).
 - Check out the protocol details in the [Protocols]({{< ref "docs/protocols" >}}) section:
   - [Messages]({{< ref "docs/protocols/protocol_messages" >}})
   - [Tools]({{< ref "docs/protocols/protocol_tools" >}})

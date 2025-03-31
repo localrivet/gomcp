@@ -1,9 +1,7 @@
 ---
-title: License
-weight: 2 # Matches menu weight
+title: MIT License
+weight: 1000 # Matches menu weight
 ---
-
-# MIT License
 
 Copyright (c) 2025 localrivet
 

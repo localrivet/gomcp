@@ -10,41 +10,46 @@
 <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 <link fetchpriority="low" href="/site.webmanifest" rel="manifest" />
-<title>Protocol Resources – GoMCP</title>
-  <meta name="description" content="MCP servers can expose resources, which represent data sources that clients can access or subscribe to. This document describes the protocol messages related to resource discovery and access.
-Resource Definition (Resource) Represents a data source provided by the server.
-uri (string, required): A unique identifier for the resource (e.g., file:///path/to/file, api://service/endpoint). kind (string, optional): A category or type hint for the resource (e.g., “file”, “api_spec”, “database_table”). title (string, optional): A short, human-readable title for the resource. description (string, optional): A longer description of the resource. version (string, optional): An opaque string representing the current version of the resource content. This should change whenever the content changes. metadata (object, optional): Additional arbitrary key-value pairs associated with the resource. Request Messages resources/list Sent from the client to the server to retrieve a list of available resources, potentially filtered. Supports pagination." /><link rel="canonical" href="http://localhost:1313/docs/protocols/protocol_resources/" itemprop="url" />
+<title>Creating a Client – GoMCP</title>
+  <meta name="description" content="The gomcp library provides tools for building applications that act as MCP clients, connecting to MCP servers to utilize their capabilities (tools, resources, prompts).
+The primary implementation for a client is found in the client package, which uses the SSE&#43;HTTP hybrid transport model.
+Client Role An MCP client typically:
+Connects to a known MCP server endpoint. Performs the initialization handshake (initialize / initialized). Discovers available server capabilities (tools, resources, prompts) using list requests. Executes server tools (tools/call). Accesses server resources (resources/get). Subscribes to resource updates (resources/subscribe). Handles server-sent notifications (e.g., $/progress, notifications/message). Handles server-sent requests (if the server needs to request actions from the client, though less common). Initializing the Client (client package) The client package provides a Client struct that manages the connection and communication flow using the SSE&#43;HTTP transport." /><link rel="canonical" href="http://localhost:1313/docs/create-client/" itemprop="url" />
 
-<meta property="og:title" content="Protocol Resources" />
-<meta property="og:description" content="MCP servers can expose resources, which represent data sources that clients can access or subscribe to. This document describes the protocol messages related to resource discovery and access.
-Resource Definition (Resource)
-    Represents a data source provided by the server.
+<meta property="og:title" content="Creating a Client" />
+<meta property="og:description" content="The gomcp library provides tools for building applications that act as MCP clients, connecting to MCP servers to utilize their capabilities (tools, resources, prompts).
+The primary implementation for a client is found in the client package, which uses the SSE&#43;HTTP hybrid transport model.
+Client Role
+    An MCP client typically:
 
-uri (string, required): A unique identifier for the resource (e.g., file:///path/to/file, api://service/endpoint).
-kind (string, optional): A category or type hint for the resource (e.g., &ldquo;file&rdquo;, &ldquo;api_spec&rdquo;, &ldquo;database_table&rdquo;).
-title (string, optional): A short, human-readable title for the resource.
-description (string, optional): A longer description of the resource.
-version (string, optional): An opaque string representing the current version of the resource content. This should change whenever the content changes.
-metadata (object, optional): Additional arbitrary key-value pairs associated with the resource.
+Connects to a known MCP server endpoint.
+Performs the initialization handshake (initialize / initialized).
+Discovers available server capabilities (tools, resources, prompts) using list requests.
+Executes server tools (tools/call).
+Accesses server resources (resources/get).
+Subscribes to resource updates (resources/subscribe).
+Handles server-sent notifications (e.g., $/progress, notifications/message).
+Handles server-sent requests (if the server needs to request actions from the client, though less common).
 
-Request Messages
-    resources/list
-    Sent from the client to the server to retrieve a list of available resources, potentially filtered. Supports pagination." />
+Initializing the Client (client package)
+    The client package provides a Client struct that manages the connection and communication flow using the SSE&#43;HTTP transport." />
 <meta property="og:type" content="article" />
-<meta property="og:url" content="http://localhost:1313/docs/protocols/protocol_resources/" /><meta property="article:section" content="docs" />
+<meta property="og:url" content="http://localhost:1313/docs/create-client/" /><meta property="article:section" content="docs" />
 
 
 
-  <meta itemprop="name" content="Protocol Resources">
-  <meta itemprop="description" content="MCP servers can expose resources, which represent data sources that clients can access or subscribe to. This document describes the protocol messages related to resource discovery and access.
-Resource Definition (Resource) Represents a data source provided by the server.
-uri (string, required): A unique identifier for the resource (e.g., file:///path/to/file, api://service/endpoint). kind (string, optional): A category or type hint for the resource (e.g., “file”, “api_spec”, “database_table”). title (string, optional): A short, human-readable title for the resource. description (string, optional): A longer description of the resource. version (string, optional): An opaque string representing the current version of the resource content. This should change whenever the content changes. metadata (object, optional): Additional arbitrary key-value pairs associated with the resource. Request Messages resources/list Sent from the client to the server to retrieve a list of available resources, potentially filtered. Supports pagination.">
-  <meta itemprop="wordCount" content="526">
+  <meta itemprop="name" content="Creating a Client">
+  <meta itemprop="description" content="The gomcp library provides tools for building applications that act as MCP clients, connecting to MCP servers to utilize their capabilities (tools, resources, prompts).
+The primary implementation for a client is found in the client package, which uses the SSE&#43;HTTP hybrid transport model.
+Client Role An MCP client typically:
+Connects to a known MCP server endpoint. Performs the initialization handshake (initialize / initialized). Discovers available server capabilities (tools, resources, prompts) using list requests. Executes server tools (tools/call). Accesses server resources (resources/get). Subscribes to resource updates (resources/subscribe). Handles server-sent notifications (e.g., $/progress, notifications/message). Handles server-sent requests (if the server needs to request actions from the client, though less common). Initializing the Client (client package) The client package provides a Client struct that manages the connection and communication flow using the SSE&#43;HTTP transport.">
+  <meta itemprop="wordCount" content="563">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Protocol Resources">
-  <meta name="twitter:description" content="MCP servers can expose resources, which represent data sources that clients can access or subscribe to. This document describes the protocol messages related to resource discovery and access.
-Resource Definition (Resource) Represents a data source provided by the server.
-uri (string, required): A unique identifier for the resource (e.g., file:///path/to/file, api://service/endpoint). kind (string, optional): A category or type hint for the resource (e.g., “file”, “api_spec”, “database_table”). title (string, optional): A short, human-readable title for the resource. description (string, optional): A longer description of the resource. version (string, optional): An opaque string representing the current version of the resource content. This should change whenever the content changes. metadata (object, optional): Additional arbitrary key-value pairs associated with the resource. Request Messages resources/list Sent from the client to the server to retrieve a list of available resources, potentially filtered. Supports pagination.">
+  <meta name="twitter:title" content="Creating a Client">
+  <meta name="twitter:description" content="The gomcp library provides tools for building applications that act as MCP clients, connecting to MCP servers to utilize their capabilities (tools, resources, prompts).
+The primary implementation for a client is found in the client package, which uses the SSE&#43;HTTP hybrid transport model.
+Client Role An MCP client typically:
+Connects to a known MCP server endpoint. Performs the initialization handshake (initialize / initialized). Discovers available server capabilities (tools, resources, prompts) using list requests. Executes server tools (tools/call). Accesses server resources (resources/get). Subscribes to resource updates (resources/subscribe). Handles server-sent notifications (e.g., $/progress, notifications/message). Handles server-sent requests (if the server needs to request actions from the client, though less common). Initializing the Client (client package) The client package provides a Client struct that manages the connection and communication flow using the SSE&#43;HTTP transport.">
 
     <link href="/css/compiled/main.css" rel="stylesheet" />
 
@@ -205,13 +210,40 @@ uri (string, required): A unique identifier for the resource (e.g., file:///path
   >Defining Server Tools
     </a>
               
-            </li><li class="hx:flex hx:flex-col "><a
+            </li><li class="hx:flex hx:flex-col open"><a
     class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:contrast-more:border hx:contrast-more:border-transparent hx:contrast-more:text-gray-900 hx:contrast-more:hover:border-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:dark:text-gray-50 hx:contrast-more:dark:hover:border-gray-50"
+      sidebar-active-item hx:bg-primary-100 hx:font-semibold hx:text-primary-800 hx:contrast-more:border hx:contrast-more:border-primary-500 hx:dark:bg-primary-400/10 hx:dark:text-primary-600 hx:contrast-more:dark:border-primary-500"
     href="/docs/create-client/"
     
   >Creating a Client
     </a>
+  
+    <ul class='hx:flex hx:flex-col hx:gap-1 hx:relative hx:before:absolute hx:before:inset-y-1 hx:before:w-px hx:before:bg-gray-200 hx:before:content-[""] hx:dark:before:bg-neutral-800 hx:ltr:pl-3 hx:ltr:before:left-0 hx:rtl:pr-3 hx:rtl:before:right-0 hx:ltr:ml-3 hx:rtl:mr-3'><li>
+              <a
+                href="#client-role"
+                class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50"
+              >Client Role</a>
+            </li>
+          <li>
+              <a
+                href="#initializing-the-client-client-package"
+                class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50"
+              >Initializing the Client (client package)</a>
+            </li>
+          <li>
+              <a
+                href="#making-requests"
+                class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50"
+              >Making Requests</a>
+            </li>
+          <li>
+              <a
+                href="#handling-server-messages"
+                class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50"
+              >Handling Server Messages</a>
+            </li>
+          </ul>
+  
               
             </li><li class="hx:flex hx:flex-col "><a
     class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
@@ -221,7 +253,7 @@ uri (string, required): A unique identifier for the resource (e.g., file:///path
   >Calling Tools
     </a>
               
-            </li><li class="hx:flex hx:flex-col open"><a
+            </li><li class="hx:flex hx:flex-col "><a
     class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:contrast-more:border hx:contrast-more:border-transparent hx:contrast-more:text-gray-900 hx:contrast-more:hover:border-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:dark:text-gray-50 hx:contrast-more:dark:hover:border-gray-50"
     href="/docs/protocols/"
@@ -246,40 +278,13 @@ uri (string, required): A unique identifier for the resource (e.g., file:///path
   >Protocol Tools
     </a>
               
-            </li><li class="hx:flex hx:flex-col open"><a
+            </li><li class="hx:flex hx:flex-col "><a
     class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      sidebar-active-item hx:bg-primary-100 hx:font-semibold hx:text-primary-800 hx:contrast-more:border hx:contrast-more:border-primary-500 hx:dark:bg-primary-400/10 hx:dark:text-primary-600 hx:contrast-more:dark:border-primary-500"
+      hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:contrast-more:border hx:contrast-more:border-transparent hx:contrast-more:text-gray-900 hx:contrast-more:hover:border-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:dark:text-gray-50 hx:contrast-more:dark:hover:border-gray-50"
     href="/docs/protocols/protocol_resources/"
     
   >Protocol Resources
     </a>
-  
-    <ul class='hx:flex hx:flex-col hx:gap-1 hx:relative hx:before:absolute hx:before:inset-y-1 hx:before:w-px hx:before:bg-gray-200 hx:before:content-[""] hx:dark:before:bg-neutral-800 hx:ltr:pl-3 hx:ltr:before:left-0 hx:rtl:pr-3 hx:rtl:before:right-0 hx:ltr:ml-3 hx:rtl:mr-3'><li>
-              <a
-                href="#resource-definition-resource"
-                class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50"
-              >Resource Definition (Resource)</a>
-            </li>
-          <li>
-              <a
-                href="#request-messages"
-                class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50"
-              >Request Messages</a>
-            </li>
-          <li>
-              <a
-                href="#response-messages"
-                class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50"
-              >Response Messages</a>
-            </li>
-          <li>
-              <a
-                href="#notification-messages"
-                class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50"
-              >Notification Messages</a>
-            </li>
-          </ul>
-  
               
             </li><li class="hx:flex hx:flex-col "><a
     class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
@@ -517,9 +522,9 @@ uri (string, required): A unique identifier for the resource (e.g., file:///path
   >Defining Server Tools
     </a>
               
-            </li><li class="hx:flex hx:flex-col "><a
+            </li><li class="hx:flex hx:flex-col open"><a
     class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:contrast-more:border hx:contrast-more:border-transparent hx:contrast-more:text-gray-900 hx:contrast-more:hover:border-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:dark:text-gray-50 hx:contrast-more:dark:hover:border-gray-50"
+      sidebar-active-item hx:bg-primary-100 hx:font-semibold hx:text-primary-800 hx:contrast-more:border hx:contrast-more:border-primary-500 hx:dark:bg-primary-400/10 hx:dark:text-primary-600 hx:contrast-more:dark:border-primary-500"
     href="/docs/create-client/"
     
   >Creating a Client
@@ -533,7 +538,7 @@ uri (string, required): A unique identifier for the resource (e.g., file:///path
   >Calling Tools
     </a>
               
-            </li><li class="hx:flex hx:flex-col open"><a
+            </li><li class="hx:flex hx:flex-col "><a
     class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:contrast-more:border hx:contrast-more:border-transparent hx:contrast-more:text-gray-900 hx:contrast-more:hover:border-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:dark:text-gray-50 hx:contrast-more:dark:hover:border-gray-50"
     href="/docs/protocols/"
@@ -558,9 +563,9 @@ uri (string, required): A unique identifier for the resource (e.g., file:///path
   >Protocol Tools
     </a>
               
-            </li><li class="hx:flex hx:flex-col open"><a
+            </li><li class="hx:flex hx:flex-col "><a
     class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      sidebar-active-item hx:bg-primary-100 hx:font-semibold hx:text-primary-800 hx:contrast-more:border hx:contrast-more:border-primary-500 hx:dark:bg-primary-400/10 hx:dark:text-primary-600 hx:contrast-more:dark:border-primary-500"
+      hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:contrast-more:border hx:contrast-more:border-transparent hx:contrast-more:text-gray-900 hx:contrast-more:hover:border-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:dark:text-gray-50 hx:contrast-more:dark:hover:border-gray-50"
     href="/docs/protocols/protocol_resources/"
     
   >Protocol Resources
@@ -777,59 +782,19 @@ uri (string, required): A unique identifier for the resource (e.g., file:///path
 <nav class="hextra-toc hx:order-last hx:hidden hx:w-64 hx:shrink-0 hx:xl:block hx:print:hidden hx:px-4" aria-label="table of contents">
     <div class="hextra-scrollbar hx:sticky hx:top-16 hx:overflow-y-auto hx:pr-4 hx:pt-6 hx:text-sm [hyphens:auto] hx:max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] hx:ltr:-mr-4 hx:rtl:-ml-4"><p class="hx:mb-4 hx:font-semibold hx:tracking-tight">On this page</p><ul>
       <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#resource-definition-resource">Resource Definition (Resource)
+        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#client-role">Client Role
         </a>
       </li>
       <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#request-messages">Request Messages
+        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#initializing-the-client-client-package">Initializing the Client (client package)
         </a>
       </li>
       <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#resourceslist">resources/list
+        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#making-requests">Making Requests
         </a>
       </li>
       <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#resourcesget-corresponds-to-resourcesread-in-go-code">resources/get (Corresponds to resources/read in Go code)
-        </a>
-      </li>
-      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#resourcessubscribe">resources/subscribe
-        </a>
-      </li>
-      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#resourcesunsubscribe">resources/unsubscribe
-        </a>
-      </li>
-      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#response-messages">Response Messages
-        </a>
-      </li>
-      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#resourceslist-result">resources/list (Result)
-        </a>
-      </li>
-      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#resourcesget-result---corresponds-to-resourcesread-in-go-code">resources/get (Result - Corresponds to resources/read in Go code)
-        </a>
-      </li>
-      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#resourcessubscribe-result">resources/subscribe (Result)
-        </a>
-      </li>
-      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#resourcesunsubscribe-result">resources/unsubscribe (Result)
-        </a>
-      </li>
-      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#notification-messages">Notification Messages
-        </a>
-      </li>
-      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#notificationsresourceslist_changed">notifications/resources/list_changed
-        </a>
-      </li>
-      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
-        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#notificationsresourcescontent_changed">notifications/resources/content_changed
+        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#handling-server-messages">Handling Server Messages
         </a>
       </li></ul>
       <div class="hx:mt-8 hx:border-t hx:bg-white hx:pt-8 hx:shadow-[0_-12px_16px_white] hx:dark:bg-dark hx:dark:shadow-[0_-12px_16px_#111] hx:sticky hx:bottom-0 hx:flex hx:flex-col hx:items-start hx:gap-2 hx:pb-8 hx:border-gray-200 hx:dark:border-neutral-800 hx:contrast-more:border-t hx:contrast-more:border-neutral-400 hx:contrast-more:shadow-none hx:contrast-more:dark:border-neutral-400">
@@ -850,109 +815,153 @@ uri (string, required): A unique identifier for the resource (e.g., file:///path
   <div class="hx:mt-1.5 hx:flex hx:items-center hx:gap-1 hx:overflow-hidden hx:text-sm hx:text-gray-500 hx:dark:text-gray-400 hx:contrast-more:text-current">
         <div class="hx:whitespace-nowrap hx:transition-colors hx:min-w-[24px] hx:overflow-hidden hx:text-ellipsis hx:hover:text-gray-900 hx:dark:hover:text-gray-100">
           <a href="/docs/">Documentation</a>
-        </div><svg class="hx:w-3.5 hx:shrink-0 hx:rtl:-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-        <div class="hx:whitespace-nowrap hx:transition-colors hx:min-w-[24px] hx:overflow-hidden hx:text-ellipsis hx:hover:text-gray-900 hx:dark:hover:text-gray-100">
-          <a href="/docs/protocols/">Protocols</a>
-        </div><svg class="hx:w-3.5 hx:shrink-0 hx:rtl:-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg><div class="hx:whitespace-nowrap hx:transition-colors hx:font-medium hx:text-gray-700 hx:contrast-more:font-bold hx:contrast-more:text-current hx:dark:text-gray-100 hx:contrast-more:dark:text-current">Protocol Resources</div>
+        </div><svg class="hx:w-3.5 hx:shrink-0 hx:rtl:-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg><div class="hx:whitespace-nowrap hx:transition-colors hx:font-medium hx:text-gray-700 hx:contrast-more:font-bold hx:contrast-more:text-current hx:dark:text-gray-100 hx:contrast-more:dark:text-current">Creating a Client</div>
   </div>
 
         <div class="content">
-          <h1>Protocol Resources</h1>
-          <p>MCP servers can expose resources, which represent data sources that clients can access or subscribe to. This document describes the protocol messages related to resource discovery and access.</p>
-<h2>Resource Definition (<code>Resource</code>)<span class="hx:absolute hx:-mt-20" id="resource-definition-resource"></span>
-    <a href="#resource-definition-resource" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Represents a data source provided by the server.</p>
+          <h1>Creating a Client</h1>
+          <p>The <code>gomcp</code> library provides tools for building applications that act as MCP clients, connecting to MCP servers to utilize their capabilities (tools, resources, prompts).</p>
+<p>The primary implementation for a client is found in the <code>client</code> package, which uses the SSE+HTTP hybrid transport model.</p>
+<h2>Client Role<span class="hx:absolute hx:-mt-20" id="client-role"></span>
+    <a href="#client-role" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>An MCP client typically:</p>
+<ol>
+<li>Connects to a known MCP server endpoint.</li>
+<li>Performs the initialization handshake (<code>initialize</code> / <code>initialized</code>).</li>
+<li>Discovers available server capabilities (tools, resources, prompts) using <code>list</code> requests.</li>
+<li>Executes server tools (<code>tools/call</code>).</li>
+<li>Accesses server resources (<code>resources/get</code>).</li>
+<li>Subscribes to resource updates (<code>resources/subscribe</code>).</li>
+<li>Handles server-sent notifications (e.g., <code>$/progress</code>, <code>notifications/message</code>).</li>
+<li>Handles server-sent requests (if the server needs to request actions from the client, though less common).</li>
+</ol>
+<h2>Initializing the Client (<code>client</code> package)<span class="hx:absolute hx:-mt-20" id="initializing-the-client-client-package"></span>
+    <a href="#initializing-the-client-client-package" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>The <code>client</code> package provides a <code>Client</code> struct that manages the connection and communication flow using the SSE+HTTP transport.</p>
+<div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code">
+
+<div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#f92672">package</span> <span style="color:#a6e22e">main</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">import</span> (
+</span></span><span style="display:flex;"><span>	<span style="color:#e6db74">&#34;context&#34;</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#e6db74">&#34;log&#34;</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#e6db74">&#34;time&#34;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#e6db74">&#34;github.com/localrivet/gomcp/client&#34;</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#e6db74">&#34;github.com/localrivet/gomcp/protocol&#34;</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#e6db74">&#34;github.com/localrivet/gomcp/types&#34;</span>
+</span></span><span style="display:flex;"><span>)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">func</span> <span style="color:#a6e22e">main</span>() {
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Server&#39;s base URL (adjust as needed)</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">serverURL</span> <span style="color:#f92672">:=</span> <span style="color:#e6db74">&#34;http://localhost:8080&#34;</span> <span style="color:#75715e">// Example URL</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Define client information</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">clientInfo</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">types</span>.<span style="color:#a6e22e">Implementation</span>{
+</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">Name</span>:    <span style="color:#e6db74">&#34;my-simple-client&#34;</span>,
+</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">Version</span>: <span style="color:#e6db74">&#34;0.1.0&#34;</span>,
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Define client capabilities (optional, customize as needed)</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">clientCapabilities</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">protocol</span>.<span style="color:#a6e22e">ClientCapabilities</span>{
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// Add specific capabilities your client supports</span>
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Create client options</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">opts</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">client</span>.<span style="color:#a6e22e">NewClientOptions</span>(<span style="color:#a6e22e">clientInfo</span>, <span style="color:#a6e22e">clientCapabilities</span>)
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// opts.Logger = /* provide a custom logger if desired */</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Create a new client instance</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">c</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">client</span>.<span style="color:#a6e22e">NewClient</span>(<span style="color:#a6e22e">serverURL</span>, <span style="color:#a6e22e">opts</span>)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// --- Optional: Register handlers for server-sent messages ---</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Example: Handle log messages from the server</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">c</span>.<span style="color:#a6e22e">RegisterNotificationHandler</span>(<span style="color:#a6e22e">protocol</span>.<span style="color:#a6e22e">MethodLogMessage</span>, <span style="color:#66d9ef">func</span>(<span style="color:#a6e22e">ctx</span> <span style="color:#a6e22e">context</span>.<span style="color:#a6e22e">Context</span>, <span style="color:#a6e22e">params</span> []<span style="color:#66d9ef">byte</span>) <span style="color:#66d9ef">error</span> {
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">var</span> <span style="color:#a6e22e">logParams</span> <span style="color:#a6e22e">protocol</span>.<span style="color:#a6e22e">LoggingMessageParams</span>
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">json</span>.<span style="color:#a6e22e">Unmarshal</span>(<span style="color:#a6e22e">params</span>, <span style="color:#f92672">&amp;</span><span style="color:#a6e22e">logParams</span>); <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
+</span></span><span style="display:flex;"><span>			<span style="color:#a6e22e">log</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;Error unmarshalling log message params: %v&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">return</span> <span style="color:#66d9ef">nil</span> <span style="color:#75715e">// Don&#39;t kill connection for bad log message</span>
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">log</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;SERVER LOG [%s]: %s&#34;</span>, <span style="color:#a6e22e">logParams</span>.<span style="color:#a6e22e">Level</span>, <span style="color:#a6e22e">logParams</span>.<span style="color:#a6e22e">Message</span>)
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span> <span style="color:#66d9ef">nil</span>
+</span></span><span style="display:flex;"><span>	})
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Register other handlers for notifications or server requests as needed...</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// --- Connect and Initialize ---</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">ctx</span>, <span style="color:#a6e22e">cancel</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">context</span>.<span style="color:#a6e22e">WithTimeout</span>(<span style="color:#a6e22e">context</span>.<span style="color:#a6e22e">Background</span>(), <span style="color:#ae81ff">30</span><span style="color:#f92672">*</span><span style="color:#a6e22e">time</span>.<span style="color:#a6e22e">Second</span>) <span style="color:#75715e">// Add a timeout</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">defer</span> <span style="color:#a6e22e">cancel</span>()
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">serverInfo</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">c</span>.<span style="color:#a6e22e">Connect</span>(<span style="color:#a6e22e">ctx</span>)
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
+</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">log</span>.<span style="color:#a6e22e">Fatalf</span>(<span style="color:#e6db74">&#34;Failed to connect and initialize with server: %v&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">log</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;Connected to server: %s v%s&#34;</span>, <span style="color:#a6e22e">serverInfo</span>.<span style="color:#a6e22e">Name</span>, <span style="color:#a6e22e">serverInfo</span>.<span style="color:#a6e22e">Version</span>)
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">log</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;Server capabilities: %+v&#34;</span>, <span style="color:#a6e22e">c</span>.<span style="color:#a6e22e">ServerCapabilities</span>()) <span style="color:#75715e">// Access cached capabilities</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// --- Client is now ready to make requests ---</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Example: List available tools</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">listToolsCtx</span>, <span style="color:#a6e22e">listToolsCancel</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">context</span>.<span style="color:#a6e22e">WithTimeout</span>(<span style="color:#a6e22e">context</span>.<span style="color:#a6e22e">Background</span>(), <span style="color:#ae81ff">10</span><span style="color:#f92672">*</span><span style="color:#a6e22e">time</span>.<span style="color:#a6e22e">Second</span>)
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">defer</span> <span style="color:#a6e22e">listToolsCancel</span>()
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">toolsResult</span>, <span style="color:#a6e22e">err</span> <span style="color:#f92672">:=</span> <span style="color:#a6e22e">c</span>.<span style="color:#a6e22e">ListTools</span>(<span style="color:#a6e22e">listToolsCtx</span>, <span style="color:#a6e22e">protocol</span>.<span style="color:#a6e22e">ListToolsRequestParams</span>{})
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">if</span> <span style="color:#a6e22e">err</span> <span style="color:#f92672">!=</span> <span style="color:#66d9ef">nil</span> {
+</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">log</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;Error listing tools: %v&#34;</span>, <span style="color:#a6e22e">err</span>)
+</span></span><span style="display:flex;"><span>	} <span style="color:#66d9ef">else</span> {
+</span></span><span style="display:flex;"><span>		<span style="color:#a6e22e">log</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;Available tools (%d):&#34;</span>, len(<span style="color:#a6e22e">toolsResult</span>.<span style="color:#a6e22e">Tools</span>))
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">for</span> <span style="color:#a6e22e">_</span>, <span style="color:#a6e22e">tool</span> <span style="color:#f92672">:=</span> <span style="color:#66d9ef">range</span> <span style="color:#a6e22e">toolsResult</span>.<span style="color:#a6e22e">Tools</span> {
+</span></span><span style="display:flex;"><span>			<span style="color:#a6e22e">log</span>.<span style="color:#a6e22e">Printf</span>(<span style="color:#e6db74">&#34;- %s: %s&#34;</span>, <span style="color:#a6e22e">tool</span>.<span style="color:#a6e22e">Name</span>, <span style="color:#a6e22e">tool</span>.<span style="color:#a6e22e">Description</span>)
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Add more client logic here (CallTool, GetResource, etc.)</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Keep the client running (e.g., wait for user input or another signal)</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">log</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Client running. Press Ctrl+C to exit.&#34;</span>)
+</span></span><span style="display:flex;"><span>	<span style="color:#f92672">&lt;-</span><span style="color:#a6e22e">ctx</span>.<span style="color:#a6e22e">Done</span>() <span style="color:#75715e">// Wait for context cancellation (e.g., timeout or manual cancel)</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#75715e">// Disconnect (optional, closes SSE connection)</span>
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">c</span>.<span style="color:#a6e22e">Disconnect</span>()
+</span></span><span style="display:flex;"><span>	<span style="color:#a6e22e">log</span>.<span style="color:#a6e22e">Println</span>(<span style="color:#e6db74">&#34;Client disconnected.&#34;</span>)
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0">
+  <button
+    class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+    title="Copy code"
+  >
+    <div class="copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"></div>
+    <div class="success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"></div>
+  </button>
+</div>
+</div>
+<p><em>Note: This example assumes a server is running at <code>http://localhost:8080</code> using the SSE+HTTP transport.</em></p>
+<h2>Making Requests<span class="hx:absolute hx:-mt-20" id="making-requests"></span>
+    <a href="#making-requests" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Once connected, you can use the methods provided by the <code>client.Client</code> struct to interact with the server:</p>
 <ul>
-<li><code>uri</code> (string, required): A unique identifier for the resource (e.g., <code>file:///path/to/file</code>, <code>api://service/endpoint</code>).</li>
-<li><code>kind</code> (string, optional): A category or type hint for the resource (e.g., &ldquo;file&rdquo;, &ldquo;api_spec&rdquo;, &ldquo;database_table&rdquo;).</li>
-<li><code>title</code> (string, optional): A short, human-readable title for the resource.</li>
-<li><code>description</code> (string, optional): A longer description of the resource.</li>
-<li><code>version</code> (string, optional): An opaque string representing the current version of the resource content. This should change whenever the content changes.</li>
-<li><code>metadata</code> (object, optional): Additional arbitrary key-value pairs associated with the resource.</li>
+<li><code>ListTools(ctx, params)</code></li>
+<li><code>CallTool(ctx, params)</code></li>
+<li><code>ListResources(ctx, params)</code></li>
+<li><code>GetResource(ctx, params)</code></li>
+<li><code>SubscribeResources(ctx, params)</code></li>
+<li><code>UnsubscribeResources(ctx, params)</code></li>
+<li><code>ListPrompts(ctx, params)</code></li>
+<li><code>GetPrompt(ctx, params)</code></li>
+<li><code>SendCancellation(ctx, id)</code></li>
+<li><code>SendProgress(ctx, params)</code> // If client needs to report progress</li>
+<li>// &hellip; and others</li>
 </ul>
-<h2>Request Messages<span class="hx:absolute hx:-mt-20" id="request-messages"></span>
-    <a href="#request-messages" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><h3><code>resources/list</code><span class="hx:absolute hx:-mt-20" id="resourceslist"></span>
-    <a href="#resourceslist" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>Sent from the client to the server to retrieve a list of available resources, potentially filtered. Supports pagination.</p>
-<p><strong>Parameters (<code>ListResourcesRequestParams</code>):</strong></p>
-<ul>
-<li><code>filter</code> (object, optional): Criteria to filter the resources (specific filter structure not defined by the core protocol).</li>
-<li><code>cursor</code> (string, optional): A cursor from a previous response to fetch the next page.</li>
-</ul>
-<h3><code>resources/get</code> (Corresponds to <code>resources/read</code> in Go code)<span class="hx:absolute hx:-mt-20" id="resourcesget-corresponds-to-resourcesread-in-go-code"></span>
-    <a href="#resourcesget-corresponds-to-resourcesread-in-go-code" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>Sent from the client to the server to retrieve the content of a specific resource.</p>
-<p><strong>Parameters (<code>ReadResourceRequestParams</code>):</strong></p>
-<ul>
-<li><code>uri</code> (string, required): The URI of the resource to retrieve.</li>
-<li><code>version</code> (string, optional): If provided, the server may return a &ldquo;Not Modified&rdquo; error if the resource version matches.</li>
-</ul>
-<h3><code>resources/subscribe</code><span class="hx:absolute hx:-mt-20" id="resourcessubscribe"></span>
-    <a href="#resourcessubscribe" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>Sent from the client to the server to request notifications when the content of specific resources changes.</p>
-<p><strong>Parameters (<code>SubscribeResourceParams</code>):</strong></p>
-<ul>
-<li><code>uris</code> (array of strings, required): A list of resource URIs to subscribe to.</li>
-</ul>
-<h3><code>resources/unsubscribe</code><span class="hx:absolute hx:-mt-20" id="resourcesunsubscribe"></span>
-    <a href="#resourcesunsubscribe" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>Sent from the client to the server to stop receiving notifications for specific resources.</p>
-<p><strong>Parameters (<code>UnsubscribeResourceParams</code>):</strong></p>
-<ul>
-<li><code>uris</code> (array of strings, required): A list of resource URIs to unsubscribe from.</li>
-</ul>
-<h2>Response Messages<span class="hx:absolute hx:-mt-20" id="response-messages"></span>
-    <a href="#response-messages" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><h3><code>resources/list</code> (Result)<span class="hx:absolute hx:-mt-20" id="resourceslist-result"></span>
-    <a href="#resourceslist-result" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>The successful response to a <code>resources/list</code> request.</p>
-<p><strong>Payload (<code>ListResourcesResult</code>):</strong></p>
-<ul>
-<li><code>resources</code> (array, required): A list of resources (<code>Resource[]</code>) matching the filter criteria for the current page.</li>
-<li><code>nextCursor</code> (string, optional): A cursor for fetching the next page. Omitted if this is the last page.</li>
-</ul>
-<h3><code>resources/get</code> (Result - Corresponds to <code>resources/read</code> in Go code)<span class="hx:absolute hx:-mt-20" id="resourcesget-result---corresponds-to-resourcesread-in-go-code"></span>
-    <a href="#resourcesget-result---corresponds-to-resourcesread-in-go-code" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>The successful response to a <code>resources/get</code> request.</p>
-<p><strong>Payload (<code>ReadResourceResult</code>):</strong></p>
-<ul>
-<li><code>resource</code> (object, required): The <code>Resource</code> object containing metadata (including the current <code>version</code>).</li>
-<li><code>contents</code> (object, required): The actual content of the resource (<code>ResourceContents</code>). This will be either:
-<ul>
-<li><code>TextResourceContents</code>: Contains <code>contentType</code> (string) and <code>content</code> (string).</li>
-<li><code>BlobResourceContents</code>: Contains <code>contentType</code> (string) and <code>blob</code> (string, base64 encoded).</li>
-</ul>
-</li>
-</ul>
-<h3><code>resources/subscribe</code> (Result)<span class="hx:absolute hx:-mt-20" id="resourcessubscribe-result"></span>
-    <a href="#resourcessubscribe-result" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>The successful response to a <code>resources/subscribe</code> request.</p>
-<p><strong>Payload (<code>SubscribeResourceResult</code>):</strong></p>
-<ul>
-<li><em>(None)</em> - The result object is currently empty upon success.</li>
-</ul>
-<h3><code>resources/unsubscribe</code> (Result)<span class="hx:absolute hx:-mt-20" id="resourcesunsubscribe-result"></span>
-    <a href="#resourcesunsubscribe-result" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>The successful response to an <code>resources/unsubscribe</code> request.</p>
-<p><strong>Payload (<code>UnsubscribeResourceResult</code>):</strong></p>
-<ul>
-<li><em>(None)</em> - The result object is currently empty upon success.</li>
-</ul>
-<h2>Notification Messages<span class="hx:absolute hx:-mt-20" id="notification-messages"></span>
-    <a href="#notification-messages" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><h3><code>notifications/resources/list_changed</code><span class="hx:absolute hx:-mt-20" id="notificationsresourceslist_changed"></span>
-    <a href="#notificationsresourceslist_changed" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>Sent from the server to the client when the set of available resources changes (e.g., resources added or removed). The client should typically re-fetch the resource list using <code>resources/list</code>.</p>
-<p><strong>Parameters (<code>ResourcesListChangedParams</code>):</strong></p>
-<ul>
-<li><em>(None)</em> - The params object is empty.</li>
-</ul>
-<h3><code>notifications/resources/content_changed</code><span class="hx:absolute hx:-mt-20" id="notificationsresourcescontent_changed"></span>
-    <a href="#notificationsresourcescontent_changed" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><p>Sent from the server to the client when the content (and thus version) of a subscribed resource has changed.</p>
-<p><strong>Parameters (<code>ResourceUpdatedParams</code>):</strong></p>
-<ul>
-<li><code>resource</code> (object, required): The updated <code>Resource</code> object, containing the new <code>version</code> and potentially other changed metadata. The client should typically use <code>resources/get</code> to fetch the new content if needed.</li>
-</ul>
+<p>Each method takes a <code>context.Context</code> for cancellation and deadlines, and the corresponding parameter struct defined in the <code>protocol</code> package.</p>
+<h2>Handling Server Messages<span class="hx:absolute hx:-mt-20" id="handling-server-messages"></span>
+    <a href="#handling-server-messages" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Use <code>RegisterNotificationHandler</code> and <code>RegisterRequestHandler</code> <em>before</em> calling <code>Connect</code> to set up functions that will be called when the server sends asynchronous notifications or requests over the SSE connection.</p>
 
         </div>
         <div class="hx:mt-16"></div>
         <div class="hx:mb-8 hx:flex hx:items-center hx:border-t hx:pt-8 hx:border-gray-200 hx:dark:border-neutral-800 hx:contrast-more:border-neutral-400 hx:dark:contrast-more:border-neutral-400 hx:print:hidden"><a
-        href="/docs/protocols/protocol_tools/"
-        title="Protocol Tools"
+        href="/docs/defining-tools/"
+        title="Defining Server Tools"
         class="hx:flex hx:max-w-[50%] hx:items-center hx:gap-1 hx:py-4 hx:text-base hx:font-medium hx:text-gray-600 hx:transition-colors [word-break:break-word] hx:hover:text-primary-600 hx:dark:text-gray-300 hx:md:text-lg hx:ltr:pr-4 hx:rtl:pl-4"
-      ><svg class="hx:inline hx:h-5 hx:shrink-0 hx:ltr:rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>Protocol Tools</a><a
-        href="/docs/protocols/protocol_prompts/"
-        title="Protocol Prompts"
+      ><svg class="hx:inline hx:h-5 hx:shrink-0 hx:ltr:rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>Defining Server Tools</a><a
+        href="/docs/calling-tools/"
+        title="Calling Tools"
         class="hx:flex hx:max-w-[50%] hx:items-center hx:gap-1 hx:py-4 hx:text-base hx:font-medium hx:text-gray-600 hx:transition-colors [word-break:break-word] hx:hover:text-primary-600 hx:dark:text-gray-300 hx:md:text-lg hx:ltr:ml-auto hx:ltr:pl-4 hx:ltr:text-right hx:rtl:mr-auto hx:rtl:pr-4 hx:rtl:text-left"
-      >Protocol Prompts<svg class="hx:inline hx:h-5 hx:shrink-0 hx:rtl:-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></a></div>
+      >Calling Tools<svg class="hx:inline hx:h-5 hx:shrink-0 hx:rtl:-rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></a></div>
         
       </main>
     </article>

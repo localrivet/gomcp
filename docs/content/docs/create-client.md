@@ -1,6 +1,6 @@
 ---
 title: Creating a Client
-weight: 40
+weight: 50
 ---
 
 The `gomcp` library provides tools for building applications that act as MCP clients, connecting to MCP servers to utilize their capabilities (tools, resources, prompts).

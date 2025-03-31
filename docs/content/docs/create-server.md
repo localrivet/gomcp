@@ -119,7 +119,7 @@ func main() {
 - **`RegisterResource(resource protocol.Resource, provider server.ResourceProvider)`:** Registers a resource and a provider responsible for fetching its content.
 - **`RegisterPrompt(prompt protocol.Prompt)`:** Registers a predefined prompt template.
 
-See [Defining Tools]({{< relref "../server/defining-tools" >}}) for more details on tool registration. (Resource and Prompt registration follow similar patterns).
+See [Defining Tools]({{< relref "defining-tools" >}}) for more details on tool registration. (Resource and Prompt registration follow similar patterns).
 
 ## Running the Server
 
