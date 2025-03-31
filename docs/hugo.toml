@@ -1,6 +1,0 @@
-baseURL = 'https://gomcp.dev/'
-languageCode = 'en-us'
-title = 'GoMCP'
-theme = 'hextra'
-
-# Theme is located in the 'themes' directory

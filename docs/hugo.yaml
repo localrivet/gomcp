@@ -1,0 +1,21 @@
+baseURL: "https://gomcp.dev/"
+languageCode: "en-us"
+title: "GoMCP"
+theme: "hextra"
+menu:
+  main:
+    - name: Documentation
+      pageRef: /docs
+      weight: 1
+    - name: About
+      pageRef: /about
+      weight: 2
+    - name: Search
+      weight: 3
+      params:
+        type: search
+    - name: GitHub
+      weight: 4
+      url: "https://github.com/localhost/gomcp"
+      params:
+        icon: github

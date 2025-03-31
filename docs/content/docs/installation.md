@@ -1,9 +1,7 @@
 ---
 title: Installation
-weight: 30
+weight: 20
 ---
-
-# Installation
 
 To use the `gomcp` library in your Go project, you can add it as a dependency using `go get`:
 
