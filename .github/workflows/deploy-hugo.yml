@@ -36,8 +36,8 @@ jobs:
           extended: true # Ensure the extended version is installed
       - name: Verify Hugo Version
         run: hugo version
-      - name: Install Dart Sass
-        run: sudo snap install dart-sass
+      # - name: Install Dart Sass # Temporarily disabled for debugging
+      #   run: sudo snap install dart-sass # Temporarily disabled for debugging
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -70,13 +70,13 @@ jobs:
             -s docs # Specify the source directory is /docs
             # BaseURL is typically set in hugo.yaml for this deployment method
             # If needed, override here: --baseURL "https://gomcp.dev/"
-      - name: Deploy to documentation branch
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/public # Directory Hugo builds to
-          publish_branch: documentation # Branch to deploy to
-          user_name: "github-actions[bot]" # Commit user
-          user_email: "github-actions[bot]@users.noreply.github.com" # Commit email
-          commit_message: Deploy Hugo site to documentation from @ ${{ github.sha }} # Commit message
-          # keep_files: false # Optional: uncomment to remove old files from gh-pages branch
+      # - name: Deploy to documentation branch # Temporarily disabled for debugging
+      #   uses: peaceiris/actions-gh-pages@v4
+      #   with:
+      #     github_token: ${{ secrets.GITHUB_TOKEN }}
+      #     publish_dir: ./docs/public # Directory Hugo builds to
+      #     publish_branch: documentation # Branch to deploy to
+      #     user_name: "github-actions[bot]" # Commit user
+      #     user_email: "github-actions[bot]@users.noreply.github.com" # Commit email
+      #     commit_message: Deploy Hugo site to documentation from @ ${{ github.sha }} # Commit message
+      #     # keep_files: false # Optional: uncomment to remove old files from gh-pages branch
