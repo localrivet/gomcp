@@ -9,7 +9,7 @@
 
 This library facilitates building MCP clients (applications that consume tools/resources) and MCP servers (applications that provide tools/resources). Communication primarily occurs over standard input/output using newline-delimited JSON messages conforming to the JSON-RPC 2.0 specification, although other transports (like SSE) are supported.
 
-**Current Status:** Alpha - Compliant with MCP Specification v2025-03-26
+**Current Status:** Compliant with MCP Specification v2025-03-26
 
 The core library implements the features defined in the [MCP Specification version 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26/):
 
