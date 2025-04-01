@@ -29,11 +29,8 @@ jobs:
   build-deploy: # Combined build and deploy steps into one job
     runs-on: ubuntu-latest
     steps:
-      - name: Install Hugo CLI using peaceiris/actions-hugo
-        uses: peaceiris/actions-hugo@v3
-        with:
-          hugo-version: "0.134.2" # Specify the desired version
-          extended: true # Ensure the extended version is installed
+      - name: Install Hugo CLI using Snap
+        run: sudo snap install hugo --channel=extended/stable # Install latest extended Hugo
       - name: Verify Hugo Version
         run: hugo version
       # - name: Install Dart Sass # Temporarily disabled for debugging
@@ -64,7 +61,7 @@ jobs:
           HUGO_ENVIRONMENT: production
           HUGO_ENV: production
         run: |
-          /home/runner/bin/hugo \
+          /snap/bin/hugo \
             --gc \
             --minify \
             -s docs # Specify the source directory is /docs
