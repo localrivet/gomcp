@@ -43,8 +43,13 @@ jobs:
         with:
           submodules: recursive # Important: Fetches the theme submodule
           fetch-depth: 0
-      - name: Update Submodules
-        run: git submodule update --init --recursive
+      - name: Update Submodules to Latest Commit
+        run: |
+          git submodule update --init --recursive
+          cd docs/themes/hextra
+          git checkout main # Or the theme's default branch if different
+          git pull origin main # Or the theme's default branch if different
+          cd ../../.. # Go back to the root directory
       # Node.js step removed as Hextra theme likely doesn't need it directly for build
       - name: Verify Theme Template Content
         run: |
