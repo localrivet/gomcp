@@ -2,78 +2,68 @@
 name: Build and Deploy Hugo site to documentation
 
 on:
-  # Runs on pushes targeting the default branch (e.g., main or master)
   push:
-    branches: ["main"] # Adjust if your default branch is different
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: ["main"]
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow pushing to the documentation branch
 permissions:
   contents: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
-  group: "documentation-deploy" # Changed group name for clarity
+  group: "documentation-deploy"
   cancel-in-progress: false
 
-# Default to bash
 defaults:
   run:
     shell: bash
 
 jobs:
-  # Build and Deploy job
-  build-deploy: # Combined build and deploy steps into one job
+  build-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Install Hugo CLI using Snap
-        run: sudo snap install hugo --channel=extended/stable # Install latest extended Hugo
+      - name: Install Hugo CLI using Snap (Extended)
+        run: sudo snap install hugo --channel=extended/stable
+
       - name: Verify Hugo Version
         run: hugo version
-      # - name: Install Dart Sass # Temporarily disabled for debugging
-      #   run: sudo snap install dart-sass # Temporarily disabled for debugging
-      - name: Checkout
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive # Important: Fetches the theme submodule
+          submodules: recursive
           fetch-depth: 0
-      - name: Update Submodules to Latest Commit
+
+      - name: Update Theme Submodule to Latest
         run: |
           git submodule update --init --recursive
           cd docs/themes/hextra
-          git checkout main # Or the theme's default branch if different
-          git pull origin main # Or the theme's default branch if different
-          cd ../../.. # Go back to the root directory
-      # Node.js step removed as Hextra theme likely doesn't need it directly for build
-      - name: Verify Theme Template Content
+          git checkout main || git checkout master
+          git pull origin $(git rev-parse --abbrev-ref HEAD)
+          cd ../../../
+
+      - name: Debug Theme Template Content
         run: |
-          echo "Using Hugo binary at: $(which hugo)"
-          echo "Explicitly using: /home/runner/bin/hugo"
-          echo "--- Content of render-passthrough.html ---"
+          echo "Hugo binary: $(which hugo)"
+          echo "--- render-passthrough.html ---"
           cat docs/themes/hextra/layouts/_default/_markup/render-passthrough.html || echo "File not found"
-          echo "----------------------------------------"
+          echo "--------------------------------"
+
       - name: Build with Hugo
         env:
-          # Set HUGO_ENVIRONMENT to production for minification etc.
           HUGO_ENVIRONMENT: production
           HUGO_ENV: production
         run: |
-          /snap/bin/hugo \
+          hugo \
             --gc \
             --minify \
-            -s docs # Specify the source directory is /docs
-            # BaseURL is typically set in hugo.yaml for this deployment method
-            # If needed, override here: --baseURL "https://gomcp.dev/"
-      # - name: Deploy to documentation branch # Temporarily disabled for debugging
-      #   uses: peaceiris/actions-gh-pages@v4
-      #   with:
-      #     github_token: ${{ secrets.GITHUB_TOKEN }}
-      #     publish_dir: ./docs/public # Directory Hugo builds to
-      #     publish_branch: documentation # Branch to deploy to
-      #     user_name: "github-actions[bot]" # Commit user
-      #     user_email: "github-actions[bot]@users.noreply.github.com" # Commit email
-      #     commit_message: Deploy Hugo site to documentation from @ ${{ github.sha }} # Commit message
-      #     # keep_files: false # Optional: uncomment to remove old files from gh-pages branch
+            -s docs
+
+      - name: Deploy to documentation branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/public
+          publish_branch: documentation
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: Deploy Hugo site to documentation from @ ${{ github.sha }}
