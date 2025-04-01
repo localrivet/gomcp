@@ -48,6 +48,8 @@ jobs:
       # Node.js step removed as Hextra theme likely doesn't need it directly for build
       - name: Verify Theme Template Content
         run: |
+          echo "Using Hugo binary at: $(which hugo)"
+          echo "Explicitly using: /home/runner/bin/hugo"
           echo "--- Content of render-passthrough.html ---"
           cat docs/themes/hextra/layouts/_default/_markup/render-passthrough.html || echo "File not found"
           echo "----------------------------------------"
@@ -57,7 +59,7 @@ jobs:
           HUGO_ENVIRONMENT: production
           HUGO_ENV: production
         run: |
-          hugo \
+          /home/runner/bin/hugo \
             --gc \
             --minify \
             -s docs # Specify the source directory is /docs
