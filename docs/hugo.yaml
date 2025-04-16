@@ -16,6 +16,6 @@ menu:
         type: search
     - name: GitHub
       weight: 4
-      url: "https://github.com/localhost/gomcp"
+      url: "https://github.com/localrivet/gomcp"
       params:
         icon: github

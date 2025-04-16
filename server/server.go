@@ -20,7 +20,7 @@ import (
 )
 
 // ToolHandlerFunc defines the signature for functions that handle tool execution.
-type ToolHandlerFunc func(ctx context.Context, progressToken *protocol.ProgressToken, arguments map[string]interface{}) (content []protocol.Content, isError bool)
+type ToolHandlerFunc func(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool)
 
 // NotificationHandlerFunc defines the signature for functions that handle client-to-server notifications.
 type NotificationHandlerFunc func(ctx context.Context, params interface{}) error
