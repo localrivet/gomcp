@@ -47,8 +47,7 @@ type Server struct {
 	notificationMu       sync.RWMutex
 
 	// Session Management
-	sessions   sync.Map
-	sessionsMu sync.Mutex
+	sessions sync.Map
 
 	// Resource Subscriptions
 	resourceSubscriptions map[string]map[string]bool
