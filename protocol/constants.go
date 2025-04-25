@@ -3,7 +3,8 @@ package protocol
 
 const (
 	// CurrentProtocolVersion defines the MCP version this library implementation supports.
-	CurrentProtocolVersion = "2025-03-26" // Updated version
+	CurrentProtocolVersion = "2025-03-26" // The primary version this server implements
+	OldProtocolVersion     = "2024-11-05" // An older version accepted for compatibility
 
 	// --- Message Type (Method Name) Constants ---
 	// These align with the JSON-RPC 'method' field names from the spec.

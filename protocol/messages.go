@@ -21,7 +21,10 @@ type ClientCapabilities struct {
 	Roots        *struct {
 		ListChanged bool `json:"listChanged,omitempty"`
 	} `json:"roots,omitempty"`
-	Sampling *struct{} `json:"sampling,omitempty"`
+	Sampling      *struct{} `json:"sampling,omitempty"`
+	Authorization *struct { // Added for 2025-03-26
+		// Define specific authorization capabilities if needed by the spec
+	} `json:"authorization,omitempty"`
 }
 
 // ServerCapabilities describes features the server supports.
@@ -38,6 +41,12 @@ type ServerCapabilities struct {
 	Tools *struct {
 		ListChanged bool `json:"listChanged,omitempty"`
 	} `json:"tools,omitempty"`
+	Authorization *struct { // Added for 2025-03-26
+		// Define specific authorization capabilities if needed by the spec
+	} `json:"authorization,omitempty"`
+	Completions *struct { // Added for 2025-03-26
+		// Define specific completion capabilities if needed by the spec
+	} `json:"completions,omitempty"`
 }
 
 // InitializeRequestParams defines the parameters for the 'initialize' request.
@@ -262,8 +271,9 @@ type CancelledParams struct {
 
 // ProgressParams defines the parameters for the '$/progress' notification.
 type ProgressParams struct {
-	Token string      `json:"token"`
-	Value interface{} `json:"value"`
+	Token   string      `json:"token"`
+	Value   interface{} `json:"value"`
+	Message *string     `json:"message,omitempty"` // Added for 2025-03-26
 }
 
 // ProgressToken is an identifier for reporting progress.

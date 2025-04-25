@@ -31,6 +31,7 @@ type Client struct {
 	serverInfo         protocol.Implementation
 	serverCapabilities protocol.ServerCapabilities
 	clientCapabilities protocol.ClientCapabilities
+	negotiatedVersion  string // Added: Store the negotiated protocol version
 	capabilitiesMu     sync.RWMutex
 
 	// Request handling
@@ -50,13 +51,14 @@ type Client struct {
 	rootsMu sync.Mutex
 
 	// HTTP + SSE specific fields
-	httpClient      *http.Client
-	serverBaseURL   string      // e.g., "http://localhost:8080"
-	messageEndpoint string      // e.g., "/message" (relative path)
-	sseEndpoint     string      // e.g., "/sse" (relative path)
-	sessionID       string      // Received from server on SSE connection
-	sseClient       *sse.Client // SSE client connection handler
-	sseMu           sync.Mutex  // Mutex for SSE client state/reconnection?
+	httpClient       *http.Client
+	serverBaseURL    string      // e.g., "http://localhost:8080"
+	messageEndpoint  string      // e.g., "/message" (relative path)
+	sseEndpoint      string      // e.g., "/sse" (relative path)
+	sessionID        string      // Received from server on SSE connection
+	sseClient        *sse.Client // SSE client connection handler
+	sseMu            sync.Mutex  // Mutex for SSE client state/reconnection?
+	preferredVersion string      // Added: Store the preferred version for initialization
 
 	// Client state
 	initialized bool
@@ -78,12 +80,13 @@ type NotificationHandlerFunc func(ctx context.Context, params interface{}) error
 
 // ClientOptions contains configuration options for creating a Client.
 type ClientOptions struct {
-	Logger             types.Logger
-	ClientCapabilities protocol.ClientCapabilities
-	HTTPClient         *http.Client // Allow providing a custom HTTP client
-	ServerBaseURL      string       // Required: Base URL of the MCP server
-	MessageEndpoint    string       // Optional: Defaults to "/message"
-	SSEEndpoint        string       // Optional: Defaults to "/sse"
+	Logger                   types.Logger
+	ClientCapabilities       protocol.ClientCapabilities
+	HTTPClient               *http.Client // Allow providing a custom HTTP client
+	ServerBaseURL            string       // Required: Base URL of the MCP server
+	MessageEndpoint          string       // Optional: Defaults to "/message"
+	SSEEndpoint              string       // Optional: Defaults to "/sse"
+	PreferredProtocolVersion string       // Optional: Defaults to CurrentProtocolVersion
 }
 
 // NewClient creates a new Client for SSE+HTTP transport.
@@ -124,8 +127,15 @@ func NewClient(clientName string, opts ClientOptions) (*Client, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Determine preferred version
+	clientPreferredVersion := opts.PreferredProtocolVersion
+	if clientPreferredVersion == "" {
+		clientPreferredVersion = protocol.CurrentProtocolVersion
+	}
+
 	c := &Client{
 		clientName:           clientName,
+		preferredVersion:     clientPreferredVersion, // Store preferred version
 		logger:               logger,
 		clientCapabilities:   opts.ClientCapabilities,
 		httpClient:           httpClient,
@@ -249,9 +259,9 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	// --- Step 2: Send Initialize Request via HTTP POST ---
 	c.logger.Info("SSE connected (Session: %s). Sending InitializeRequest via HTTP POST...", c.sessionID)
-	clientInfo := protocol.Implementation{Name: c.clientName, Version: "0.1.0"}
+	clientInfo := protocol.Implementation{Name: c.clientName, Version: "0.1.0"} // Using fixed version for now
 	initParams := protocol.InitializeRequestParams{
-		ProtocolVersion: protocol.CurrentProtocolVersion,
+		ProtocolVersion: c.preferredVersion, // Use stored preferred version
 		Capabilities:    c.clientCapabilities,
 		ClientInfo:      clientInfo,
 	}
@@ -274,15 +284,21 @@ func (c *Client) Connect(ctx context.Context) error {
 		c.Close()
 		return fmt.Errorf("failed to parse initialize result: %w", err)
 	}
-	if initResult.ProtocolVersion != protocol.CurrentProtocolVersion {
+
+	// Check if server responded with a version we support
+	serverSelectedVersion := initResult.ProtocolVersion
+	if serverSelectedVersion != protocol.CurrentProtocolVersion && serverSelectedVersion != protocol.OldProtocolVersion {
 		c.Close()
-		return fmt.Errorf("server selected unsupported protocol version: %s", initResult.ProtocolVersion)
+		return fmt.Errorf("server selected unsupported protocol version: %s (client supports %s, %s)",
+			serverSelectedVersion, protocol.CurrentProtocolVersion, protocol.OldProtocolVersion)
 	}
 
 	c.capabilitiesMu.Lock()
 	c.serverInfo = initResult.ServerInfo
 	c.serverCapabilities = initResult.Capabilities
+	c.negotiatedVersion = serverSelectedVersion // Store the negotiated version
 	c.capabilitiesMu.Unlock()
+	c.logger.Info("Negotiated protocol version: %s", serverSelectedVersion)
 
 	// --- Step 4: Send Initialized Notification via HTTP POST ---
 	c.logger.Info("Sending InitializedNotification via HTTP POST...")
@@ -371,8 +387,8 @@ func (c *Client) CallTool(ctx context.Context, params protocol.CallToolParams, p
 	}
 
 	var callResult protocol.CallToolResult
+	// Standard unmarshalling should invoke CallToolResult's custom UnmarshalJSON if present
 	if err := protocol.UnmarshalPayload(response.Result, &callResult); err != nil {
-		// TODO: Add back custom UnmarshalJSON logic if needed for Content slice
 		return nil, fmt.Errorf("failed to unmarshal CallTool result: %w", err)
 	}
 

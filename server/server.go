@@ -2,18 +2,12 @@
 package server
 
 import (
+	"bytes" // Added for batch detection
 	"context"
 	"encoding/json"
-
-	// "errors" // Not used directly
 	"fmt"
-	// "io" // Not used directly
-	"log" // For default logger
-	// "net" // Not used directly
-	// "os"  // Not used directly
-	// "strings" // Not used directly
+	"log"
 	"sync"
-	// "time" // Not used directly
 
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/types" // Keep for Logger interface
@@ -132,41 +126,139 @@ func (s *Server) UnregisterSession(sessionID string) {
 
 // --- Message Handling (Called by Transport Layer) ---
 
-func (s *Server) HandleMessage(ctx context.Context, sessionID string, rawMessage json.RawMessage) *protocol.JSONRPCResponse {
+// HandleMessage processes an incoming raw JSON message, which can be a single JSON-RPC object
+// or a JSON array representing a batch of requests/notifications.
+// It returns a slice of responses. For single requests, the slice will contain 0 or 1 response.
+// For batches, it will contain responses for all processed requests in the batch (notifications produce no response).
+// Returns nil or an empty slice if no responses should be sent.
+func (s *Server) HandleMessage(ctx context.Context, sessionID string, rawMessage json.RawMessage) []*protocol.JSONRPCResponse {
 	s.logger.Debug("HandleMessage for session %s: %s", sessionID, string(rawMessage))
 	sessionI, ok := s.sessions.Load(sessionID)
 	if !ok {
 		s.logger.Error("Received message for unknown session ID: %s", sessionID)
-		return createErrorResponse(nil, protocol.ErrorCodeInternalError, "Unknown session ID")
+		// Cannot determine request ID here, so return nil response slice. Error logged.
+		return nil
 	}
 	session := sessionI.(ClientSession)
 
+	// Trim whitespace and check if it's a batch request (starts with '[')
+	trimmedMsg := bytes.TrimSpace(rawMessage)
+	isBatch := len(trimmedMsg) > 0 && trimmedMsg[0] == '['
+
+	if isBatch {
+		// Check protocol version for batch support
+		if session.GetNegotiatedVersion() != protocol.CurrentProtocolVersion {
+			s.logger.Error("Session %s: Received batch request, but negotiated protocol version (%s) does not support it.", sessionID, session.GetNegotiatedVersion())
+			// JSON-RPC spec says for batch errors like this, return a single error response.
+			// However, we don't have a single ID. Returning nil and logging seems safest.
+			// Alternatively, could return a generic parse error response without ID.
+			return []*protocol.JSONRPCResponse{createErrorResponse(nil, protocol.ErrorCodeInvalidRequest, "Batch requests not supported for negotiated protocol version")}
+		}
+
+		s.logger.Debug("Session %s: Handling batch request.", sessionID)
+		var batch []json.RawMessage
+		if err := json.Unmarshal(trimmedMsg, &batch); err != nil {
+			s.logger.Error("Session %s: Failed to unmarshal batch request: %v", sessionID, err)
+			return []*protocol.JSONRPCResponse{createErrorResponse(nil, protocol.ErrorCodeParseError, fmt.Sprintf("Failed to parse batch JSON: %v", err))}
+		}
+
+		if len(batch) == 0 {
+			s.logger.Warn("Session %s: Received empty batch request.", sessionID)
+			return []*protocol.JSONRPCResponse{createErrorResponse(nil, protocol.ErrorCodeInvalidRequest, "Received empty batch request")}
+		}
+
+		responses := make([]*protocol.JSONRPCResponse, 0, len(batch))
+		for _, singleRawMsg := range batch {
+			// Process each message in the batch individually
+			response := s.handleSingleMessage(ctx, session, singleRawMsg)
+			if response != nil {
+				responses = append(responses, response)
+			}
+		}
+
+		// Only return responses if there are any (JSON-RPC spec: don't return empty array)
+		if len(responses) > 0 {
+			return responses
+		}
+		return nil // No responses to send (e.g., batch of notifications)
+
+	} else {
+		// Handle single message
+		s.logger.Debug("Session %s: Handling single request/notification.", sessionID)
+		response := s.handleSingleMessage(ctx, session, rawMessage)
+		if response != nil {
+			return []*protocol.JSONRPCResponse{response}
+		}
+		return nil // Single notification processed
+	}
+}
+
+// handleSingleMessage processes a single JSON-RPC request or notification object.
+func (s *Server) handleSingleMessage(ctx context.Context, session ClientSession, rawMessage json.RawMessage) *protocol.JSONRPCResponse {
+	sessionID := session.SessionID() // Get session ID from session object
+
+	// Attempt to parse basic structure first to get ID/Method
 	var baseMessage struct {
-		ID     interface{}
-		Method string `json:"method"`
+		JSONRPC string          `json:"jsonrpc"`
+		ID      interface{}     `json:"id"`
+		Method  string          `json:"method"`
+		Params  json.RawMessage `json:"params"` // Keep params raw initially
 	}
 	if err := json.Unmarshal(rawMessage, &baseMessage); err != nil {
-		s.logger.Error("Failed to parse base message structure for session %s: %v", sessionID, err)
+		s.logger.Error("Session %s: Failed to parse base message structure: %v. Raw: %s", sessionID, err, string(rawMessage))
 		return createErrorResponse(nil, protocol.ErrorCodeParseError, fmt.Sprintf("Failed to parse JSON: %v", err))
 	}
 
-	// Handle Initialization Phase
-	if !session.Initialized() {
-		return s.handleInitializationMessage(ctx, session, baseMessage.ID, baseMessage.Method, rawMessage)
+	// Basic validation
+	if baseMessage.JSONRPC != "2.0" {
+		s.logger.Warn("Session %s: Received message with invalid jsonrpc version: %s", sessionID, baseMessage.JSONRPC)
+		return createErrorResponse(baseMessage.ID, protocol.ErrorCodeInvalidRequest, "Invalid jsonrpc version")
 	}
 
-	// Handle Regular Messages
-	if baseMessage.ID != nil { // Request
-		return s.handleRequest(ctx, session, baseMessage.ID, baseMessage.Method, rawMessage)
-	} else if baseMessage.Method != "" { // Notification
-		err := s.handleNotification(ctx, session, baseMessage.Method, rawMessage)
+	// Handle Initialization Phase (should not happen in batch, but check anyway)
+	if !session.Initialized() {
+		// Initialization messages MUST NOT be batched according to some interpretations,
+		// handle them specifically before the main request/notification logic.
+		if baseMessage.Method == protocol.MethodInitialize && baseMessage.ID != nil {
+			return s.handleInitializationMessage(ctx, session, baseMessage.ID, baseMessage.Method, rawMessage)
+		} else if baseMessage.Method == protocol.MethodInitialized && baseMessage.ID == nil {
+			// This is a notification, handleInitializedNotification doesn't return a response
+			err := s.handleInitializedNotification(ctx, session, rawMessage)
+			if err != nil {
+				s.logger.Error("Error handling initialized notification for session %s: %v", sessionID, err)
+				// Cannot send error response for notification
+				// Should we still mark as initialized? Probably not if parsing failed.
+			} else {
+				// Mark session as initialized *after* successfully processing the notification
+				session.Initialize()
+				s.logger.Info("Session %s marked as initialized.", sessionID)
+			}
+			return nil // No response for notification
+		} else {
+			// Invalid message during initialization phase
+			s.logger.Error("Session %s: Received invalid message (method: %s, id: %v) during initialization", sessionID, baseMessage.Method, baseMessage.ID)
+			return createErrorResponse(baseMessage.ID, protocol.ErrorCodeInvalidRequest, "Expected 'initialize' request or 'initialized' notification during handshake")
+		}
+	}
+
+	// Handle Regular Messages (Post-Initialization)
+	isRequest := baseMessage.ID != nil
+	isNotification := baseMessage.ID == nil && baseMessage.Method != ""
+
+	if isRequest {
+		// Pass raw params to handleRequest
+		return s.handleRequest(ctx, session, baseMessage.ID, baseMessage.Method, baseMessage.Params) // Pass raw params
+	} else if isNotification {
+		// Pass raw params to handleNotification
+		err := s.handleNotification(ctx, session, baseMessage.Method, baseMessage.Params) // Pass raw params
 		if err != nil {
 			s.logger.Error("Error handling notification '%s' for session %s: %v", baseMessage.Method, sessionID, err)
 		}
-		return nil
+		return nil // No response for notifications
 	} else {
+		// Invalid message (e.g., missing method for notification)
 		s.logger.Warn("Received message with no ID or Method for session %s: %s", sessionID, string(rawMessage))
-		return createErrorResponse(nil, protocol.ErrorCodeInvalidRequest, "Invalid message: missing id and method")
+		return createErrorResponse(baseMessage.ID, protocol.ErrorCodeInvalidRequest, "Invalid message: must be request (with id) or notification (with method)")
 	}
 }
 
@@ -218,19 +310,46 @@ func (s *Server) handleInitializeRequest(ctx context.Context, session ClientSess
 	if err := protocol.UnmarshalPayload(req.Params, &initParams); err != nil {
 		return createErrorResponse(requestID, protocol.ErrorCodeInvalidParams, fmt.Sprintf("Failed to parse initialize params: %v", err)), nil
 	}
-	if initParams.ProtocolVersion != protocol.CurrentProtocolVersion {
-		errMsg := fmt.Sprintf("Unsupported protocol version '%s'. Server requires '%s'.", initParams.ProtocolVersion, protocol.CurrentProtocolVersion)
+	// Check if the client's requested version is supported
+	negotiatedVersion := ""
+	switch initParams.ProtocolVersion {
+	case protocol.CurrentProtocolVersion:
+		negotiatedVersion = protocol.CurrentProtocolVersion
+		s.logger.Info("Session %s: Client requested protocol version %s (Current).", session.SessionID(), initParams.ProtocolVersion)
+	case protocol.OldProtocolVersion:
+		negotiatedVersion = protocol.OldProtocolVersion
+		s.logger.Info("Session %s: Client requested protocol version %s (Old).", session.SessionID(), initParams.ProtocolVersion)
+	default:
+		errMsg := fmt.Sprintf("Unsupported protocol version '%s'. Server supports '%s' and '%s'.",
+			initParams.ProtocolVersion, protocol.CurrentProtocolVersion, protocol.OldProtocolVersion)
 		return createErrorResponse(requestID, protocol.ErrorCodeMCPUnsupportedProtocolVersion, errMsg), nil
 	}
+
+	// Store the negotiated version in the session
+	session.SetNegotiatedVersion(negotiatedVersion)
+
 	s.logger.Info("Session %s: Received InitializeRequest from client: %s (Version: %s)", session.SessionID(), initParams.ClientInfo.Name, initParams.ClientInfo.Version)
 	s.logger.Debug("Session %s: Client Capabilities: %+v", session.SessionID(), initParams.Capabilities)
-	// TODO: Store client capabilities per session
+	session.StoreClientCapabilities(initParams.Capabilities) // Store received client capabilities
 
-	serverCaps := s.serverCapabilities
+	// Start with the base server capabilities
+	advertisedCaps := s.serverCapabilities
+
+	// If the negotiated version is the older one, remove capabilities not present in that version.
+	if negotiatedVersion == protocol.OldProtocolVersion {
+		s.logger.Debug("Session %s: Adjusting capabilities for older protocol version %s", session.SessionID(), negotiatedVersion)
+		// Make a shallow copy to avoid modifying the server's base capabilities
+		adjustedCaps := advertisedCaps
+		adjustedCaps.Authorization = nil // Authorization added in 2025-03-26
+		adjustedCaps.Completions = nil   // Completions added in 2025-03-26
+		// Add any other capabilities specific to 2025-03-26 here to nil them out
+		advertisedCaps = adjustedCaps
+	}
+
 	responsePayload := protocol.InitializeResult{
-		ProtocolVersion: protocol.CurrentProtocolVersion,
-		Capabilities:    serverCaps,
-		ServerInfo:      protocol.Implementation{Name: s.serverName, Version: "0.1.0"},
+		ProtocolVersion: negotiatedVersion,                                             // Respond with the *negotiated* version
+		Capabilities:    advertisedCaps,                                                // Use the potentially adjusted capabilities
+		ServerInfo:      protocol.Implementation{Name: s.serverName, Version: "0.1.0"}, // Using fixed version for now
 	}
 	resp := createSuccessResponse(requestID, responsePayload)
 	return resp, nil
@@ -247,59 +366,66 @@ func (s *Server) handleInitializedNotification(ctx context.Context, session Clie
 
 // --- Request/Notification Routing (Post-Initialization) ---
 
-func (s *Server) handleRequest(ctx context.Context, session ClientSession, id interface{}, method string, rawMessage json.RawMessage) *protocol.JSONRPCResponse {
+// handleRequest processes a single JSON-RPC request after initial parsing.
+// Takes rawParams json.RawMessage instead of the full rawMessage.
+func (s *Server) handleRequest(ctx context.Context, session ClientSession, id interface{}, method string, rawParams json.RawMessage) *protocol.JSONRPCResponse {
 	s.logger.Debug("Handling request for session %s: Method=%s, ID=%v", session.SessionID(), method, id)
-	var params interface{}
-	var baseReq protocol.JSONRPCRequest
-	if err := json.Unmarshal(rawMessage, &baseReq); err != nil {
-		return createErrorResponse(id, protocol.ErrorCodeParseError, fmt.Sprintf("Failed to parse request: %v", err))
-	}
-	params = baseReq.Params
 	handlerCtx := ctx
+	// Note: params are now passed as json.RawMessage, unmarshalling happens in specific handlers
 
 	switch method {
 	case protocol.MethodListTools:
-		return s.handleListToolsRequest(handlerCtx, id, params)
+		return s.handleListToolsRequest(handlerCtx, id, rawParams)
 	case protocol.MethodCallTool:
-		return s.handleCallToolRequest(handlerCtx, session, id, params)
+		return s.handleCallToolRequest(handlerCtx, session, id, rawParams)
 	case protocol.MethodListResources:
-		return s.handleListResources(handlerCtx, id, params)
+		return s.handleListResources(handlerCtx, id, rawParams)
 	case protocol.MethodReadResource:
-		return s.handleReadResource(handlerCtx, id, params)
+		return s.handleReadResource(handlerCtx, id, rawParams)
 	case protocol.MethodListPrompts:
-		return s.handleListPrompts(handlerCtx, id, params)
+		return s.handleListPrompts(handlerCtx, id, rawParams)
 	case protocol.MethodGetPrompt:
-		return s.handleGetPrompt(handlerCtx, id, params)
+		return s.handleGetPrompt(handlerCtx, id, rawParams)
 	case protocol.MethodSubscribeResource:
-		return s.handleSubscribeResource(handlerCtx, session, id, params)
+		return s.handleSubscribeResource(handlerCtx, session, id, rawParams)
 	case protocol.MethodUnsubscribeResource:
-		return s.handleUnsubscribeResource(handlerCtx, session, id, params)
+		return s.handleUnsubscribeResource(handlerCtx, session, id, rawParams)
 	case protocol.MethodPing:
-		return s.handlePing(handlerCtx, id, params)
+		return s.handlePing(handlerCtx, id, rawParams)
 	default:
 		s.logger.Warn("Method not found for session %s: %s", session.SessionID(), method)
 		return createErrorResponse(id, protocol.ErrorCodeMethodNotFound, fmt.Sprintf("Method '%s' not implemented", method))
 	}
 }
 
-func (s *Server) handleNotification(ctx context.Context, session ClientSession, method string, rawMessage json.RawMessage) error {
+// handleNotification processes a single JSON-RPC notification after initial parsing.
+// Takes rawParams json.RawMessage instead of the full rawMessage.
+func (s *Server) handleNotification(ctx context.Context, session ClientSession, method string, rawParams json.RawMessage) error {
 	s.notificationMu.RLock()
 	handler, ok := s.notificationHandlers[method]
 	s.notificationMu.RUnlock()
 	if !ok {
 		s.logger.Info("No handler registered for notification method '%s' from session %s", method, session.SessionID())
-		return nil
+		return nil // Not an error if handler doesn't exist
 	}
 
-	var baseNotif protocol.JSONRPCNotification
-	if err := json.Unmarshal(rawMessage, &baseNotif); err != nil {
-		s.logger.Error("Failed to parse params for notification %s from session %s: %v", method, session.SessionID(), err)
-		return fmt.Errorf("failed to parse notification params: %w", err)
-	}
+	// Unmarshal params only if handler exists
+	var params interface{}
+	if len(rawParams) > 0 && string(rawParams) != "null" {
+		// Attempt to unmarshal into a generic interface{} first.
+		// Specific handlers might need to unmarshal again into concrete types.
+		if err := json.Unmarshal(rawParams, &params); err != nil {
+			s.logger.Error("Failed to parse params for notification %s from session %s: %v. Raw: %s", method, session.SessionID(), err, string(rawParams))
+			// Cannot send error response for notification parse error
+			return fmt.Errorf("failed to parse notification params: %w", err)
+		}
+	} // else: params are null or absent, pass nil to handler
+
 	handlerCtx := ctx
-	err := handler(handlerCtx, baseNotif.Params)
+	err := handler(handlerCtx, params) // Pass potentially nil params
 	if err != nil {
 		s.logger.Error("Error executing notification handler for method %s from session %s: %v", method, session.SessionID(), err)
+		// Return the error, but can't send JSON-RPC error response
 	}
 	return err
 }
@@ -439,8 +565,15 @@ func (s *Server) UnregisterPrompt(uri string) error {
 
 // --- Built-in Request Handlers ---
 
-func (s *Server) handleListToolsRequest(ctx context.Context, id interface{}, params interface{}) *protocol.JSONRPCResponse {
+// handleListToolsRequest handles the 'tools/list' request. Params are expected to be json.RawMessage.
+func (s *Server) handleListToolsRequest(ctx context.Context, id interface{}, rawParams json.RawMessage) *protocol.JSONRPCResponse {
 	s.logger.Debug("Handling ListToolsRequest")
+	// TODO: Potentially parse ListToolsRequestParams from rawParams if needed (e.g., for pagination cursor)
+	// var requestParams protocol.ListToolsRequestParams
+	// if err := protocol.UnmarshalPayload(rawParams, &requestParams); err != nil {
+	// 	 return createErrorResponse(id, protocol.ErrorCodeInvalidParams, fmt.Sprintf("Failed to unmarshal ListTools params: %v", err))
+	// }
+
 	s.registryMu.RLock()
 	tools := make([]protocol.Tool, 0, len(s.toolRegistry))
 	for _, tool := range s.toolRegistry {
@@ -450,10 +583,11 @@ func (s *Server) handleListToolsRequest(ctx context.Context, id interface{}, par
 	return createSuccessResponse(id, protocol.ListToolsResult{Tools: tools})
 }
 
-func (s *Server) handleCallToolRequest(ctx context.Context, session ClientSession, id interface{}, params interface{}) *protocol.JSONRPCResponse {
+// handleCallToolRequest handles the 'tools/call' request. Params are expected to be json.RawMessage.
+func (s *Server) handleCallToolRequest(ctx context.Context, session ClientSession, id interface{}, rawParams json.RawMessage) *protocol.JSONRPCResponse {
 	s.logger.Debug("Handling CallToolRequest for session %s", session.SessionID())
 	var requestParams protocol.CallToolParams
-	if err := protocol.UnmarshalPayload(params, &requestParams); err != nil {
+	if err := protocol.UnmarshalPayload(rawParams, &requestParams); err != nil { // Unmarshal from rawParams
 		return createErrorResponse(id, protocol.ErrorCodeInvalidParams, fmt.Sprintf("Failed to unmarshal CallTool params: %v", err))
 	}
 	s.registryMu.RLock()
@@ -484,8 +618,10 @@ func (s *Server) handleCallToolRequest(ctx context.Context, session ClientSessio
 	return createSuccessResponse(id, responsePayload)
 }
 
-func (s *Server) handleListResources(ctx context.Context, id interface{}, params interface{}) *protocol.JSONRPCResponse {
+// handleListResources handles the 'resources/list' request. Params are expected to be json.RawMessage.
+func (s *Server) handleListResources(ctx context.Context, id interface{}, rawParams json.RawMessage) *protocol.JSONRPCResponse {
 	s.logger.Debug("Handling ListResourcesRequest")
+	// TODO: Parse ListResourcesRequestParams if needed
 	s.registryMu.RLock()
 	resources := make([]protocol.Resource, 0, len(s.resourceRegistry))
 	for _, res := range s.resourceRegistry {
@@ -504,8 +640,10 @@ func (s *Server) handleReadResource(ctx context.Context, id interface{}, params 
 	return createErrorResponse(id, protocol.ErrorCodeMCPResourceNotFound, fmt.Sprintf("Resource not found (stub): %s", requestParams.URI))
 }
 
-func (s *Server) handleListPrompts(ctx context.Context, id interface{}, params interface{}) *protocol.JSONRPCResponse {
+// handleListPrompts handles the 'prompts/list' request. Params are expected to be json.RawMessage.
+func (s *Server) handleListPrompts(ctx context.Context, id interface{}, rawParams json.RawMessage) *protocol.JSONRPCResponse {
 	s.logger.Debug("Handling ListPromptsRequest")
+	// TODO: Parse ListPromptsRequestParams if needed
 	s.registryMu.RLock()
 	prompts := make([]protocol.Prompt, 0, len(s.promptRegistry))
 	for _, p := range s.promptRegistry {

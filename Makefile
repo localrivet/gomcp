@@ -6,3 +6,7 @@ release:
 	git tag $$VERSION; \
 	git push origin $$VERSION
 	git push
+
+.PHONY: test
+test:
+	go test -v ./...

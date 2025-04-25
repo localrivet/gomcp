@@ -2,12 +2,14 @@
 package schema
 
 import (
+	"fmt" // Added for error formatting
 	"reflect"
 	"strings"
 
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/util/conversion"
 	"github.com/localrivet/gomcp/util/validator"
+	"github.com/mitchellh/mapstructure" // Added mapstructure import
 )
 
 // goTypeToMCPType maps Go kinds to MCP schema types.
@@ -40,6 +42,8 @@ func FromStruct(v interface{}) protocol.ToolInputSchema {
 		t = t.Elem()
 	}
 	props := map[string]protocol.PropertyDetail{}
+	requiredFields := []string{} // Initialize slice for required fields
+
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		descTag := field.Tag.Get("description")
@@ -48,65 +52,109 @@ func FromStruct(v interface{}) protocol.ToolInputSchema {
 			continue
 		}
 		name := strings.Split(jsonTag, ",")[0]
+
+		// Determine if field is required (convention: non-pointer types are required)
+		isPtr := field.Type.Kind() == reflect.Ptr
+		if !isPtr {
+			requiredFields = append(requiredFields, name)
+		}
+
+		// Determine the schema type (handle pointers correctly for type mapping)
+		fieldType := field.Type
+		if isPtr {
+			fieldType = fieldType.Elem() // Get the underlying type for pointers
+		}
+		schemaType := goTypeToMCPType(fieldType.Kind())
+
+		// Read enum tag
+		enumTag := field.Tag.Get("enum")
+		var enumValues []interface{}
+		if enumTag != "" {
+			enumValuesStr := strings.Split(enumTag, ",")
+			enumValues = make([]interface{}, len(enumValuesStr))
+			for i, v := range enumValuesStr {
+				// Trim whitespace and store as interface{}
+				enumValues[i] = strings.TrimSpace(v)
+			}
+		}
+
 		props[name] = protocol.PropertyDetail{
-			Type:        goTypeToMCPType(field.Type.Kind()),
+			Type:        schemaType,
 			Description: descTag,
+			Enum:        enumValues, // Add enum values if tag was present
+			// TODO: Potentially add support for Format from tags later
 		}
 	}
-	return protocol.ToolInputSchema{
+
+	// Sort requiredFields for consistent output? Optional.
+	// sort.Strings(requiredFields)
+
+	schema := protocol.ToolInputSchema{
 		Type:       "object",
 		Properties: props,
 	}
+	// Only add Required field if there are any required fields
+	if len(requiredFields) > 0 {
+		schema.Required = requiredFields
+	}
+	return schema
 }
 
 // HandleArgs is a helper function that handles the common pattern of parsing and validating
 // tool arguments into a strongly-typed struct.
+// HandleArgs is a helper function that handles the common pattern of parsing and validating
+// tool arguments (typically map[string]interface{}) into a strongly-typed struct T.
+// It now uses mapstructure for more robust decoding.
 func HandleArgs[T any](arguments any) (*T, []protocol.Content, bool) {
 	var args T
 
-	// Convert arguments to map[string]interface{}
-	argsMap, err := conversion.ToMap(arguments)
+	// Ensure arguments is a map[string]interface{}
+	argsMap, ok := arguments.(map[string]interface{})
+	if !ok {
+		// Handle cases where arguments might be nil or not a map
+		if arguments == nil {
+			argsMap = make(map[string]interface{}) // Treat nil as empty map
+		} else {
+			// Attempt conversion if it's some other type that might represent an object
+			convertedMap, err := conversion.ToMap(arguments)
+			if err != nil {
+				return nil, []protocol.Content{protocol.TextContent{
+					Type: "text",
+					Text: fmt.Sprintf("Invalid arguments format: expected an object/map, got %T", arguments),
+				}}, true
+			}
+			argsMap = convertedMap
+		}
+	}
+
+	// Use mapstructure to decode the map into the struct
+	// Configure mapstructure to handle potential type mismatches gracefully if needed
+	// and use json tags by default. Add ErrorUnused if strict matching is desired.
+	decoderConfig := &mapstructure.DecoderConfig{
+		Metadata: nil,
+		Result:   &args,
+		TagName:  "json", // Use json tags like the old code
+		// Consider adding WeaklyTypedInput: true for more flexible number/bool parsing
+	}
+	decoder, err := mapstructure.NewDecoder(decoderConfig)
 	if err != nil {
+		// This error is unlikely during decoder creation itself
 		return nil, []protocol.Content{protocol.TextContent{
 			Type: "text",
-			Text: "Invalid arguments: " + err.Error(),
+			Text: "Internal error creating argument decoder: " + err.Error(),
 		}}, true
 	}
 
-	// Convert map to struct using reflection
-	val := reflect.ValueOf(&args).Elem()
-	t := val.Type()
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		jsonTag := field.Tag.Get("json")
-		if jsonTag == "" || jsonTag == "-" {
-			continue
-		}
-		name := strings.Split(jsonTag, ",")[0]
-		if value, ok := argsMap[name]; ok {
-			fieldVal := val.Field(i)
-			switch field.Type.Kind() {
-			case reflect.String:
-				if str, err := conversion.ToString(value); err == nil {
-					fieldVal.SetString(str)
-				}
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-				if num, err := conversion.ToInt(value); err == nil {
-					fieldVal.SetInt(int64(num))
-				}
-			case reflect.Float32, reflect.Float64:
-				if num, err := conversion.ToFloat64(value); err == nil {
-					fieldVal.SetFloat(num)
-				}
-			case reflect.Bool:
-				if b, err := conversion.ToBool(value); err == nil {
-					fieldVal.SetBool(b)
-				}
-			}
-		}
+	if err := decoder.Decode(argsMap); err != nil {
+		// mapstructure provides detailed errors
+		return nil, []protocol.Content{protocol.TextContent{
+			Type: "text",
+			Text: "Error parsing arguments: " + err.Error(),
+		}}, true
 	}
 
-	if err := validator.Arguments(args); err != nil {
+	// Perform validation using the existing validator utility
+	if err := validator.Arguments(args); err != nil { // Validate the populated struct
 		return nil, []protocol.Content{protocol.TextContent{
 			Type: "text",
 			Text: "Invalid arguments: " + err.Error(),

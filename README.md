@@ -7,13 +7,14 @@
 
 `gomcp` provides a Go implementation of the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction), enabling communication between language models/agents and external tools or resources via a standardized protocol.
 
-This library facilitates building MCP clients (applications that consume tools/resources) and MCP servers (applications that provide tools/resources). Communication primarily occurs over standard input/output using newline-delimited JSON messages conforming to the JSON-RPC 2.0 specification, although other transports (like SSE) are supported.
+This library facilitates building MCP clients (applications that consume tools/resources) and MCP servers (applications that provide tools/resources). Communication primarily occurs over standard input/output using newline-delimited JSON messages conforming to the JSON-RPC 2.0 specification, although other transports (like SSE, WebSocket, TCP) are supported. The library supports negotiation between different MCP specification versions.
 
-**Current Status:** Compliant with MCP Specification v2025-03-26
+**Current Status:** Compliant with MCP Specification v2025-03-26 and v2024-11-05
 
-The core library implements the features defined in the [MCP Specification version 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26/):
+The core library implements the features defined in the [MCP Specification versions 2025-03-26](https://modelcontextprotocol.io/specification/2025-03-26/) and [2024-11-05](https://modelcontextprotocol.io/specification/2024-11-05/):
 
 - **Transport Agnostic Core:** Server (`server/`) and Client (`client/`) logic is separated from the transport layer.
+- **Protocol Version Negotiation:** Client and Server negotiate the protocol version during initialization, supporting both `2025-03-26` and `2024-11-05`.
 - **Transports:** Implementations for Stdio (`transport/stdio/`), SSE (`transport/sse/`), and WebSocket (`transport/websocket/`) are provided.
 - **Protocol Structures:** Defines Go structs for all specified MCP methods, notifications, and content types (`protocol/`).
 - **Initialization:** Full client/server initialization sequence, including capability exchange.
@@ -49,27 +50,64 @@ package main
 
 import (
 	"context"
+	"encoding/json" // Added
+	"errors"        // Added
+	"fmt"           // Added
+	"io"            // Added
 	"log"
 	"os"
 	"os/signal" // For graceful shutdown
+	"strings"   // Added
 
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
 	"github.com/localrivet/gomcp/transport/stdio"
 	"github.com/localrivet/gomcp/types" // For logger
+	"github.com/localrivet/gomcp/util/schema" // Added for schema helpers
 )
 
+// --- Tool 1: Simple Tool ---
 // Example tool handler
-func myToolHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments map[string]interface{}) (content []protocol.Content, isError bool) {
+func myToolHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool) {
 	log.Printf("Executing myTool with args: %v", arguments)
 	// ... tool logic ...
 	return []protocol.Content{protocol.TextContent{Type: "text", Text: "Tool executed!"}}, false
 }
 
+// --- Tool 2: Add Tool using Schema Helpers ---
+// Define arguments struct for the add tool
+type AddArgs struct {
+	Num1 int `json:"num1" description:"The first number to add"`
+	Num2 int `json:"num2" description:"The second number to add"`
+	// Optional fields use pointers
+	Comment *string `json:"comment,omitempty" description:"An optional comment"`
+}
+
+// Handler for the add tool using schema.HandleArgs
+func addToolHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool) {
+	args, errContent, isErr := schema.HandleArgs[AddArgs](arguments)
+	if isErr {
+		log.Printf("Error handling add args: %v", errContent)
+		return errContent, true
+	}
+
+	log.Printf("Executing add tool with args: %+v", args)
+	sum := args.Num1 + args.Num2
+	resultText := fmt.Sprintf("The sum of %d and %d is %d.", args.Num1, args.Num2)
+	if args.Comment != nil {
+		resultText += fmt.Sprintf(" Comment: %s", *args.Comment)
+	}
+
+	return []protocol.Content{protocol.TextContent{Type: "text", Text: resultText}}, false
+}
+
+
+// --- Server Setup and Loop ---
 // Simple server loop for stdio
 func runServerLoop(ctx context.Context, srv *server.Server, transport types.Transport) error {
 	// Stdio typically represents a single "session"
-	session := server.NewStdioSession("stdio-session") // Use helper if available, or mock
+	// For stdio, we need a simple ClientSession implementation.
+	session := NewStdioSession("stdio-session") // Use local mock below
 	if err := srv.RegisterSession(session); err != nil {
 		return fmt.Errorf("failed to register session: %w", err)
 	}
@@ -91,24 +129,28 @@ func runServerLoop(ctx context.Context, srv *server.Server, transport types.Tran
 				return fmt.Errorf("transport receive error: %w", err)
 			}
 
-			response := srv.HandleMessage(ctx, session.SessionID(), rawMsg)
+			// HandleMessage now returns a slice of responses
+			responses := srv.HandleMessage(ctx, session.SessionID(), rawMsg)
 
-			// For stdio, HandleMessage might return response directly OR send via session.
-			// This example assumes direct return or ignores session send for simplicity.
-			// A real implementation might need the mockSession pattern from tests if session.SendResponse is used.
-			if response != nil {
-				respBytes, err := json.Marshal(response)
-				if err != nil {
-					log.Printf("ERROR: server failed to marshal response: %v", err)
-					continue
-				}
-				if err := transport.Send(respBytes); err != nil {
-					// Handle EOF/pipe closed during send
-					if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "pipe closed") {
-						log.Printf("Output closed during send.")
-						return nil
+			// Send back any responses generated
+			if responses != nil && len(responses) > 0 {
+				for _, responseToSend := range responses {
+					if responseToSend == nil {
+						continue
 					}
-					return fmt.Errorf("transport send error: %w", err)
+					respBytes, err := json.Marshal(responseToSend)
+					if err != nil {
+						log.Printf("ERROR: server failed to marshal response: %v", err)
+						continue // Skip this response
+					}
+					if err := transport.Send(respBytes); err != nil {
+						// Handle EOF/pipe closed during send
+						if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "pipe closed") {
+							log.Printf("Output closed during send.")
+							return nil
+						}
+						return fmt.Errorf("transport send error: %w", err)
+					}
 				}
 			}
 		}
@@ -130,12 +172,24 @@ func main() {
 	myTool := protocol.Tool{
 		Name:        "my_tool",
 		Description: "A simple example tool",
-		InputSchema: protocol.ToolInputSchema{Type: "object"}, // Define schema as needed
+		InputSchema: protocol.ToolInputSchema{Type: "object"}, // Manually defined schema
 	}
 	err := srv.RegisterTool(myTool, myToolHandler)
 	if err != nil {
-		log.Fatalf("Failed to register tool: %v", err)
+		log.Fatalf("Failed to register 'my_tool': %v", err)
 	}
+
+	// Register add tool using schema helpers
+	addTool := protocol.Tool{
+		Name:        "add",
+		Description: "Adds two numbers together.",
+		InputSchema: schema.FromStruct(AddArgs{}), // Generate schema from struct
+	}
+	err = srv.RegisterTool(addTool, addToolHandler)
+	if err != nil {
+		log.Fatalf("Failed to register 'add' tool: %v", err)
+	}
+
 
 	// Create stdio transport
 	transport := stdio.NewStdioTransport()
@@ -151,25 +205,35 @@ func main() {
 	log.Println("Server finished.")
 }
 
-// Note: Need a simple StdioSession implementation for runServerLoop
-type stdioSession struct { id string }
+// Note: Need a simple StdioSession implementation for runServerLoop that satisfies the interface
+type stdioSession struct {
+	id                string
+	initialized       bool
+	negotiatedVersion string
+	clientCaps        protocol.ClientCapabilities // Added
+}
+
 func NewStdioSession(id string) *stdioSession { return &stdioSession{id: id} }
-func (s *stdioSession) SessionID() string { return s.id }
-func (s *stdioSession) SendNotification(notification protocol.JSONRPCNotification) error { return fmt.Errorf("stdio transport does not support server-to-client notifications") }
-func (s *stdioSession) SendResponse(response protocol.JSONRPCResponse) error { return fmt.Errorf("stdio transport does not support async server-to-client responses via session") }
-func (s *stdioSession) Close() error { return nil }
-func (s *stdioSession) Initialize() {}
-func (s *stdioSession) Initialized() bool { return true } // Assume initialized for stdio simplicity
+func (s *stdioSession) SessionID() string      { return s.id }
+func (s *stdioSession) SendNotification(notification protocol.JSONRPCNotification) error {
+	// Stdio typically cannot send async notifications back to the client process easily.
+	return fmt.Errorf("stdio transport does not support server-to-client notifications via session")
+}
+func (s *stdioSession) SendResponse(response protocol.JSONRPCResponse) error {
+	// Responses for stdio are handled directly by HandleMessage return value in this example.
+	return fmt.Errorf("stdio transport does not support async server-to-client responses via session")
+}
+func (s *stdioSession) Close() error                        { return nil } // Stdio streams managed by OS pipes
+func (s *stdioSession) Initialize()                         { s.initialized = true }
+func (s *stdioSession) Initialized() bool                   { return s.initialized }
+func (s *stdioSession) SetNegotiatedVersion(version string) { s.negotiatedVersion = version }
+func (s *stdioSession) GetNegotiatedVersion() string        { return s.negotiatedVersion }
+func (s *stdioSession) StoreClientCapabilities(caps protocol.ClientCapabilities) { s.clientCaps = caps } // Added
+func (s *stdioSession) GetClientCapabilities() protocol.ClientCapabilities { return s.clientCaps } // Added
+
 var _ server.ClientSession = (*stdioSession)(nil)
 
-// Need these imports for the example:
-import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"strings"
-)
+// Imports moved to the top
 
 ```
 

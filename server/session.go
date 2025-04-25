@@ -30,6 +30,18 @@ type ClientSession interface {
 
 	// Initialized returns true if the session has completed the MCP handshake.
 	Initialized() bool
+
+	// SetNegotiatedVersion stores the protocol version agreed upon during initialization.
+	SetNegotiatedVersion(version string)
+
+	// GetNegotiatedVersion returns the protocol version agreed upon during initialization.
+	GetNegotiatedVersion() string
+
+	// StoreClientCapabilities stores the capabilities received from the client during initialization.
+	StoreClientCapabilities(caps protocol.ClientCapabilities)
+
+	// GetClientCapabilities returns the stored client capabilities.
+	GetClientCapabilities() protocol.ClientCapabilities
 }
 
 // SSEContextFunc is a function type used by the SSEServer to allow

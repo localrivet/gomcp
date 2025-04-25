@@ -11,6 +11,7 @@ require (
 require (
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/stretchr/testify v1.10.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect

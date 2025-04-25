@@ -13,11 +13,21 @@ import (
 	"sync/atomic"
 
 	// Only needed for potential timeouts, not currently used
+	"context" // Needed for MCPServerLogic interface
+
 	"github.com/google/uuid"
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server" // Import the refactored server package
 	"github.com/localrivet/gomcp/types"  // For Logger
 )
+
+// MCPServerLogic defines the interface SSEServer needs from the core server logic.
+// This allows mocking the core server for transport-level testing.
+type MCPServerLogic interface {
+	HandleMessage(ctx context.Context, sessionID string, rawMessage json.RawMessage) []*protocol.JSONRPCResponse
+	RegisterSession(session server.ClientSession) error
+	UnregisterSession(sessionID string)
+}
 
 // sseSession represents an active SSE connection and implements server.ClientSession.
 type sseSession struct {
@@ -29,6 +39,8 @@ type sseSession struct {
 	notificationChannel chan protocol.JSONRPCNotification // Channel for receiving notifications from MCPServer (alternative to direct Send) - DEPRECATED?
 	initialized         atomic.Bool
 	logger              types.Logger
+	negotiatedVersion   string                      // Stores the protocol version agreed upon
+	clientCapabilities  protocol.ClientCapabilities // Added
 }
 
 // Ensure sseSession implements server.ClientSession
@@ -119,11 +131,37 @@ func (s *sseSession) Initialized() bool {
 	return s.initialized.Load()
 }
 
+// SetNegotiatedVersion stores the protocol version agreed upon during initialization.
+func (s *sseSession) SetNegotiatedVersion(version string) {
+	// Assuming version is set only once during initialization, skipping mutex for now.
+	s.negotiatedVersion = version
+	s.logger.Debug("Session %s: Negotiated protocol version set to %s", s.sessionID, version)
+}
+
+// GetNegotiatedVersion returns the protocol version agreed upon during initialization.
+func (s *sseSession) GetNegotiatedVersion() string {
+	// Assuming version is set only once during initialization, skipping mutex for now.
+	return s.negotiatedVersion
+}
+
+// StoreClientCapabilities implements server.ClientSession
+func (s *sseSession) StoreClientCapabilities(caps protocol.ClientCapabilities) {
+	// Add locking if needed, though likely set only once during init
+	s.clientCapabilities = caps
+	s.logger.Debug("Session %s stored client capabilities", s.sessionID)
+}
+
+// GetClientCapabilities implements server.ClientSession
+func (s *sseSession) GetClientCapabilities() protocol.ClientCapabilities {
+	// Add locking if needed
+	return s.clientCapabilities
+}
+
 // --- SSEServer ---
 
 // SSEServer implements the HTTP handlers for the hybrid SSE/HTTP POST transport.
 type SSEServer struct {
-	mcpServer       *server.Server // The core MCP server logic
+	mcpServer       MCPServerLogic // Use the interface for testability
 	sessions        sync.Map       // Map[string]*sseSession (sessionID -> session)
 	logger          types.Logger
 	contextFunc     server.SSEContextFunc
@@ -142,7 +180,8 @@ type SSEServerOptions struct {
 }
 
 // NewSSEServer creates a new HTTP server providing MCP over SSE+HTTP.
-func NewSSEServer(mcpServer *server.Server, opts SSEServerOptions) *SSEServer {
+// It takes an MCPServerLogic interface instead of a concrete *server.Server.
+func NewSSEServer(mcpServer MCPServerLogic, opts SSEServerOptions) *SSEServer {
 	logger := opts.Logger
 	if logger == nil {
 		logger = &defaultLogger{}
@@ -310,17 +349,18 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process message through MCPServer's HandleMessage
-	response := s.mcpServer.HandleMessage(ctx, sessionID, rawMessage)
+	responses := s.mcpServer.HandleMessage(ctx, sessionID, rawMessage) // Returns []*protocol.JSONRPCResponse
 
-	// Send response back via HTTP POST response body
-	if response != nil {
+	// Send response(s) back via HTTP POST response body
+	if responses != nil && len(responses) > 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			s.logger.Error("Session %s: Failed to write HTTP response: %v", sessionID, err)
+		// Encode the entire slice (will be a single object if only one response)
+		if err := json.NewEncoder(w).Encode(responses); err != nil {
+			s.logger.Error("Session %s: Failed to write HTTP response(s): %v", sessionID, err)
 		}
 	} else {
-		// For notifications received via POST (like $/cancel), send 204 No Content
+		// For notifications or empty batches resulting in no response, send 204 No Content
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

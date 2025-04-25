@@ -11,6 +11,7 @@ type Resource struct {
 	Description string                 `json:"description,omitempty"` // Longer description
 	Version     string                 `json:"version,omitempty"`     // Opaque version string (changes when content changes)
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`    // Additional arbitrary metadata
+	Size        *int                   `json:"size,omitempty"`        // Optional size in bytes (added in 2025-03-26)
 }
 
 // ResourceContents defines the interface for different types of resource content.
