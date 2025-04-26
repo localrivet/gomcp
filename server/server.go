@@ -374,10 +374,11 @@ func (s *Server) handleInitializationMessage(ctx context.Context, session types.
 			}
 			_ = session.Close()
 			s.UnregisterSession(sessionID)
-			return nil
+			return nil // Error occurred, response already created by handleInitializeRequest
 		}
-		_ = session.SendResponse(*resp)
-		return nil
+		// Return the response instead of sending it directly
+		// _ = session.SendResponse(*resp) // REMOVED
+		return resp // RETURNED
 	} else if method == protocol.MethodInitialized && id == nil {
 		err := s.handleInitializedNotification(ctx, session, rawMessage)
 		if err != nil {
@@ -393,7 +394,7 @@ func (s *Server) handleInitializationMessage(ctx context.Context, session types.
 		s.logger.Error("Received invalid message (method: %s, id: %v) during initialization for session %s", method, id, sessionID)
 		errResp := createErrorResponse(id, protocol.ErrorCodeInvalidRequest, "Expected 'initialize' request or 'initialized' notification")
 		// Don't close session here, let caller handle potential SendResponse error
-		return errResp
+		return errResp // Return error response
 	}
 }
 
