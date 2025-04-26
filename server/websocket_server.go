@@ -191,6 +191,7 @@ func ServeWebSocket(srv *Server, addr string, path string) error {
 	})
 
 	// Start the HTTP server
+	printBanner()
 	logger.Info("Starting MCP server with WebSocket transport...")
 	logger.Info("Listening on: %s", addr)
 	logger.Info("WebSocket Endpoint Path: %s", path)

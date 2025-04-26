@@ -74,7 +74,8 @@ var _ types.ClientSession = (*stdioSession)(nil)
 // (e.g., by SIGINT).
 func ServeStdio(srv *Server) error {
 	logger := srv.logger // Use the server's configured logger
-	logger.Info("Starting server on stdio...")
+	printBanner()
+	logger.Info("Starting MCP server on stdio...")
 
 	// Create stdio transport
 	transport := stdio.NewStdioTransport() // Assumes stdio package is imported

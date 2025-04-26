@@ -42,9 +42,11 @@ func ServeSSE(srv *Server, addr string, basePath string) error {
 	mux := http.NewServeMux()
 	mux.Handle(basePath, sseHandler) // Handle base path and all sub-paths
 
+	// Print GoMCP Banner
+	printBanner()
 	logger.Info("Starting MCP server with SSE transport...")
 	logger.Info("Listening on: %s", addr)
-	logger.Info("SSE Endpoint Base Path: %s (SSE at %sse, Messages at %smessage)",
+	logger.Info("SSE Endpoint Base Path: %s (SSE at %ssse, Messages at %smessage)",
 		strings.TrimSuffix(basePath, "/"),
 		basePath, // Use the basePath which includes trailing slash here
 		basePath) // Use the basePath which includes trailing slash here

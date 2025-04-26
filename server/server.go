@@ -316,7 +316,8 @@ func (s *Server) handleSingleMessage(ctx context.Context, session types.ClientSe
 		// handle them specifically before the main request/notification logic.
 		if baseMessage.Method == protocol.MethodInitialize && baseMessage.ID != nil {
 			return s.handleInitializationMessage(ctx, session, baseMessage.ID, baseMessage.Method, rawMessage)
-		} else if baseMessage.Method == protocol.MethodInitialized && baseMessage.ID == nil {
+			// Accept both "initialized" and "notifications/initialized" for compatibility
+		} else if (baseMessage.Method == protocol.MethodInitialized || baseMessage.Method == "notifications/initialized") && baseMessage.ID == nil {
 			// This is a notification, handleInitializedNotification doesn't return a response
 			err := s.handleInitializedNotification(ctx, session, rawMessage)
 			if err != nil {

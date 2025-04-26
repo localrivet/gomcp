@@ -484,6 +484,71 @@ func TestInitializeInvalidSequence(t *testing.T) {
 	}
 }
 
+// TestInitializeWithNotificationPrefix tests handling the "notifications/initialized" variant.
+func TestInitializeWithNotificationPrefix(t *testing.T) {
+	originalOutput := log.Writer()
+	log.SetOutput(io.Discard)
+	defer log.SetOutput(originalOutput)
+
+	serverName := "TestServer-Init-NotifPrefix"
+	mockSessionID := "mock-session-notifprefix"
+
+	srv := server.NewServer(serverName, server.WithLogger(NewNilLogger()))
+	session := newMockSession(mockSessionID)
+
+	if err := srv.RegisterSession(session); err != nil {
+		t.Fatalf("Failed to register mock session: %v", err)
+	}
+	defer srv.UnregisterSession(session.SessionID())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// 1. Send InitializeRequest (same as TestInitializeSuccess)
+	initParams := protocol.InitializeRequestParams{
+		ProtocolVersion: protocol.CurrentProtocolVersion,
+		ClientInfo:      protocol.Implementation{Name: "NotifPrefixClient", Version: "0.1"},
+		Capabilities:    protocol.ClientCapabilities{},
+	}
+	initReq := protocol.JSONRPCRequest{JSONRPC: "2.0", ID: "init-notifprefix-1", Method: protocol.MethodInitialize, Params: initParams}
+	reqBytes, err := json.Marshal(initReq)
+	if err != nil {
+		t.Fatalf("Failed to marshal init request: %v", err)
+	}
+	respFromHandler := srv.HandleMessage(ctx, session.SessionID(), reqBytes)
+	if respFromHandler != nil {
+		t.Fatalf("HandleMessage for initialize should return nil, but got: %+v", respFromHandler)
+	}
+	// Drain the response from the mock session channel
+	select {
+	case <-session.responses:
+	case <-ctx.Done():
+		t.Fatalf("Timed out waiting for initialize response on mock session channel: %v", ctx.Err())
+	}
+
+	// 2. Send InitializedNotification with "notifications/" prefix
+	initializedNotif := protocol.JSONRPCNotification{
+		JSONRPC: "2.0",
+		Method:  "notifications/initialized", // Use the specific string here
+		Params:  protocol.InitializedNotificationParams{},
+	}
+	notifBytes, err := json.Marshal(initializedNotif)
+	if err != nil {
+		t.Fatalf("Failed to marshal initialized notification: %v", err)
+	}
+
+	respFromHandler = srv.HandleMessage(ctx, session.SessionID(), notifBytes)
+	if respFromHandler != nil {
+		t.Fatalf("HandleMessage for 'notifications/initialized' should return nil, but got: %+v", respFromHandler)
+	}
+
+	// 3. Verify session is marked as initialized
+	if !session.Initialized() {
+		t.Fatalf("Session was not marked as initialized after receiving 'notifications/initialized'")
+	}
+	log.Println("'notifications/initialized' processed successfully.")
+}
+
 // TestInitializeMalformedPayload tests server rejecting malformed initialize params.
 func TestInitializeMalformedPayload(t *testing.T) {
 	originalOutput := log.Writer()
