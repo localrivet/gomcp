@@ -809,9 +809,8 @@ func (s *Server) handleUnsubscribeResource(ctx context.Context, session types.Cl
 
 func (s *Server) handlePing(ctx context.Context, id interface{}, params interface{}) *protocol.JSONRPCResponse {
 	s.logger.Debug("Handling Ping request")
-	// Explicitly return json.RawMessage("null") to ensure the "result" field is present in the JSON
-	// even if the value is null, as some clients might expect it.
-	return createSuccessResponse(id, json.RawMessage("null"))
+	// Spec requires the result to be an empty JSON object `{}`
+	return createSuccessResponse(id, map[string]interface{}{})
 }
 
 // --- Built-in Notification Handlers ---
