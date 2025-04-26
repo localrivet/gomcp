@@ -353,33 +353,41 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 	// Process message through MCPServer's HandleMessage
 	responses := s.mcpServer.HandleMessage(ctx, sessionID, rawMessage) // Returns []*protocol.JSONRPCResponse
 
-	// Send response(s) back via HTTP POST response body
+	// Per MCP Spec for SSE: Responses are sent asynchronously over the SSE stream,
+	// not in the body of the HTTP POST response.
+	// We just acknowledge the POST request was received and processed.
+
 	if responses != nil && len(responses) > 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		// Log headers before writing body
-		s.logger.Debug("Session %s: Writing HTTP response. Headers: %v", sessionID, w.Header())
-		// Encode the entire slice (will be a single object if only one response)
-		encodeErr := json.NewEncoder(w).Encode(responses)
-		if encodeErr != nil {
-			s.logger.Error("Session %s: Failed to encode/write HTTP response(s): %v", sessionID, encodeErr)
-			// Don't try to write/flush further if encode failed
-		} else {
-			s.logger.Debug("Session %s: Encode/Write successful.", sessionID)
-			// Explicitly flush the response to ensure it's sent immediately over the network.
-			// This is crucial because the client is waiting for this HTTP response.
-			if flusher, ok := w.(http.Flusher); ok {
-				s.logger.Debug("Session %s: Attempting to flush HTTP response...", sessionID)
-				flusher.Flush()
-				s.logger.Debug("Session %s: Flush completed.", sessionID)
-			} else {
-				s.logger.Debug("Session %s: ResponseWriter is not a Flusher.", sessionID)
+		// Retrieve the session to send the response over its SSE connection
+		sessionValue, ok := s.sessions.Load(sessionID)
+		if !ok {
+			// Session disappeared between check and now? Should be rare.
+			s.logger.Error("Session %s not found when trying to send response via SSE.", sessionID)
+			// Can't send response, just acknowledge POST.
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		session, ok := sessionValue.(*sseSession)
+		if !ok {
+			s.logger.Error("Session %s has unexpected type %T in map.", sessionID, sessionValue)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		// Send each response via the session's SSE queue
+		for _, response := range responses {
+			if response != nil { // Ensure response isn't nil
+				if err := session.SendResponse(*response); err != nil {
+					// Log error, but continue trying to send others if any
+					s.logger.Error("Session %s: Failed to queue response ID %v for SSE: %v", sessionID, response.ID, err)
+				}
 			}
 		}
-	} else {
-		// For notifications or empty batches resulting in no response, send 204 No Content
-		w.WriteHeader(http.StatusNoContent)
 	}
+
+	// Acknowledge the HTTP POST request was received and processed (or queued for response).
+	// The actual JSON-RPC response will be sent via the SSE stream.
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // writeJSONRPCError writes a JSON-RPC error response to the http.ResponseWriter.
