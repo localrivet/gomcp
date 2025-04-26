@@ -357,15 +357,23 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 	if responses != nil && len(responses) > 0 {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		// Log headers before writing body
+		s.logger.Debug("Session %s: Writing HTTP response. Headers: %v", sessionID, w.Header())
 		// Encode the entire slice (will be a single object if only one response)
-		if err := json.NewEncoder(w).Encode(responses); err != nil {
-			s.logger.Error("Session %s: Failed to write HTTP response(s): %v", sessionID, err)
+		encodeErr := json.NewEncoder(w).Encode(responses)
+		if encodeErr != nil {
+			s.logger.Error("Session %s: Failed to encode/write HTTP response(s): %v", sessionID, encodeErr)
+			// Don't try to write/flush further if encode failed
 		} else {
+			s.logger.Debug("Session %s: Encode/Write successful.", sessionID)
 			// Explicitly flush the response to ensure it's sent immediately over the network.
 			// This is crucial because the client is waiting for this HTTP response.
 			if flusher, ok := w.(http.Flusher); ok {
+				s.logger.Debug("Session %s: Attempting to flush HTTP response...", sessionID)
 				flusher.Flush()
-				s.logger.Debug("Session %s: Flushed HTTP response", sessionID)
+				s.logger.Debug("Session %s: Flush completed.", sessionID)
+			} else {
+				s.logger.Debug("Session %s: ResponseWriter is not a Flusher.", sessionID)
 			}
 		}
 	} else {
