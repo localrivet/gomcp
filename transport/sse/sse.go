@@ -360,6 +360,13 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 		// Encode the entire slice (will be a single object if only one response)
 		if err := json.NewEncoder(w).Encode(responses); err != nil {
 			s.logger.Error("Session %s: Failed to write HTTP response(s): %v", sessionID, err)
+		} else {
+			// Explicitly flush the response to ensure it's sent immediately over the network.
+			// This is crucial because the client is waiting for this HTTP response.
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+				s.logger.Debug("Session %s: Flushed HTTP response", sessionID)
+			}
 		}
 	} else {
 		// For notifications or empty batches resulting in no response, send 204 No Content
