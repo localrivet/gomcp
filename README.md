@@ -93,10 +93,12 @@ func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 	log.Println("Starting Simple MCP Server...")
 
-	// Create the core server instance
-	srv := server.NewServer("MySimpleServer", server.ServerOptions{
-		// Logger: provide custom logger if needed
-	})
+	// Create the core server instance using functional options
+	srv := server.NewServer("MySimpleServer",
+		// server.WithLogger(myCustomLogger), // Example: Provide custom logger
+		// server.WithInstructions("My server instructions..."), // Example: Set instructions
+		// server.WithToolListChanged(true), // Example: Enable tool list changed notifications
+	)
 
 	// Define the 'add' tool using schema helper for input schema generation
 	addTool := protocol.Tool{

@@ -72,9 +72,9 @@ func WithServerCapabilities(caps protocol.ServerCapabilities) ServerOption {
 	}
 }
 
-// WithResourceCapabilities sets specific resource-related capabilities.
+// WithResourceSubscription sets the resource subscription capability flag.
 // It ensures the Resources capability struct is initialized.
-func WithResourceCapabilities(subscribe, listChanged bool) ServerOption {
+func WithResourceSubscription(subscribe bool) ServerOption {
 	return func(s *Server) {
 		if s.serverCapabilities.Resources == nil {
 			s.serverCapabilities.Resources = &struct {
@@ -83,13 +83,26 @@ func WithResourceCapabilities(subscribe, listChanged bool) ServerOption {
 			}{}
 		}
 		s.serverCapabilities.Resources.Subscribe = subscribe
+	}
+}
+
+// WithResourceListChanged sets the resource listChanged capability flag.
+// It ensures the Resources capability struct is initialized.
+func WithResourceListChanged(listChanged bool) ServerOption {
+	return func(s *Server) {
+		if s.serverCapabilities.Resources == nil {
+			s.serverCapabilities.Resources = &struct {
+				Subscribe   bool `json:"subscribe,omitempty"`
+				ListChanged bool `json:"listChanged,omitempty"`
+			}{}
+		}
 		s.serverCapabilities.Resources.ListChanged = listChanged
 	}
 }
 
-// WithPromptCapabilities sets specific prompt-related capabilities.
+// WithPromptListChanged sets the prompt listChanged capability flag.
 // It ensures the Prompts capability struct is initialized.
-func WithPromptCapabilities(listChanged bool) ServerOption {
+func WithPromptListChanged(listChanged bool) ServerOption {
 	return func(s *Server) {
 		if s.serverCapabilities.Prompts == nil {
 			s.serverCapabilities.Prompts = &struct {
@@ -100,9 +113,9 @@ func WithPromptCapabilities(listChanged bool) ServerOption {
 	}
 }
 
-// WithToolCapabilities sets specific tool-related capabilities.
+// WithToolListChanged sets the tool listChanged capability flag.
 // It ensures the Tools capability struct is initialized.
-func WithToolCapabilities(listChanged bool) ServerOption {
+func WithToolListChanged(listChanged bool) ServerOption {
 	return func(s *Server) {
 		if s.serverCapabilities.Tools == nil {
 			s.serverCapabilities.Tools = &struct {
