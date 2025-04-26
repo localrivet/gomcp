@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time" // Added for keep-alive ticker
 
 	// Only needed for potential timeouts, not currently used
 	"context" // Needed for MCPServerLogic interface
@@ -295,7 +296,10 @@ func (s *SSEServer) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("Sent endpoint event to session %s", session.SessionID())
 
 	// Main event loop: read from queue and write to client
-	ctx := r.Context() // Get request context for cancellation
+	ctx := r.Context()                                  // Get request context for cancellation
+	keepAliveTicker := time.NewTicker(30 * time.Second) // Send keep-alive every 30 seconds
+	defer keepAliveTicker.Stop()
+
 	for {
 		select {
 		case eventString := <-session.eventQueue:
@@ -313,6 +317,15 @@ func (s *SSEServer) HandleSSE(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done(): // Closed by client disconnecting or server shutdown
 			s.logger.Info("Session %s: Request context done (%v), closing SSE connection.", session.SessionID(), ctx.Err())
 			return
+		case <-keepAliveTicker.C:
+			// Send an SSE comment as a keep-alive ping
+			_, err := fmt.Fprint(w, ": keep-alive\n\n")
+			if err != nil {
+				s.logger.Error("Session %s: Error writing keep-alive to client: %v", session.SessionID(), err)
+				return // Assume connection is broken
+			}
+			flusher.Flush()
+			s.logger.Debug("Session %s: Sent keep-alive comment", session.SessionID())
 		}
 	}
 }
@@ -346,15 +359,18 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 
 	var rawMessage json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&rawMessage); err != nil {
+		s.logger.Error("Session %s: Failed to decode message body: %v", sessionID, err) // Added logging
 		s.writeJSONRPCError(w, nil, protocol.ErrorCodeParseError, fmt.Sprintf("Parse error: %v", err))
 		return
 	}
+	s.logger.Debug("Session %s: Received message on /message: %s", sessionID, string(rawMessage)) // Added logging
 
 	// Process message through MCPServer's HandleMessage
 	responses := s.mcpServer.HandleMessage(ctx, sessionID, rawMessage) // Returns []*protocol.JSONRPCResponse
 
 	// Send response(s) back via HTTP POST response body
 	if responses != nil && len(responses) > 0 {
+		s.logger.Debug("Session %s: Sending %d response(s) via HTTP POST", sessionID, len(responses)) // Added logging
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		// Encode the entire slice (will be a single object if only one response)
@@ -363,6 +379,7 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// For notifications or empty batches resulting in no response, send 204 No Content
+		s.logger.Debug("Session %s: No responses to send (notification or empty batch result), sending 204 No Content", sessionID) // Added logging
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
