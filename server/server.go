@@ -318,16 +318,17 @@ func (s *Server) handleSingleMessage(ctx context.Context, session types.ClientSe
 			return s.handleInitializationMessage(ctx, session, baseMessage.ID, baseMessage.Method, rawMessage)
 			// Accept both "initialized" and "notifications/initialized" for compatibility
 		} else if (baseMessage.Method == protocol.MethodInitialized || baseMessage.Method == "notifications/initialized") && baseMessage.ID == nil {
-			// This is a notification, handleInitializedNotification doesn't return a response
+			// Mark session as initialized immediately upon receiving the notification signal.
+			// The handshake is complete at this point per the spec.
+			session.Initialize()
+			s.logger.Info("Session %s marked as initialized upon receiving 'initialized' notification.", sessionID)
+
+			// Now, attempt to process/log the notification details (optional params etc.)
+			// Failure here should not prevent the session from being initialized.
 			err := s.handleInitializedNotification(ctx, session, rawMessage)
 			if err != nil {
-				s.logger.Error("Error handling initialized notification for session %s: %v", sessionID, err)
-				// Cannot send error response for notification
-				// Should we still mark as initialized? Probably not if parsing failed.
-			} else {
-				// Mark session as initialized *after* successfully processing the notification
-				session.Initialize()
-				s.logger.Info("Session %s marked as initialized.", sessionID)
+				s.logger.Warn("Error processing details of initialized notification for session %s: %v", sessionID, err)
+				// Logged the warning, but session is already initialized.
 			}
 			return nil // No response for notification
 		} else {
