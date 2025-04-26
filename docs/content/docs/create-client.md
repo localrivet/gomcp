@@ -30,66 +30,63 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	"github.com/localrivet/gomcp/client"
 	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/types"
+	// types package might not be needed directly for basic client setup
 )
 
 func main() {
-	// Server's base URL (adjust as needed)
-	serverURL := "http://localhost:8080" // Example URL
+	// Configure logger
+	log.SetOutput(os.Stderr)
+	log.SetFlags(log.Ltime | log.Lshortfile)
+	log.Println("Starting Simple Stdio MCP Client...")
 
-	// Define client information
-	clientInfo := types.Implementation{
-		Name:    "my-simple-client",
-		Version: "0.1.0",
-	}
-
-	// Define client capabilities (optional, customize as needed)
-	clientCapabilities := protocol.ClientCapabilities{
-		// Add specific capabilities your client supports
-	}
-
-	// Create client options
-	opts := client.NewClientOptions(clientInfo, clientCapabilities)
-	// opts.Logger = /* provide a custom logger if desired */
-
-	// Create a new client instance
-	c := client.NewClient(serverURL, opts)
-
-	// --- Optional: Register handlers for server-sent messages ---
-	// Example: Handle log messages from the server
-	c.RegisterNotificationHandler(protocol.MethodLogMessage, func(ctx context.Context, params []byte) error {
-		var logParams protocol.LoggingMessageParams
-		if err := json.Unmarshal(params, &logParams); err != nil {
-			log.Printf("Error unmarshalling log message params: %v", err)
-			return nil // Don't kill connection for bad log message
-		}
-		log.Printf("SERVER LOG [%s]: %s", logParams.Level, logParams.Message)
-		return nil
+	// 1. Create Client Instance for Stdio
+	// NewStdioClient handles stdio transport setup internally.
+	// Provide a client name and optional ClientOptions.
+	clt, err := client.NewStdioClient("my-stdio-client", client.ClientOptions{
+		// ClientInfo and Capabilities can be customized here if needed.
+		// Example:
+		// ClientInfo: protocol.Implementation{Name: "my-stdio-client", Version: "1.0"},
+		// Capabilities: protocol.ClientCapabilities{ /* ... */ },
+		// Logger: provide a custom logger if desired
 	})
-	// Register other handlers for notifications or server requests as needed...
+	if err != nil {
+		log.Fatalf("Failed to create stdio client: %v", err)
+	}
 
-	// --- Connect and Initialize ---
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // Add a timeout
+	// 2. Connect and Initialize
+	// Use a context for timeout/cancellation for the connection attempt.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	serverInfo, err := c.Connect(ctx)
+	log.Println("Connecting to server via stdio...")
+	// Connect performs the MCP initialization handshake over stdio.
+	err = clt.Connect(ctx)
 	if err != nil {
 		log.Fatalf("Failed to connect and initialize with server: %v", err)
 	}
-	log.Printf("Connected to server: %s v%s", serverInfo.Name, serverInfo.Version)
-	log.Printf("Server capabilities: %+v", c.ServerCapabilities()) // Access cached capabilities
+	// For stdio, Close is often handled implicitly when stdin/stdout close,
+	// but deferring it ensures cleanup if the client exits early.
+	defer clt.Close()
+
+	// 3. Access Server Information (Post-Connection)
+	// Once connected, you can get info about the server.
+	serverInfo := clt.ServerInfo()
+	log.Printf("Connected to server: %s (Version: %s)", serverInfo.Name, serverInfo.Version)
+	log.Printf("Server capabilities: %+v", clt.ServerCapabilities())
 
 	// --- Client is now ready to make requests ---
 
-	// Example: List available tools
-	listToolsCtx, listToolsCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Example: List available tools from the server
+	// Use a derived context for the specific request.
+	listToolsCtx, listToolsCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer listToolsCancel()
 
-	toolsResult, err := c.ListTools(listToolsCtx, protocol.ListToolsRequestParams{})
+	toolsResult, err := clt.ListTools(listToolsCtx, protocol.ListToolsRequestParams{})
 	if err != nil {
 		log.Printf("Error listing tools: %v", err)
 	} else {
@@ -99,15 +96,11 @@ func main() {
 		}
 	}
 
-	// Add more client logic here (CallTool, GetResource, etc.)
+	// Add more client logic here (e.g., CallTool, GetResource) using the 'clt' instance.
 
-	// Keep the client running (e.g., wait for user input or another signal)
-	log.Println("Client running. Press Ctrl+C to exit.")
-	<-ctx.Done() // Wait for context cancellation (e.g., timeout or manual cancel)
-
-	// Disconnect (optional, closes SSE connection)
-	c.Disconnect()
-	log.Println("Client disconnected.")
+	log.Println("Client operations finished.")
+	// In a real application, the client might wait for more tasks or exit.
+	// For stdio, the client often runs until its input/output streams are closed.
 }
 
 ```

@@ -52,36 +52,49 @@ var echoTool = protocol.Tool{
 Next, create a function that implements the actual logic of your tool. This function must match the `server.ToolHandlerFunc` signature:
 
 ```go
-type ToolHandlerFunc func(ctx context.Context, arguments map[string]interface{}) (result []protocol.Content, err error)
+type ToolHandlerFunc func(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool)
 ```
 
 - It receives a `context.Context` for cancellation/deadlines.
-- It receives the `arguments` provided by the client in the `tools/call` request as a `map[string]interface{}`. You'll need to perform type assertions to access argument values safely.
-- It returns a slice of `protocol.Content` objects (e.g., `protocol.TextContent`, `protocol.ImageContent`) representing the successful result of the tool execution.
-- It returns an `error` if the tool execution fails. This error will be converted into a JSON-RPC error response sent back to the client.
+- It receives an optional `*protocol.ProgressToken` if the client requested progress updates for this call.
+- It receives the `arguments` provided by the client in the `tools/call` request as an `any` type. You need to parse and validate these arguments, ideally using the `schema.HandleArgs` helper function (see below).
+- It returns a slice of `protocol.Content` objects (e.g., `protocol.TextContent`, `protocol.ImageContent`) representing the result of the tool execution.
+- It returns a boolean `isError`. If `true`, the returned `content` is treated as error information (e.g., a `TextContent` explaining the error). If `false`, the `content` is the successful result. The `schema.HandleArgs` helper can generate appropriate error content automatically for invalid arguments.
 
 **Example: Handler for the "echo" tool**
 
 ```go
+package main
+
 import (
 	"context"
-	"fmt"
+	"log" // Added for logging
+
 	"github.com/localrivet/gomcp/protocol"
+	"github.com/localrivet/gomcp/util/schema"
 )
 
-func handleEchoTool(ctx context.Context, args map[string]interface{}) ([]protocol.Content, error) {
-	// Safely get the required 'input' argument
-	inputText, ok := args["input"].(string)
-	if !ok || inputText == "" {
-		// Return an error if 'input' is missing, empty, or wrong type
-		return nil, fmt.Errorf("required argument 'input' (string) is missing or invalid")
+// Define arguments struct for the echo tool
+type EchoArgs struct {
+	Input  string `json:"input" description:"The text to be echoed back by the server."`
+	Prefix string `json:"prefix,omitempty" description:"An optional prefix to add to the echoed text."` // Use omitempty for optional
+}
+
+// Example: Handler for the "echo" tool using schema.HandleArgs
+func handleEchoTool(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool) {
+	// Use schema.HandleArgs to parse and validate arguments against the EchoArgs struct.
+	// It automatically handles type checking, required fields, and generates error content.
+	args, errContent, isErr := schema.HandleArgs[EchoArgs](arguments)
+	if isErr {
+		log.Printf("Error handling echo args: %v", errContent)
+		return errContent, true // Return the error content from HandleArgs
 	}
 
-	// Safely get the optional 'prefix' argument
-	prefixText, _ := args["prefix"].(string) // Ignore error if missing/wrong type, default to ""
+	// If parsing succeeded, 'args' is a populated EchoArgs struct.
+	log.Printf("Executing echo tool with input: '%s', prefix: '%s'", args.Input, args.Prefix)
 
 	// Construct the result message
-	resultText := prefixText + inputText
+	resultText := args.Prefix + args.Input
 
 	// Return the result as TextContent
 	result := []protocol.Content{
@@ -90,8 +103,9 @@ func handleEchoTool(ctx context.Context, args map[string]interface{}) ([]protoco
 			Text: resultText,
 		},
 	}
-	return result, nil // Return nil error on success
+	return result, false // Return false for isError on success
 }
+
 ```
 
 ## 3. Register the Tool with the Server
@@ -99,14 +113,28 @@ func handleEchoTool(ctx context.Context, args map[string]interface{}) ([]protoco
 Finally, use the `RegisterTool` method on your `server.Server` instance _before_ running the server. Pass the `protocol.Tool` definition and the corresponding handler function.
 
 ```go
+package main
+
 import (
+	"context"
 	"log"
+	"os"
+
+	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
-	// ... other imports
+	"github.com/localrivet/gomcp/util/schema"
 )
 
+// Assume echoTool definition (protocol.Tool) and
+// handleEchoTool (server.ToolHandlerFunc) are defined as above.
+
 func main() {
-	// ... (Initialize serverInfo, opts, srv as shown in server.md) ...
+	// Configure logger
+	log.SetOutput(os.Stderr)
+	log.SetFlags(log.Ltime | log.Lshortfile)
+
+	// Create the server instance
+	srv := server.NewServer("MyToolServer", server.ServerOptions{})
 
 	// Register the echo tool and its handler
 	err := srv.RegisterTool(echoTool, handleEchoTool)
@@ -115,8 +143,14 @@ func main() {
 	}
 	log.Printf("Registered tool: %s", echoTool.Name)
 
-	// ... (Create transport and run server) ...
+	// Start the server using stdio
+	log.Println("Starting server on stdio...")
+	if err := server.ServeStdio(srv); err != nil {
+		log.Fatalf("Server exited with error: %v", err)
+	}
+	log.Println("Server stopped.")
 }
+
 ```
 
 Now, when a client connects and sends a `tools/call` request for the "echo" tool with valid arguments, the `handleEchoTool` function will be executed, and its result will be sent back to the client. If the client sends a `tools/list` request, the `echoTool` definition will be included in the response.

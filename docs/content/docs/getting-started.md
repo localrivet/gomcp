@@ -25,37 +25,30 @@ import (
 	"os"
 
 	"github.com/localrivet/gomcp/server"
-	"github.com/localrivet/gomcp/transport/stdio"
-	"github.com/localrivet/gomcp/types"
 )
 
 func main() {
-	// Define server information
-	serverInfo := types.Implementation{
-		Name:    "my-simple-server",
-		Version: "0.1.0",
-	}
+	// Configure logger (optional, defaults to stderr)
+	log.SetOutput(os.Stderr)
+	log.SetFlags(log.Ltime | log.Lshortfile)
+	log.Println("Starting Minimal MCP Server...")
 
-	// Create server options (using default logger)
-	opts := server.NewServerOptions(serverInfo)
+	// Create the core server instance
+	// Provide a name and default options
+	srv := server.NewServer("MyMinimalServer", server.ServerOptions{})
 
-	// Create a new server instance
-	srv := server.NewServer(opts)
+	// Register any tools here using srv.RegisterTool(...)
+	// (See "Defining Tools" guide for details)
 
-	// Create a stdio transport
-	transport := stdio.NewStdioTransport(os.Stdin, os.Stdout, nil) // Using default logger
-
-	log.Println("Starting simple MCP server on stdio...")
-
-	// Run the server with the transport
-	// This will block until the transport closes (e.g., stdin is closed)
-	if err := srv.Run(transport); err != nil {
+	// Start the server using the built-in stdio handler.
+	// This blocks until the server exits (e.g., EOF on stdin or error).
+	log.Println("Server setup complete. Listening on stdio...")
+	if err := server.ServeStdio(srv); err != nil {
 		log.Fatalf("Server exited with error: %v", err)
 	}
 
-	log.Println("Server stopped.")
+	log.Println("Server shutdown complete.")
 }
-
 ```
 
 **To run this:**

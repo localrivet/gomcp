@@ -10,8 +10,7 @@ import (
 	"testing"
 
 	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/server" // For server.ClientSession
-	"github.com/localrivet/gomcp/types"  // For types.Logger
+	"github.com/localrivet/gomcp/types"
 )
 
 // --- Mock Logger ---
@@ -38,7 +37,7 @@ func (m *mockMCPServer) HandleMessage(ctx context.Context, sessionID string, raw
 	return nil // Default behavior
 }
 
-func (m *mockMCPServer) RegisterSession(session server.ClientSession) error {
+func (m *mockMCPServer) RegisterSession(session types.ClientSession) error { // Use types.ClientSession
 	m.sessions.Store(session.SessionID(), session)
 	return nil
 }

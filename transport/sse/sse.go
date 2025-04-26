@@ -17,19 +17,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/server" // Import the refactored server package
-	"github.com/localrivet/gomcp/types"  // For Logger
+	"github.com/localrivet/gomcp/types" // For Logger and ClientSession interface
 )
 
-// MCPServerLogic defines the interface SSEServer needs from the core server logic.
-// This allows mocking the core server for transport-level testing.
+// ClientSession interface is now defined in the types package.
+// We will use types.ClientSession directly.
+
+// MCPServerLogic defines the interface SSEServer needs from the core server logic,
+// using the ClientSession interface defined in the types package.
 type MCPServerLogic interface {
 	HandleMessage(ctx context.Context, sessionID string, rawMessage json.RawMessage) []*protocol.JSONRPCResponse
-	RegisterSession(session server.ClientSession) error
+	RegisterSession(session types.ClientSession) error // Use types.ClientSession
 	UnregisterSession(sessionID string)
 }
 
-// sseSession represents an active SSE connection and implements server.ClientSession.
+// sseSession represents an active SSE connection and implements the types.ClientSession interface.
 type sseSession struct {
 	writer              http.ResponseWriter
 	flusher             http.Flusher
@@ -43,8 +45,8 @@ type sseSession struct {
 	clientCapabilities  protocol.ClientCapabilities // Added
 }
 
-// Ensure sseSession implements server.ClientSession
-var _ server.ClientSession = (*sseSession)(nil)
+// Ensure sseSession implements the types.ClientSession interface
+var _ types.ClientSession = (*sseSession)(nil)
 
 // NewSSESession creates a new session.
 func newSSESession(w http.ResponseWriter, flusher http.Flusher, logger types.Logger) *sseSession {
@@ -164,7 +166,7 @@ type SSEServer struct {
 	mcpServer       MCPServerLogic // Use the interface for testability
 	sessions        sync.Map       // Map[string]*sseSession (sessionID -> session)
 	logger          types.Logger
-	contextFunc     server.SSEContextFunc
+	contextFunc     SSEContextFunc // Use local definition
 	basePath        string
 	messageEndpoint string
 	sseEndpoint     string
@@ -173,7 +175,7 @@ type SSEServer struct {
 // SSEServerOptions configure the SSEServer.
 type SSEServerOptions struct {
 	Logger          types.Logger
-	ContextFunc     server.SSEContextFunc
+	ContextFunc     SSEContextFunc // Use local definition
 	BasePath        string
 	MessageEndpoint string
 	SSEEndpoint     string
@@ -396,3 +398,10 @@ func (l *defaultLogger) Debug(msg string, args ...interface{}) { log.Printf("DEB
 func (l *defaultLogger) Info(msg string, args ...interface{})  { log.Printf("INFO: "+msg, args...) }
 func (l *defaultLogger) Warn(msg string, args ...interface{})  { log.Printf("WARN: "+msg, args...) }
 func (l *defaultLogger) Error(msg string, args ...interface{}) { log.Printf("ERROR: "+msg, args...) }
+
+// SSEContextFunc is a function type used by the SSEServer to allow
+// customization of the context passed to the core MCPServer's HandleMessage method,
+// based on the incoming HTTP request for client->server messages.
+// This allows injecting values from HTTP headers (like auth tokens) into the context.
+// Defined locally to avoid server import.
+type SSEContextFunc func(ctx context.Context, r *http.Request) context.Context

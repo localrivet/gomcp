@@ -2,7 +2,7 @@
 package server
 
 import (
-	"bytes" // Added for batch detection
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/types" // Keep for Logger interface
+	"github.com/localrivet/gomcp/types"
 )
 
 // ToolHandlerFunc defines the signature for functions that handle tool execution.
@@ -21,8 +21,9 @@ type NotificationHandlerFunc func(ctx context.Context, params interface{}) error
 
 // Server represents the core MCP server logic, independent of transport.
 type Server struct {
-	serverName string
-	logger     types.Logger
+	serverName         string
+	logger             types.Logger
+	serverInstructions string // Added for InitializeResult
 
 	// Registries
 	toolRegistry     map[string]protocol.Tool
@@ -48,41 +49,96 @@ type Server struct {
 	subscriptionMu        sync.Mutex
 }
 
-// ServerOptions contains configuration options for creating a Server.
-type ServerOptions struct {
-	Logger             types.Logger
-	ServerCapabilities protocol.ServerCapabilities
+// ServerOption defines a function signature for configuring a Server.
+type ServerOption func(*Server)
+
+// WithLogger provides an option to set a custom logger.
+func WithLogger(logger types.Logger) ServerOption {
+	return func(s *Server) {
+		if logger != nil {
+			s.logger = logger
+		}
+	}
 }
 
-// NewServer creates a new core MCP Server logic instance.
-func NewServer(serverName string, opts ServerOptions) *Server {
-	logger := opts.Logger
-	if logger == nil {
-		logger = &defaultLogger{}
+// WithServerCapabilities provides an option to set the server's capabilities.
+// Note: This replaces all existing capabilities. Consider more granular options
+// like WithToolCapabilities, WithResourceCapabilities if needed.
+func WithServerCapabilities(caps protocol.ServerCapabilities) ServerOption {
+	return func(s *Server) {
+		// We might want to merge or provide more granular control later,
+		// but for now, this replaces the default capabilities.
+		s.serverCapabilities = caps
 	}
+}
 
-	serverCaps := opts.ServerCapabilities
-	if serverCaps.Tools == nil {
-		serverCaps.Tools = &struct {
-			ListChanged bool `json:"listChanged,omitempty"`
-		}{}
+// WithResourceCapabilities sets specific resource-related capabilities.
+// It ensures the Resources capability struct is initialized.
+func WithResourceCapabilities(subscribe, listChanged bool) ServerOption {
+	return func(s *Server) {
+		if s.serverCapabilities.Resources == nil {
+			s.serverCapabilities.Resources = &struct {
+				Subscribe   bool `json:"subscribe,omitempty"`
+				ListChanged bool `json:"listChanged,omitempty"`
+			}{}
+		}
+		s.serverCapabilities.Resources.Subscribe = subscribe
+		s.serverCapabilities.Resources.ListChanged = listChanged
 	}
-	if serverCaps.Resources == nil {
-		serverCaps.Resources = &struct {
-			Subscribe   bool `json:"subscribe,omitempty"`
-			ListChanged bool `json:"listChanged,omitempty"`
-		}{}
-	}
-	if serverCaps.Prompts == nil {
-		serverCaps.Prompts = &struct {
-			ListChanged bool `json:"listChanged,omitempty"`
-		}{}
-	}
+}
 
+// WithPromptCapabilities sets specific prompt-related capabilities.
+// It ensures the Prompts capability struct is initialized.
+func WithPromptCapabilities(listChanged bool) ServerOption {
+	return func(s *Server) {
+		if s.serverCapabilities.Prompts == nil {
+			s.serverCapabilities.Prompts = &struct {
+				ListChanged bool `json:"listChanged,omitempty"`
+			}{}
+		}
+		s.serverCapabilities.Prompts.ListChanged = listChanged
+	}
+}
+
+// WithToolCapabilities sets specific tool-related capabilities.
+// It ensures the Tools capability struct is initialized.
+func WithToolCapabilities(listChanged bool) ServerOption {
+	return func(s *Server) {
+		if s.serverCapabilities.Tools == nil {
+			s.serverCapabilities.Tools = &struct {
+				ListChanged bool `json:"listChanged,omitempty"`
+			}{}
+		}
+		s.serverCapabilities.Tools.ListChanged = listChanged
+	}
+}
+
+// WithInstructions sets the server instructions string returned during initialization.
+func WithInstructions(instructions string) ServerOption {
+	return func(s *Server) {
+		s.serverInstructions = instructions
+	}
+}
+
+// NewServer creates a new core MCP Server logic instance with the provided options.
+func NewServer(serverName string, opts ...ServerOption) *Server {
+	// Initialize with default values
 	srv := &Server{
-		serverName:            serverName,
-		logger:                logger,
-		serverCapabilities:    serverCaps,
+		serverName: serverName,
+		logger:     &defaultLogger{}, // Default logger
+		serverCapabilities: protocol.ServerCapabilities{ // Default capabilities
+			Tools: &struct {
+				ListChanged bool `json:"listChanged,omitempty"`
+			}{},
+			Resources: &struct {
+				Subscribe   bool `json:"subscribe,omitempty"`
+				ListChanged bool `json:"listChanged,omitempty"`
+			}{},
+			Prompts: &struct {
+				ListChanged bool `json:"listChanged,omitempty"`
+			}{},
+			// Initialize other capability fields to nil or default as needed
+		},
 		toolRegistry:          make(map[string]protocol.Tool),
 		toolHandlers:          make(map[string]ToolHandlerFunc),
 		resourceRegistry:      make(map[string]protocol.Resource),
@@ -92,14 +148,40 @@ func NewServer(serverName string, opts ServerOptions) *Server {
 		resourceSubscriptions: make(map[string]map[string]bool),
 	}
 
+	// Apply provided options
+	for _, opt := range opts {
+		opt(srv)
+	}
+
+	// Ensure essential capabilities structs are non-nil after options are applied
+	// (This might overwrite parts of user-provided caps if they set the top-level to nil)
+	if srv.serverCapabilities.Tools == nil {
+		srv.serverCapabilities.Tools = &struct {
+			ListChanged bool `json:"listChanged,omitempty"`
+		}{}
+	}
+	if srv.serverCapabilities.Resources == nil {
+		srv.serverCapabilities.Resources = &struct {
+			Subscribe   bool `json:"subscribe,omitempty"`
+			ListChanged bool `json:"listChanged,omitempty"`
+		}{}
+	}
+	if srv.serverCapabilities.Prompts == nil {
+		srv.serverCapabilities.Prompts = &struct {
+			ListChanged bool `json:"listChanged,omitempty"`
+		}{}
+	}
+
+	// Register internal handlers
 	srv.RegisterNotificationHandler(protocol.MethodCancelled, srv.handleCancellationNotification)
-	logger.Info("MCP Core Server '%s' created.", serverName)
+
+	srv.logger.Info("MCP Core Server '%s' created.", serverName)
 	return srv
 }
 
 // --- Session Management ---
 
-func (s *Server) RegisterSession(session ClientSession) error {
+func (s *Server) RegisterSession(session types.ClientSession) error { // Use types.ClientSession
 	if session == nil {
 		return fmt.Errorf("cannot register nil session")
 	}
@@ -139,7 +221,7 @@ func (s *Server) HandleMessage(ctx context.Context, sessionID string, rawMessage
 		// Cannot determine request ID here, so return nil response slice. Error logged.
 		return nil
 	}
-	session := sessionI.(ClientSession)
+	session := sessionI.(types.ClientSession) // Use types.ClientSession
 
 	// Trim whitespace and check if it's a batch request (starts with '[')
 	trimmedMsg := bytes.TrimSpace(rawMessage)
@@ -194,7 +276,7 @@ func (s *Server) HandleMessage(ctx context.Context, sessionID string, rawMessage
 }
 
 // handleSingleMessage processes a single JSON-RPC request or notification object.
-func (s *Server) handleSingleMessage(ctx context.Context, session ClientSession, rawMessage json.RawMessage) *protocol.JSONRPCResponse {
+func (s *Server) handleSingleMessage(ctx context.Context, session types.ClientSession, rawMessage json.RawMessage) *protocol.JSONRPCResponse { // Use types.ClientSession
 	sessionID := session.SessionID() // Get session ID from session object
 
 	// Attempt to parse basic structure first to get ID/Method
@@ -264,7 +346,7 @@ func (s *Server) handleSingleMessage(ctx context.Context, session ClientSession,
 
 // --- Initialization Handling ---
 
-func (s *Server) handleInitializationMessage(ctx context.Context, session ClientSession, id interface{}, method string, rawMessage json.RawMessage) *protocol.JSONRPCResponse {
+func (s *Server) handleInitializationMessage(ctx context.Context, session types.ClientSession, id interface{}, method string, rawMessage json.RawMessage) *protocol.JSONRPCResponse { // Use types.ClientSession
 	sessionID := session.SessionID()
 	if method == protocol.MethodInitialize && id != nil {
 		resp, err := s.handleInitializeRequest(ctx, session, id, rawMessage)
@@ -301,7 +383,7 @@ func (s *Server) handleInitializationMessage(ctx context.Context, session Client
 	}
 }
 
-func (s *Server) handleInitializeRequest(ctx context.Context, session ClientSession, requestID interface{}, rawMessage json.RawMessage) (*protocol.JSONRPCResponse, error) {
+func (s *Server) handleInitializeRequest(ctx context.Context, session types.ClientSession, requestID interface{}, rawMessage json.RawMessage) (*protocol.JSONRPCResponse, error) { // Use types.ClientSession
 	var req protocol.JSONRPCRequest
 	if err := json.Unmarshal(rawMessage, &req); err != nil {
 		return createErrorResponse(requestID, protocol.ErrorCodeParseError, fmt.Sprintf("Failed to re-parse initialize request: %v", err)), nil
@@ -350,12 +432,13 @@ func (s *Server) handleInitializeRequest(ctx context.Context, session ClientSess
 		ProtocolVersion: negotiatedVersion,                                             // Respond with the *negotiated* version
 		Capabilities:    advertisedCaps,                                                // Use the potentially adjusted capabilities
 		ServerInfo:      protocol.Implementation{Name: s.serverName, Version: "0.1.0"}, // Using fixed version for now
+		Instructions:    s.serverInstructions,                                          // Add instructions
 	}
 	resp := createSuccessResponse(requestID, responsePayload)
 	return resp, nil
 }
 
-func (s *Server) handleInitializedNotification(ctx context.Context, session ClientSession, rawMessage json.RawMessage) error {
+func (s *Server) handleInitializedNotification(ctx context.Context, session types.ClientSession, rawMessage json.RawMessage) error { // Use types.ClientSession
 	var notif protocol.JSONRPCNotification
 	if err := json.Unmarshal(rawMessage, &notif); err != nil {
 		return fmt.Errorf("failed to parse initialized notification: %w", err)
@@ -368,7 +451,7 @@ func (s *Server) handleInitializedNotification(ctx context.Context, session Clie
 
 // handleRequest processes a single JSON-RPC request after initial parsing.
 // Takes rawParams json.RawMessage instead of the full rawMessage.
-func (s *Server) handleRequest(ctx context.Context, session ClientSession, id interface{}, method string, rawParams json.RawMessage) *protocol.JSONRPCResponse {
+func (s *Server) handleRequest(ctx context.Context, session types.ClientSession, id interface{}, method string, rawParams json.RawMessage) *protocol.JSONRPCResponse { // Use types.ClientSession
 	s.logger.Debug("Handling request for session %s: Method=%s, ID=%v", session.SessionID(), method, id)
 	handlerCtx := ctx
 	// Note: params are now passed as json.RawMessage, unmarshalling happens in specific handlers
@@ -400,7 +483,7 @@ func (s *Server) handleRequest(ctx context.Context, session ClientSession, id in
 
 // handleNotification processes a single JSON-RPC notification after initial parsing.
 // Takes rawParams json.RawMessage instead of the full rawMessage.
-func (s *Server) handleNotification(ctx context.Context, session ClientSession, method string, rawParams json.RawMessage) error {
+func (s *Server) handleNotification(ctx context.Context, session types.ClientSession, method string, rawParams json.RawMessage) error { // Use types.ClientSession
 	s.notificationMu.RLock()
 	handler, ok := s.notificationHandlers[method]
 	s.notificationMu.RUnlock()
@@ -584,7 +667,7 @@ func (s *Server) handleListToolsRequest(ctx context.Context, id interface{}, raw
 }
 
 // handleCallToolRequest handles the 'tools/call' request. Params are expected to be json.RawMessage.
-func (s *Server) handleCallToolRequest(ctx context.Context, session ClientSession, id interface{}, rawParams json.RawMessage) *protocol.JSONRPCResponse {
+func (s *Server) handleCallToolRequest(ctx context.Context, session types.ClientSession, id interface{}, rawParams json.RawMessage) *protocol.JSONRPCResponse { // Use types.ClientSession
 	s.logger.Debug("Handling CallToolRequest for session %s", session.SessionID())
 	var requestParams protocol.CallToolParams
 	if err := protocol.UnmarshalPayload(rawParams, &requestParams); err != nil { // Unmarshal from rawParams
@@ -662,7 +745,7 @@ func (s *Server) handleGetPrompt(ctx context.Context, id interface{}, params int
 	return createErrorResponse(id, protocol.ErrorCodeMCPResourceNotFound, fmt.Sprintf("Prompt not found (stub): %s", requestParams.URI))
 }
 
-func (s *Server) handleSubscribeResource(ctx context.Context, session ClientSession, id interface{}, params interface{}) *protocol.JSONRPCResponse {
+func (s *Server) handleSubscribeResource(ctx context.Context, session types.ClientSession, id interface{}, params interface{}) *protocol.JSONRPCResponse { // Use types.ClientSession
 	s.logger.Debug("Handling SubscribeResource request for session %s", session.SessionID())
 	var requestParams protocol.SubscribeResourceParams
 	if err := protocol.UnmarshalPayload(params, &requestParams); err != nil {
@@ -686,7 +769,7 @@ func (s *Server) handleSubscribeResource(ctx context.Context, session ClientSess
 	return createSuccessResponse(id, protocol.SubscribeResourceResult{})
 }
 
-func (s *Server) handleUnsubscribeResource(ctx context.Context, session ClientSession, id interface{}, params interface{}) *protocol.JSONRPCResponse {
+func (s *Server) handleUnsubscribeResource(ctx context.Context, session types.ClientSession, id interface{}, params interface{}) *protocol.JSONRPCResponse { // Use types.ClientSession
 	s.logger.Debug("Handling UnsubscribeResource request for session %s", session.SessionID())
 	var requestParams protocol.UnsubscribeResourceParams
 	if err := protocol.UnmarshalPayload(params, &requestParams); err != nil {
@@ -749,7 +832,7 @@ func (s *Server) SendProgress(sessionID string, params protocol.ProgressParams) 
 	if !ok {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
-	return s.sendNotificationToSession(sessionI.(ClientSession), protocol.MethodProgress, params)
+	return s.sendNotificationToSession(sessionI.(types.ClientSession), protocol.MethodProgress, params) // Use types.ClientSession
 }
 
 func (s *Server) NotifyResourceUpdated(resource protocol.Resource) {
@@ -760,17 +843,17 @@ func (s *Server) NotifyResourceUpdated(resource protocol.Resource) {
 	s.logger.Info("Resource %s updated, sending notifications.", resource.URI)
 	params := protocol.ResourceUpdatedParams{Resource: resource}
 	s.subscriptionMu.Lock()
-	subscribedSessions := []ClientSession{}
+	subscribedSessions := []types.ClientSession{} // Use types.ClientSession
 	for sessionID, subs := range s.resourceSubscriptions {
 		if subs[resource.URI] {
 			if sessionI, ok := s.sessions.Load(sessionID); ok {
-				subscribedSessions = append(subscribedSessions, sessionI.(ClientSession))
+				subscribedSessions = append(subscribedSessions, sessionI.(types.ClientSession)) // Use types.ClientSession
 			}
 		}
 	}
 	s.subscriptionMu.Unlock()
 	for _, session := range subscribedSessions {
-		go func(sess ClientSession) {
+		go func(sess types.ClientSession) { // Use types.ClientSession
 			if err := s.sendNotificationToSession(sess, protocol.MethodNotifyResourceUpdated, params); err != nil {
 				s.logger.Warn("Failed to send resources/updated notification to session %s for URI %s: %v", sess.SessionID(), resource.URI, err)
 			}
@@ -798,7 +881,7 @@ func (s *Server) SendPromptsListChanged() error {
 func (s *Server) broadcastNotification(method string, params interface{}) error {
 	var firstErr error
 	s.sessions.Range(func(key, value interface{}) bool {
-		session := value.(ClientSession)
+		session := value.(types.ClientSession) // Use types.ClientSession
 		err := s.sendNotificationToSession(session, method, params)
 		if err != nil {
 			s.logger.Warn("Failed to send broadcast notification %s to session %s: %v", method, session.SessionID(), err)
@@ -811,7 +894,7 @@ func (s *Server) broadcastNotification(method string, params interface{}) error 
 	return firstErr
 }
 
-func (s *Server) sendNotificationToSession(session ClientSession, method string, params interface{}) error {
+func (s *Server) sendNotificationToSession(session types.ClientSession, method string, params interface{}) error { // Use types.ClientSession
 	notif := protocol.JSONRPCNotification{JSONRPC: "2.0", Method: method, Params: params}
 	return session.SendNotification(notif)
 }
@@ -834,3 +917,5 @@ func (l *defaultLogger) Debug(msg string, args ...interface{}) { log.Printf("DEB
 func (l *defaultLogger) Info(msg string, args ...interface{})  { log.Printf("INFO: "+msg, args...) }
 func (l *defaultLogger) Warn(msg string, args ...interface{})  { log.Printf("WARN: "+msg, args...) }
 func (l *defaultLogger) Error(msg string, args ...interface{}) { log.Printf("ERROR: "+msg, args...) }
+
+// ServeStdio helper moved to stdio_server.go

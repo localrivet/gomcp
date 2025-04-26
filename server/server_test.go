@@ -17,8 +17,6 @@ import (
 	// Use full import paths as we are in server_test package
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
-
-	// "github.com/localrivet/gomcp/transport/stdio" // Not needed for these tests
 	"github.com/localrivet/gomcp/types"
 )
 
@@ -92,8 +90,8 @@ func (s *mockSession) GetClientCapabilities() protocol.ClientCapabilities {
 	return s.clientCaps
 }
 
-// Ensure mockSession implements server.ClientSession
-var _ server.ClientSession = (*mockSession)(nil)
+// Ensure mockSession implements types.ClientSession
+var _ types.ClientSession = (*mockSession)(nil) // Use types.ClientSession
 
 // --- NilLogger ---
 type NilLogger struct{}
@@ -118,9 +116,7 @@ func TestInitializeSuccess(t *testing.T) {
 	clientName := "TestClient-Init-Success"
 	mockSessionID := "mock-session-success"
 
-	srv := server.NewServer(serverName, server.ServerOptions{
-		Logger: NewNilLogger(),
-	})
+	srv := server.NewServer(serverName, server.WithLogger(NewNilLogger()))
 	session := newMockSession(mockSessionID)
 
 	if err := srv.RegisterSession(session); err != nil {
@@ -207,10 +203,10 @@ func TestInitializeSuccessOldVersion(t *testing.T) {
 		Completions:   &struct{}{}, // Should be removed for old version
 		Logging:       &struct{}{}, // Should remain
 	}
-	srv := server.NewServer(serverName, server.ServerOptions{
-		Logger:             NewNilLogger(),
-		ServerCapabilities: serverCaps,
-	})
+	srv := server.NewServer(serverName,
+		server.WithLogger(NewNilLogger()),
+		server.WithServerCapabilities(serverCaps),
+	)
 	session := newMockSession(mockSessionID)
 	// Methods are now part of mockSession struct
 
@@ -306,7 +302,7 @@ func TestInitializeUnsupportedVersion(t *testing.T) {
 	serverName := "TestServer-Init-FailVer"
 	mockSessionID := "mock-session-failver"
 
-	srv := server.NewServer(serverName, server.ServerOptions{Logger: NewNilLogger()})
+	srv := server.NewServer(serverName, server.WithLogger(NewNilLogger()))
 	session := newMockSession(mockSessionID)
 
 	if err := srv.RegisterSession(session); err != nil {
@@ -369,10 +365,10 @@ func TestInitializeSuccessCurrentVersionCapabilities(t *testing.T) {
 		Completions:   &struct{}{},
 		Logging:       &struct{}{},
 	}
-	srv := server.NewServer(serverName, server.ServerOptions{
-		Logger:             NewNilLogger(),
-		ServerCapabilities: serverCaps, // Pass the configured caps
-	})
+	srv := server.NewServer(serverName,
+		server.WithLogger(NewNilLogger()),
+		server.WithServerCapabilities(serverCaps), // Pass the configured caps
+	)
 	session := newMockSession(mockSessionID)
 
 	if err := srv.RegisterSession(session); err != nil {
@@ -447,7 +443,7 @@ func TestInitializeInvalidSequence(t *testing.T) {
 	serverName := "TestServer-Init-BadSeq"
 	mockSessionID := "mock-session-badseq"
 
-	srv := server.NewServer(serverName, server.ServerOptions{Logger: NewNilLogger()})
+	srv := server.NewServer(serverName, server.WithLogger(NewNilLogger()))
 	session := newMockSession(mockSessionID)
 
 	if err := srv.RegisterSession(session); err != nil {
@@ -497,7 +493,7 @@ func TestInitializeMalformedPayload(t *testing.T) {
 	serverName := "TestServer-Init-BadPayload"
 	mockSessionID := "mock-session-badpayload"
 
-	srv := server.NewServer(serverName, server.ServerOptions{Logger: NewNilLogger()})
+	srv := server.NewServer(serverName, server.WithLogger(NewNilLogger()))
 	session := newMockSession(mockSessionID)
 
 	if err := srv.RegisterSession(session); err != nil {
@@ -560,7 +556,7 @@ func TestBatchRequestHandling(t *testing.T) {
 	defer log.SetOutput(originalOutput)
 
 	serverName := "TestServer-Batch"
-	srv := server.NewServer(serverName, server.ServerOptions{Logger: NewNilLogger()})
+	srv := server.NewServer(serverName, server.WithLogger(NewNilLogger()))
 
 	// --- Helper function to initialize a session ---
 	initializeSession := func(version string, sessionID string) *mockSession {
@@ -677,7 +673,7 @@ func TestToolCallAcrossVersions(t *testing.T) {
 	defer log.SetOutput(originalOutput)
 
 	serverName := "TestServer-ToolCall"
-	srv := server.NewServer(serverName, server.ServerOptions{Logger: NewNilLogger()})
+	srv := server.NewServer(serverName, server.WithLogger(NewNilLogger()))
 
 	// Register a simple echo tool
 	echoTool := protocol.Tool{Name: "echo", InputSchema: protocol.ToolInputSchema{Type: "object"}}
@@ -775,7 +771,7 @@ func TestResourceSizeHandling(t *testing.T) {
 	defer log.SetOutput(originalOutput)
 
 	serverName := "TestServer-ResourceSize"
-	srv := server.NewServer(serverName, server.ServerOptions{Logger: NewNilLogger()})
+	srv := server.NewServer(serverName, server.WithLogger(NewNilLogger()))
 	session := newMockSession("mock-resource-size")
 
 	// Register session

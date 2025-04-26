@@ -31,86 +31,75 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
-	"github.com/localrivet/gomcp/transport/stdio"
-	"github.com/localrivet/gomcp/types"
+	"github.com/localrivet/gomcp/util/schema" // Use schema helper
 )
 
-// Example Tool Handler Function
-func handleEchoTool(ctx context.Context, args map[string]interface{}) ([]protocol.Content, error) {
-	inputText, ok := args["input"].(string)
-	if !ok {
-		return nil, fmt.Errorf("missing or invalid 'input' argument")
-	}
-	return []protocol.Content{
-		protocol.TextContent{Type: "text", Text: "Echo: " + inputText},
-	}, nil
+// Define arguments struct for the echo tool
+type EchoArgs struct {
+	Input string `json:"input" description:"Text to echo"`
 }
 
+// Example Tool Handler Function using the correct signature
+// and schema.HandleArgs for parsing.
+func handleEchoTool(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool) {
+	args, errContent, isErr := schema.HandleArgs[EchoArgs](arguments)
+	if isErr {
+		log.Printf("Error handling echo args: %v", errContent)
+		return errContent, true
+	}
+
+	log.Printf("Executing echo tool with input: %s", args.Input)
+	return []protocol.Content{
+		protocol.TextContent{Type: "text", Text: "Echo: " + args.Input},
+	}, false
+}
 
 func main() {
-	// 1. Define Server Information & Capabilities
-	serverInfo := types.Implementation{
-		Name:    "my-gomcp-server",
-		Version: "1.0.0",
-	}
-	serverCapabilities := protocol.ServerCapabilities{
-		// Indicate which optional features are supported
-		Tools: &protocol.ToolsCaps{ListChanged: true}, // Example: We support tool list changes
-		// Resources: &protocol.ResourcesCaps{Subscribe: true, ListChanged: true},
-		// Prompts:   &protocol.PromptsCaps{ListChanged: true},
-		// Logging:   &protocol.LoggingCaps{},
-	}
+	// Configure logger
+	log.SetOutput(os.Stderr)
+	log.SetFlags(log.Ltime | log.Lshortfile)
 
-	// 2. Create Server Options
-	opts := server.NewServerOptions(serverInfo)
-	opts.Capabilities = serverCapabilities // Set the defined capabilities
-	// opts.Logger = /* provide a custom logger if desired */
-	// opts.Instruction = "Welcome! Use tools/list to see available tools." // Optional instruction sent during init
+	// 1. Create the Server Instance
+	// Provide a name and optional server options
+	srv := server.NewServer("my-gomcp-server", server.ServerOptions{
+		// Define server capabilities if needed (defaults are reasonable)
+		ServerCapabilities: protocol.ServerCapabilities{
+			Tools: &protocol.ToolsCaps{ListChanged: true}, // Example
+		},
+		// Logger: provide a custom logger if desired
+	})
 
-	// 3. Create the Server Instance
-	srv := server.NewServer(opts)
-
-	// 4. Register Capabilities (Tools, Resources, Prompts)
+	// 2. Define and Register Capabilities (e.g., Tools)
 	echoTool := protocol.Tool{
 		Name:        "echo",
 		Description: "Simple tool that echoes back the input text.",
-		InputSchema: protocol.ToolInputSchema{
-			Type: "object",
-			Properties: map[string]protocol.PropertyDetail{
-				"input": {Type: "string", Description: "Text to echo"},
-			},
-			Required: []string{"input"},
-		},
+		InputSchema: schema.FromStruct(EchoArgs{}), // Generate schema from struct
 	}
-	// The handler function executes the tool's logic
+	// Register the tool with its handler
 	err := srv.RegisterTool(echoTool, handleEchoTool)
 	if err != nil {
 		log.Fatalf("Failed to register tool: %v", err)
 	}
 	log.Printf("Registered tool: %s", echoTool.Name)
 
-	// Register resources and prompts similarly using srv.RegisterResource(...) and srv.RegisterPrompt(...)
+	// Register resources and prompts similarly if needed
 
-	// 5. Choose and Create a Transport
-	// Using Stdio for simplicity in this example
-	transport := stdio.NewStdioTransport(os.Stdin, os.Stdout, opts.Logger)
-
-	// 6. Run the Server
+	// 3. Run the Server using a built-in transport handler
+	// Using ServeStdio for simplicity in this example
 	log.Println("Starting MCP server on stdio...")
-	if err := srv.Run(transport); err != nil {
-		// Run blocks until the transport is closed or an error occurs
+	if err := server.ServeStdio(srv); err != nil {
+		// ServeStdio blocks until the transport is closed or an error occurs
 		log.Fatalf("Server exited with error: %v", err)
 	}
 
 	log.Println("Server stopped.")
 }
-
 ```
 
 ## Registering Capabilities

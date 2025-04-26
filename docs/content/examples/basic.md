@@ -1,52 +1,13 @@
 ---
-title: Basic (Stdio)
+title: Basic (Stdio Multi-Tool)
 weight: 10 # First example
 ---
 
-This page details the examples found in the `/examples/basic` directory, demonstrating fundamental server setup and tool registration using the `stdio` transport.
+This page details the example found in the `/examples/basic` directory. It demonstrates a fundamental MCP server setup using the `stdio` transport, featuring multiple registered tools (`echo`, `calculator`, `filesystem`), and a corresponding client that interacts with these tools.
 
-## Stdio Server (`examples/basic/stdio`)
+## Basic Multi-Tool Server (`examples/basic/server`)
 
-This example shows the simplest way to run an MCP server, communicating over standard input and output.
-
-**Key parts:**
-
-```go
-package main
-
-import (
-	"log"
-	"os"
-
-	"github.com/localrivet/gomcp/server"
-	"github.com/localrivet/gomcp/transport/stdio"
-	"github.com/localrivet/gomcp/types"
-)
-
-func main() {
-	// 1. Define server info
-	serverInfo := types.Implementation{Name: "stdio-server", Version: "0.1.0"}
-	// 2. Create server options
-	opts := server.NewServerOptions(serverInfo)
-	// 3. Create server instance
-	srv := server.NewServer(opts)
-	// 4. Create stdio transport
-	transport := stdio.NewStdioTransport(os.Stdin, os.Stdout, nil)
-
-	log.Println("Starting stdio MCP server...")
-	// 5. Run the server
-	if err := srv.Run(transport); err != nil {
-		log.Fatalf("Server error: %v", err)
-	}
-	log.Println("Server stopped.")
-}
-```
-
-**To Run:** Navigate to `examples/basic/stdio` and run `go run main.go`.
-
-## Basic Tool Server (`examples/basic/tools`)
-
-This builds on the stdio server by defining and registering a simple "echo" tool.
+This example showcases a server communicating over standard input/output and managing several distinct tools.
 
 **Key parts:**
 
@@ -55,43 +16,77 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
-	"github.com/localrivet/gomcp/transport/stdio"
-	"github.com/localrivet/gomcp/types"
+	"github.com/localrivet/gomcp/util/schema"
 )
 
-// Tool Handler
-func handleEcho(ctx context.Context, args map[string]interface{}) ([]protocol.Content, error) {
-	input, ok := args["text"].(string)
-	if !ok { return nil, fmt.Errorf("missing 'text' argument") }
-	return []protocol.Content{ protocol.TextContent{Type: "text", Text: "Echo: " + input} }, nil
+// Define arguments for the echo tool
+type EchoArgs struct {
+	Message string `json:"message" description:"The message to echo."`
 }
 
-func main() {
-	serverInfo := types.Implementation{Name: "tool-server", Version: "0.1.0"}
-	opts := server.NewServerOptions(serverInfo)
-	opts.Capabilities.Tools = &protocol.ToolsCaps{} // Enable tool capability
-	srv := server.NewServer(opts)
+// Handler for the echo tool
+func echoHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool) {
+	args, errContent, isErr := schema.HandleArgs[EchoArgs](arguments)
+	if isErr {
+		log.Printf("Error handling echo args: %v", errContent)
+		return errContent, true
+	}
+	log.Printf("Executing echo tool with message: %s", args.Message)
+	// Note: The actual example prepends "Echo: " in its response
+	return []protocol.Content{protocol.TextContent{Type: "text", Text: args.Message}}, false
+}
 
-	// Tool Definition
-	echoToolDef := protocol.Tool{
-		Name: "echo", Description: "Echoes back text.",
-		InputSchema: protocol.ToolInputSchema{ /* ... see full file ... */ },
+// (Handlers for calculator and filesystem tools are also defined in the full example)
+
+func main() {
+	log.SetOutput(os.Stderr)
+	log.SetFlags(log.Ltime | log.Lshortfile)
+	log.Println("Starting Basic Multi-Tool MCP Server...")
+
+	// Create the core server instance
+	srv := server.NewServer("GoMultiToolServer", server.ServerOptions{})
+
+	// Define the echo tool
+	echoTool := protocol.Tool{
+		Name:        "echo",
+		Description: "Echoes back the provided message.",
+		InputSchema: schema.FromStruct(EchoArgs{}), // Generate schema from struct
+	}
+	// Register the echo tool
+	if err := srv.RegisterTool(echoTool, echoHandler); err != nil {
+		log.Fatalf("Failed to register echo tool: %v", err)
 	}
 
-	// Register Tool
-	if err := srv.RegisterTool(echoToolDef, handleEcho); err != nil { /* handle error */ }
+	// (Calculator and Filesystem tools are also registered in the full example)
 
-	transport := stdio.NewStdioTransport(os.Stdin, os.Stdout, nil)
-	log.Println("Starting tool server on stdio...")
-	if err := srv.Run(transport); err != nil { /* handle error */ }
-	log.Println("Server stopped.")
+	log.Println("Server setup complete. Listening on stdio...")
+	// Start the server using the built-in stdio handler.
+	// This blocks until the server exits (e.g., EOF on stdin or error).
+	if err := server.ServeStdio(srv); err != nil {
+		log.Fatalf("Server exited with error: %v", err)
+	}
+	log.Println("Server shutdown complete.")
 }
 ```
 
-**To Run:** Navigate to `examples/basic/tools` and run `go run main.go`. Send a `tools/call` request for the `echo` tool via stdin.
+## Basic Client (`examples/basic/client`)
+
+The corresponding client connects to the server via stdio, lists the available tools, and then calls each tool (`echo`, `calculator`, `filesystem`) with various arguments to demonstrate interaction and error handling. See the `examples/basic/client/main.go` file for the full implementation.
+
+## Running the Example
+
+The server and client are designed to be connected via standard input/output.
+
+1.  Navigate to the main `examples` directory in your terminal.
+2.  Run the following command to pipe the client's output to the server's input and vice-versa:
+
+    ```bash
+    (cd basic/server && go run .) | (cd basic/client && go run .)
+    ```
+
+You will see log output from both the server and the client in your terminal, showing the handshake, tool listing, and results of each tool call.

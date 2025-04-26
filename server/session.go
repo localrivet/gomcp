@@ -4,45 +4,10 @@ package server
 import (
 	"context"  // Added for SSEContextFunc
 	"net/http" // Added for SSEContextFunc
-
-	"github.com/localrivet/gomcp/protocol"
+	// "github.com/localrivet/gomcp/types" // Import types if needed elsewhere in this file
 )
 
-// ClientSession represents an active connection from a single client.
-// The core MCPServer uses this interface to interact with connected clients,
-// primarily for sending asynchronous messages like notifications or responses
-// that aren't part of a direct request-response flow handled by HandleMessage.
-type ClientSession interface {
-	// SessionID returns a unique identifier for this session.
-	SessionID() string
-
-	// SendNotification sends a JSON-RPC notification to the client session.
-	SendNotification(notification protocol.JSONRPCNotification) error
-
-	// SendResponse sends a JSON-RPC response to the client session.
-	SendResponse(response protocol.JSONRPCResponse) error
-
-	// Close terminates the client session and cleans up resources.
-	Close() error
-
-	// Initialize marks the session as having completed the MCP handshake.
-	Initialize()
-
-	// Initialized returns true if the session has completed the MCP handshake.
-	Initialized() bool
-
-	// SetNegotiatedVersion stores the protocol version agreed upon during initialization.
-	SetNegotiatedVersion(version string)
-
-	// GetNegotiatedVersion returns the protocol version agreed upon during initialization.
-	GetNegotiatedVersion() string
-
-	// StoreClientCapabilities stores the capabilities received from the client during initialization.
-	StoreClientCapabilities(caps protocol.ClientCapabilities)
-
-	// GetClientCapabilities returns the stored client capabilities.
-	GetClientCapabilities() protocol.ClientCapabilities
-}
+// ClientSession interface moved to types/session.go
 
 // SSEContextFunc is a function type used by the SSEServer to allow
 // customization of the context passed to the core MCPServer's HandleMessage method,

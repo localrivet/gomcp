@@ -6,22 +6,29 @@ import (
 	"fmt"
 
 	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/server"
+	// "github.com/localrivet/gomcp/server" // No longer needed directly
+	"github.com/localrivet/gomcp/types" // Import types for ClientSession
 )
 
 // ProgressReporter helps report progress in tool handlers.
+// It needs access to the server instance to send progress notifications.
 type ProgressReporter struct {
 	token   *protocol.ProgressToken
-	server  *server.Server
-	session server.ClientSession
+	server  ServerLogic         // Use an interface for the server dependency
+	session types.ClientSession // Use types.ClientSession
 	ctx     context.Context
 }
 
+// ServerLogic defines the methods the ProgressReporter needs from the server.
+type ServerLogic interface {
+	SendProgress(sessionID string, params protocol.ProgressParams) error
+}
+
 // NewProgressReporter creates a new progress reporter.
-func NewProgressReporter(ctx context.Context, token *protocol.ProgressToken, server *server.Server, session server.ClientSession) *ProgressReporter {
+func NewProgressReporter(ctx context.Context, token *protocol.ProgressToken, server ServerLogic, session types.ClientSession) *ProgressReporter { // Use types.ClientSession and ServerLogic interface
 	return &ProgressReporter{
 		token:   token,
-		server:  server,
+		server:  server, // Store the interface
 		session: session,
 		ctx:     ctx,
 	}
