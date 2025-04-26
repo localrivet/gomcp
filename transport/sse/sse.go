@@ -375,7 +375,9 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		// Encode the entire slice (will be a single object if only one response)
 		if err := json.NewEncoder(w).Encode(responses); err != nil {
-			s.logger.Error("Session %s: Failed to write HTTP response(s): %v", sessionID, err)
+			s.logger.Error("Session %s: Failed to encode/write HTTP response(s): %v", sessionID, err)
+		} else {
+			s.logger.Debug("Session %s: Successfully encoded/wrote HTTP response(s)", sessionID) // Added success log
 		}
 	} else {
 		// For notifications or empty batches resulting in no response, send 204 No Content
