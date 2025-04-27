@@ -390,11 +390,16 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 
 		// Send each response via the session's SSE queue
 		for _, response := range responses {
-			if response != nil { // Ensure response isn't nil
-				if err := session.SendResponse(*response); err != nil {
-					// Log error, but continue trying to send others if any
-					s.logger.Error("Session %s: Failed to queue response ID %v for SSE: %v", sessionID, response.ID, err)
-				}
+			if response == nil {
+				s.logger.Warn("Session %s: Skipping nil response in response list", sessionID)
+				continue
+			}
+
+			// Safely send the response via the session's SSE queue
+			resp := *response // Create a copy to avoid modifying the original
+			if err := session.SendResponse(resp); err != nil {
+				// Log error, but continue trying to send others if any
+				s.logger.Error("Session %s: Failed to queue response ID %v for SSE: %v", sessionID, resp.ID, err)
 			}
 		}
 	}
