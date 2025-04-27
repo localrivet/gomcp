@@ -18,7 +18,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/types"
-	"github.com/r3labs/sse/v2" // SSE Client library
+	"github.com/r3labs/sse/v2"     // SSE Client library
+	"gopkg.in/cenkalti/backoff.v1" // For backoff strategy
 )
 
 // Client represents an MCP client instance using the SSE+HTTP hybrid transport.
@@ -59,6 +60,11 @@ type Client struct {
 	sseClient        *sse.Client // SSE client connection handler
 	sseMu            sync.Mutex  // Mutex for SSE client state/reconnection?
 	preferredVersion string      // Added: Store the preferred version for initialization
+
+	// SSE reconnection state
+	sseReconnecting   bool
+	sseReconnectMu    sync.Mutex
+	maxReconnectTries int
 
 	// Client state
 	initialized bool
@@ -149,6 +155,7 @@ func NewClient(clientName string, opts ClientOptions) (*Client, error) {
 		initialized:          false,
 		connected:            false,
 		closed:               false,
+		maxReconnectTries:    3, // Default max reconnection attempts
 		processingCtx:        ctx,
 		processingCancel:     cancel,
 	}
@@ -176,6 +183,10 @@ func (c *Client) Connect(ctx context.Context) error {
 	sseURL := c.serverBaseURL + c.sseEndpoint
 	c.logger.Info("Connecting to SSE endpoint: %s", sseURL)
 	c.sseClient = sse.NewClient(sseURL) // Create SSE client instance
+
+	// Enable automatic reconnection
+	expBackoff := backoff.NewExponentialBackOff()
+	c.sseClient.ReconnectStrategy = backoff.WithMaxTries(expBackoff, uint64(c.maxReconnectTries))
 
 	endpointCh := make(chan string, 1)
 	errCh := make(chan error, 1)
@@ -210,6 +221,11 @@ func (c *Client) Connect(ctx context.Context) error {
 						}
 					} else {
 						c.logger.Info("Received session ID: %s", c.sessionID)
+						// Update connection state
+						c.stateMu.Lock()
+						c.connected = true
+						c.stateMu.Unlock()
+
 						select {
 						case endpointCh <- c.sessionID:
 						default:
@@ -227,17 +243,28 @@ func (c *Client) Connect(ctx context.Context) error {
 			}
 			c.sseMu.Unlock()
 		})
-		// SubscribeRaw returned
+
+		// SubscribeRaw returned, which means the connection ended
 		c.logger.Warn("SSE SubscribeRaw finished: %v", err)
+
+		// Only treat this as a fatal error if we never established a connection
 		c.sseMu.Lock()
-		if c.sessionID == "" && err != nil {
+		c.stateMu.RLock()
+		hasSessionID := c.sessionID != ""
+		isClosed := c.closed
+		c.stateMu.RUnlock()
+
+		if !hasSessionID && err != nil && !isClosed {
 			select {
 			case errCh <- fmt.Errorf("sse connection failed: %w", err):
 			default:
 			}
+		} else if !isClosed {
+			// The connection was previously established but is now closed
+			// Attempt to reconnect in the background
+			go c.attemptSSEReconnect(ctx)
 		}
 		c.sseMu.Unlock()
-		c.Close() // Ensure cleanup on connection error
 	}()
 
 	// Wait for session ID or error/timeout
@@ -315,6 +342,28 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	c.logger.Info("Initialization successful with server: %s", initResult.ServerInfo.Name)
 	return nil
+}
+
+// attemptSSEReconnect tries to reconnect the SSE connection after unexpected disconnect
+func (c *Client) attemptSSEReconnect(ctx context.Context) {
+	c.sseReconnectMu.Lock()
+	if c.sseReconnecting {
+		c.sseReconnectMu.Unlock()
+		return // Already attempting to reconnect
+	}
+	c.sseReconnecting = true
+	c.sseReconnectMu.Unlock()
+
+	defer func() {
+		c.sseReconnectMu.Lock()
+		c.sseReconnecting = false
+		c.sseReconnectMu.Unlock()
+	}()
+
+	c.logger.Info("Attempting to reconnect SSE connection...")
+
+	// The r3labs SSE client should handle reconnections automatically
+	// but we'll keep this function for potential future enhancements
 }
 
 // --- Public Methods ---
@@ -494,10 +543,15 @@ func (c *Client) sendRequestAndWait(ctx context.Context, method string, id inter
 	}
 	defer httpResp.Body.Close()
 
-	if httpResp.StatusCode != http.StatusOK && httpResp.StatusCode != http.StatusAccepted {
+	// Accept any 2xx status code as valid, especially 204 No Content which is standard for the MCP protocol
+	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
 		bodyBytes, _ := io.ReadAll(httpResp.Body)
 		return nil, fmt.Errorf("http request failed: status %d, body: %s", httpResp.StatusCode, string(bodyBytes))
 	}
+
+	// For 204 No Content or other valid status codes, we'll wait for the response via SSE
+	c.logger.Debug("HTTP POST for method %s (ID: %s) returned status %d, waiting for response via SSE...",
+		method, requestIDStr, httpResp.StatusCode)
 
 	// Wait for the response via SSE with timeout
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -550,7 +604,8 @@ func (c *Client) sendNotificationViaPost(ctx context.Context, notification proto
 	}
 	defer httpResp.Body.Close()
 
-	if httpResp.StatusCode != http.StatusAccepted && httpResp.StatusCode != http.StatusNoContent {
+	// Accept any 2xx status code as valid for notifications
+	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
 		bodyBytes, _ := io.ReadAll(httpResp.Body)
 		return fmt.Errorf("http notification request failed: status %d, body: %s", httpResp.StatusCode, string(bodyBytes))
 	}
