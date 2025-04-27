@@ -36,6 +36,8 @@ type sseSession struct {
 	writer              http.ResponseWriter
 	flusher             http.Flusher
 	done                chan struct{}                     // Closed when the connection is done
+	closeOnce           sync.Once                         // Ensures done channel is closed only once
+	closed              atomic.Bool                       // Tracks if Close has been called
 	eventQueue          chan string                       // Channel for queuing formatted SSE event strings
 	sessionID           string                            // Our internal unique session ID
 	notificationChannel chan protocol.JSONRPCNotification // Channel for receiving notifications from MCPServer (alternative to direct Send) - DEPRECATED?
@@ -117,11 +119,20 @@ func (s *sseSession) SendResponse(response protocol.JSONRPCResponse) error {
 }
 
 // Close signals the SSE sending loop to terminate by closing the done channel.
+// Uses sync.Once to ensure it only happens once.
 func (s *sseSession) Close() error {
-	s.logger.Info("Session %s: Close called", s.sessionID)
-	// Signal the SSE writing loop to stop
-	close(s.done)
-	// Closing the underlying HTTP connection is handled by the http server/handler lifecycle
+	if s.closed.Load() {
+		s.logger.Debug("Session %s: Close called, but already closed.", s.sessionID)
+		return nil
+	}
+
+	s.closeOnce.Do(func() {
+		s.logger.Info("Session %s: Closing done channel.", s.sessionID)
+		s.closed.Store(true) // Mark as closed
+		close(s.done)        // Signal the SSE writing loop to stop
+		// Closing the underlying HTTP connection is handled by the http server/handler lifecycle
+		// when HandleSSE returns.
+	})
 	return nil
 }
 
@@ -299,14 +310,16 @@ func (s *SSEServer) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case eventString := <-session.eventQueue:
+			s.logger.Debug("Session %s: Dequeued event, attempting write...", session.SessionID())
 			_, err := fmt.Fprint(w, eventString)
 			if err != nil {
-				s.logger.Error("Session %s: Error writing event to client: %v", session.SessionID(), err)
+				s.logger.Error("Session %s: Error during fmt.Fprint to client: %v. Closing SSE stream.", session.SessionID(), err)
 				// Assume connection is broken, trigger cleanup by returning
 				return
 			}
+			s.logger.Debug("Session %s: Write successful, attempting flush...", session.SessionID())
 			flusher.Flush() // Flush after each event
-			s.logger.Debug("Session %s: Wrote event to client", session.SessionID())
+			s.logger.Debug("Session %s: Flush completed.", session.SessionID())
 		case <-session.done: // Closed by session.Close()
 			s.logger.Info("Session %s: Done channel closed, closing SSE connection.", session.SessionID())
 			return

@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"strings"
+	"time" // Added for http.Server timeouts
 
 	"github.com/localrivet/gomcp/transport/sse" // Import the sse transport package
 	// "github.com/localrivet/gomcp/types" // Logger comes from srv
@@ -51,10 +52,24 @@ func ServeSSE(srv *Server, addr string, basePath string) error {
 		basePath, // Use the basePath which includes trailing slash here
 		basePath) // Use the basePath which includes trailing slash here
 
-	// Start the HTTP server
-	err := http.ListenAndServe(addr, mux)
-	if err != nil {
-		logger.Error("HTTP server error: %v", err)
+	// Configure and start the HTTP server explicitly to set timeouts
+	// SSE connections need longer timeouts, especially IdleTimeout.
+	httpServer := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+		// Set timeouts appropriate for long-lived SSE connections
+		// IdleTimeout prevents the server from keeping idle connections open indefinitely.
+		// Set a much longer timeout when potentially used with proxies like mcp-remote.
+		// ReadHeaderTimeout is also good practice. WriteTimeout might be less critical for SSE.
+		IdleTimeout:       10 * time.Minute, // Increased to 10 minutes
+		ReadHeaderTimeout: 30 * time.Second, // Increased slightly
+		// WriteTimeout: 60 * time.Second, // Optional: Might interrupt long SSE pushes if set too low
+	}
+
+	logger.Info("Starting HTTP server with timeouts (Idle: %v, ReadHeader: %v)...", httpServer.IdleTimeout, httpServer.ReadHeaderTimeout)
+	err := httpServer.ListenAndServe()
+	if err != nil && err != http.ErrServerClosed { // Ignore ErrServerClosed on graceful shutdown
+		logger.Error("HTTP server ListenAndServe error: %v", err)
 	}
 	return err
 }
