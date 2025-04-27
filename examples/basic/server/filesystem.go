@@ -81,7 +81,8 @@ func getSafePath(relativePath string) (string, error) {
 // It validates arguments, determines the safe path, performs the requested operation,
 // and returns the result content and isError status.
 // It now matches the ToolHandlerFunc signature.
-func executeFileSystem(ctx context.Context, progressToken *protocol.ProgressToken, args any) (content []protocol.Content, isError bool) { // Use protocol types
+func executeFileSystem(ctx context.Context, progressToken interface{}, args any) (content []protocol.Content, isError bool) { // Use protocol types
+	// progressToken is now interface{}, but not used here
 	// Helper to create error response content
 	newErrorContent := func(msg string) []protocol.Content { // Use protocol.Content
 		return []protocol.Content{protocol.TextContent{Type: "text", Text: msg}} // Use protocol.TextContent

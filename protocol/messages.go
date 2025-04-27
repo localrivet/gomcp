@@ -277,11 +277,13 @@ type ProgressParams struct {
 }
 
 // ProgressToken is an identifier for reporting progress.
-type ProgressToken string
+// It can be a string or a number according to the spec.
+// type ProgressToken string // Removed, using interface{} now
 
 // RequestMeta contains metadata associated with a request, like a progress token.
 type RequestMeta struct {
-	ProgressToken *ProgressToken `json:"progressToken,omitempty"`
+	// Use interface{} to accept string or number, per spec.
+	ProgressToken interface{} `json:"progressToken,omitempty"`
 }
 
 // --- List Changed Notification Structures ---

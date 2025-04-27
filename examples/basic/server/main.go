@@ -46,7 +46,8 @@ var echoTool = protocol.Tool{
 // --- Tool Handler Functions ---
 
 // echoHandler implements the logic for the echo tool.
-func echoHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool) {
+func echoHandler(ctx context.Context, progressToken interface{}, arguments any) (content []protocol.Content, isError bool) {
+	// progressToken is now interface{}, but not used in this handler
 	args, ok := arguments.(map[string]interface{})
 	if !ok {
 		errorContent := protocol.TextContent{Type: "text", Text: "Invalid arguments for tool 'echo' (expected object)"}
@@ -73,7 +74,8 @@ func echoHandler(ctx context.Context, progressToken *protocol.ProgressToken, arg
 }
 
 // calculatorHandler implements the logic for the calculator tool.
-func calculatorHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool) {
+func calculatorHandler(ctx context.Context, progressToken interface{}, arguments any) (content []protocol.Content, isError bool) {
+	// progressToken is now interface{}, passed to executeCalculator
 	args, ok := arguments.(map[string]interface{})
 	if !ok {
 		return []protocol.Content{protocol.TextContent{Type: "text", Text: "Invalid arguments for calculator tool (expected object)"}}, true
@@ -83,7 +85,8 @@ func calculatorHandler(ctx context.Context, progressToken *protocol.ProgressToke
 }
 
 // filesystemHandler implements the logic for the filesystem tool.
-func filesystemHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool) {
+func filesystemHandler(ctx context.Context, progressToken interface{}, arguments any) (content []protocol.Content, isError bool) {
+	// progressToken is now interface{}, passed to executeFileSystem
 	args, ok := arguments.(map[string]interface{})
 	if !ok {
 		return []protocol.Content{protocol.TextContent{Type: "text", Text: "Invalid arguments for filesystem tool (expected object)"}}, true

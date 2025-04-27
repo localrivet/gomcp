@@ -367,9 +367,10 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		session, ok := sessionValue.(*sseSession)
+		// Assert against the interface, not the concrete type, to allow mocks
+		session, ok := sessionValue.(types.ClientSession)
 		if !ok {
-			s.logger.Error("Session %s has unexpected type %T in map.", sessionID, sessionValue)
+			s.logger.Error("Session %s stored value is not a types.ClientSession (%T).", sessionID, sessionValue)
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

@@ -369,12 +369,14 @@ func (c *Client) ListTools(ctx context.Context, params protocol.ListToolsRequest
 }
 
 // CallTool sends a 'tools/call' request via HTTP POST and waits for the response via SSE.
-func (c *Client) CallTool(ctx context.Context, params protocol.CallToolParams, progressToken *protocol.ProgressToken) (*protocol.CallToolResult, error) {
+// progressToken is now interface{} to accept string or number per spec.
+func (c *Client) CallTool(ctx context.Context, params protocol.CallToolParams, progressToken interface{}) (*protocol.CallToolResult, error) {
 	timeout := 60 * time.Second
-	if progressToken != nil {
+	if progressToken != nil { // Check if a token was provided
 		if params.Meta == nil {
 			params.Meta = &protocol.RequestMeta{}
 		}
+		// Assign the interface{} directly. The receiving server handles the type.
 		params.Meta.ProgressToken = progressToken
 	}
 	requestID := uuid.NewString()

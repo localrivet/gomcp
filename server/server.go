@@ -14,7 +14,9 @@ import (
 )
 
 // ToolHandlerFunc defines the signature for functions that handle tool execution.
-type ToolHandlerFunc func(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool)
+// ToolHandlerFunc defines the signature for functions that handle tool execution.
+// progressToken is interface{} to accept string or number per spec.
+type ToolHandlerFunc func(ctx context.Context, progressToken interface{}, arguments any) (content []protocol.Content, isError bool)
 
 // NotificationHandlerFunc defines the signature for functions that handle client-to-server notifications.
 type NotificationHandlerFunc func(ctx context.Context, params interface{}) error
@@ -703,9 +705,9 @@ func (s *Server) handleCallToolRequest(ctx context.Context, session types.Client
 	defer func() { s.requestMu.Lock(); delete(s.activeRequests, requestIDStr); s.requestMu.Unlock(); cancel() }()
 
 	// Extract progress token safely, checking if Meta is nil
-	var progressToken *protocol.ProgressToken
+	var progressToken interface{} // Changed type
 	if requestParams.Meta != nil {
-		progressToken = requestParams.Meta.ProgressToken
+		progressToken = requestParams.Meta.ProgressToken // Assign interface{} directly
 	}
 
 	content, isError := handler(reqCtx, progressToken, requestParams.Arguments) // Pass potentially nil progressToken

@@ -27,7 +27,8 @@ var calculatorToolDefinition = protocol.Tool{ // Use protocol.Tool
 
 // executeCalculator contains the actual logic for the calculator tool.
 // It now matches the ToolHandlerFunc signature.
-func executeCalculator(ctx context.Context, progressToken *protocol.ProgressToken, args any) (content []protocol.Content, isError bool) { // Use protocol types
+func executeCalculator(ctx context.Context, progressToken interface{}, args any) (content []protocol.Content, isError bool) { // Use protocol types
+	// progressToken is now interface{}, but not used here
 	// Helper to create error response content
 	newErrorContent := func(msg string) []protocol.Content { // Use protocol.Content
 		return []protocol.Content{protocol.TextContent{Type: "text", Text: msg}} // Use protocol.TextContent

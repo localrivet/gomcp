@@ -14,14 +14,16 @@ type ToolHandler interface {
 	// Tool returns the tool definition.
 	Tool() protocol.Tool
 	// Handler returns the tool's handler function.
-	Handler() func(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) ([]protocol.Content, bool)
+	// progressToken is interface{} to accept string or number per spec.
+	Handler() func(ctx context.Context, progressToken interface{}, arguments any) ([]protocol.Content, bool)
 }
 
 // BaseTool provides a base implementation of ToolHandler.
 type BaseTool struct {
 	name        string
 	description string
-	handler     func(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) ([]protocol.Content, bool)
+	// progressToken is interface{} to accept string or number per spec.
+	handler func(ctx context.Context, progressToken interface{}, arguments any) ([]protocol.Content, bool)
 }
 
 // NewBaseTool creates a new base tool with the given name and description.
@@ -33,7 +35,8 @@ func NewBaseTool(name, description string) *BaseTool {
 }
 
 // WithHandler sets the tool's handler function.
-func (t *BaseTool) WithHandler(handler func(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) ([]protocol.Content, bool)) *BaseTool {
+// progressToken is interface{} to accept string or number per spec.
+func (t *BaseTool) WithHandler(handler func(ctx context.Context, progressToken interface{}, arguments any) ([]protocol.Content, bool)) *BaseTool {
 	t.handler = handler
 	return t
 }
@@ -48,6 +51,7 @@ func (t *BaseTool) Tool() protocol.Tool {
 }
 
 // Handler implements ToolHandler.Handler.
-func (t *BaseTool) Handler() func(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) ([]protocol.Content, bool) {
+// progressToken is interface{} to accept string or number per spec.
+func (t *BaseTool) Handler() func(ctx context.Context, progressToken interface{}, arguments any) ([]protocol.Content, bool) {
 	return t.handler
 }

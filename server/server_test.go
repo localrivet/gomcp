@@ -742,7 +742,8 @@ func TestToolCallAcrossVersions(t *testing.T) {
 
 	// Register a simple echo tool
 	echoTool := protocol.Tool{Name: "echo", InputSchema: protocol.ToolInputSchema{Type: "object"}}
-	echoHandler := func(ctx context.Context, pt *protocol.ProgressToken, args any) ([]protocol.Content, bool) {
+	echoHandler := func(ctx context.Context, pt interface{}, args any) ([]protocol.Content, bool) {
+		// pt is now interface{}, but not used here
 		return []protocol.Content{protocol.TextContent{Type: "text", Text: "echo success"}}, false
 	}
 	if err := srv.RegisterTool(echoTool, echoHandler); err != nil {

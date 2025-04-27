@@ -83,7 +83,8 @@ var testEchoTool = protocol.Tool{
 	InputSchema: protocol.ToolInputSchema{Type: "object", Properties: map[string]protocol.PropertyDetail{"message": {Type: "string"}}, Required: []string{"message"}},
 }
 
-func testEchoHandler(ctx context.Context, pt *protocol.ProgressToken, args any) ([]protocol.Content, bool) {
+func testEchoHandler(ctx context.Context, pt interface{}, args any) ([]protocol.Content, bool) {
+	// pt is now interface{}, but not used here
 	msg, _ := args.(map[string]interface{})["message"].(string)
 	return []protocol.Content{protocol.TextContent{Type: "text", Text: msg}}, false
 }
@@ -102,7 +103,8 @@ var testCalculatorTool = protocol.Tool{
 	},
 }
 
-func testCalculatorHandler(ctx context.Context, pt *protocol.ProgressToken, args any) ([]protocol.Content, bool) {
+func testCalculatorHandler(ctx context.Context, pt interface{}, args any) ([]protocol.Content, bool) {
+	// pt is now interface{}, but not used here
 	op1, ok1 := args.(map[string]interface{})["operand1"].(float64)
 	op2, ok2 := args.(map[string]interface{})["operand2"].(float64)
 	opStr, ok3 := args.(map[string]interface{})["operation"].(string)
@@ -145,7 +147,8 @@ var testFileSystemTool = protocol.Tool{
 	},
 }
 
-func testFilesystemHandler(ctx context.Context, pt *protocol.ProgressToken, args any) ([]protocol.Content, bool) {
+func testFilesystemHandler(ctx context.Context, pt interface{}, args any) ([]protocol.Content, bool) {
+	// pt is now interface{}, but not used here
 	op, _ := args.(map[string]interface{})["operation"].(string)
 	relativePath, okPath := args.(map[string]interface{})["path"].(string)
 	if !okPath {
