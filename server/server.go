@@ -212,12 +212,19 @@ func (s *Server) RegisterSession(session types.ClientSession) error { // Use typ
 }
 
 func (s *Server) UnregisterSession(sessionID string) {
+	s.logger.Info("UnregisterSession called for session: %s", sessionID)
 	_, loaded := s.sessions.LoadAndDelete(sessionID)
+	s.logger.Info("Session %s: LoadAndDelete executed. Loaded: %t", sessionID, loaded)
+
 	s.subscriptionMu.Lock()
 	delete(s.resourceSubscriptions, sessionID)
 	s.subscriptionMu.Unlock()
+	s.logger.Info("Session %s: Deleted from resourceSubscriptions", sessionID)
+
 	if loaded {
 		s.logger.Info("Unregistered session: %s", sessionID)
+	} else {
+		s.logger.Warn("Attempted to unregister non-existent session: %s", sessionID)
 	}
 }
 

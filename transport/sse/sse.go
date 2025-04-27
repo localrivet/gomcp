@@ -288,14 +288,22 @@ func (s *SSEServer) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	// Create and register session
 	session := newSSESession(w, flusher, s.logger)
 	s.sessions.Store(session.SessionID(), session)
-	defer s.sessions.Delete(session.SessionID()) // Ensure cleanup on exit
+	// DEFER 1: Delete from SSE transport's map
+	defer func() {
+		s.sessions.Delete(session.SessionID())
+		s.logger.Info("Session %s: Deleted from SSE transport map.", session.SessionID())
+	}()
 
 	if err := s.mcpServer.RegisterSession(session); err != nil {
 		s.logger.Error("Failed to register session %s with MCP server: %v", session.SessionID(), err)
 		http.Error(w, "Session registration failed", http.StatusInternalServerError)
 		return
 	}
-	defer s.mcpServer.UnregisterSession(session.SessionID()) // Ensure unregistration
+	// DEFER 2: Unregister from core server logic
+	defer func() {
+		s.mcpServer.UnregisterSession(session.SessionID())
+		s.logger.Info("Session %s: Unregistered from MCP core server.", session.SessionID())
+	}()
 
 	s.logger.Info("SSE connection established for session %s from %s", session.SessionID(), r.RemoteAddr)
 
@@ -320,12 +328,13 @@ func (s *SSEServer) HandleSSE(w http.ResponseWriter, r *http.Request) {
 			s.logger.Debug("Session %s: Write successful, attempting flush...", session.SessionID())
 			flusher.Flush() // Flush after each event
 			s.logger.Debug("Session %s: Flush completed.", session.SessionID())
-		case <-session.done: // Closed by session.Close()
+		case <-session.done: // Closed by session.Close() explicitly
 			s.logger.Info("Session %s: Done channel closed, closing SSE connection.", session.SessionID())
-			return
+			return // Triggers defers
 		case <-ctx.Done(): // Closed by client disconnecting or server shutdown
 			s.logger.Info("Session %s: Request context done (%v), closing SSE connection.", session.SessionID(), ctx.Err())
-			return
+			// *** THIS IS THE KEY PATH FOR CLIENT DISCONNECTS ***
+			return // Triggers defers
 		}
 	}
 }
