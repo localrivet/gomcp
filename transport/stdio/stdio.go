@@ -222,8 +222,8 @@ func (t *StdioTransport) startReader() {
 		// Basic JSON validation
 		if !json.Valid(lineCopy) {
 			t.logger.Error("StdioTransport: Received invalid JSON: %s", string(lineCopy))
-			_ = t.sendParseError("Received invalid JSON") // Attempt to notify other side
-			// Don't send this invalid message to the channel, just log and continue reading.
+			// _ = t.sendParseError("Received invalid JSON") // Do NOT send parse error; client seems unable to handle it.
+			// Just log it server-side and continue reading the next line.
 			continue
 		}
 
