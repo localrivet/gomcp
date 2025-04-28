@@ -153,10 +153,10 @@ func (t *StdioTransport) startReader() {
 	defer close(t.messageChan) // Ensure channel is closed when reader exits
 
 	scanner := bufio.NewScanner(t.reader)
-	// Configure scanner if needed (e.g., buffer size)
-	// const maxMessageSize = 1024 * 1024 // 1MB example
-	// buf := make([]byte, maxMessageSize)
-	// scanner.Buffer(buf, maxMessageSize)
+	// Explicitly set a larger buffer in case of rapid, large messages or unusual buffering.
+	const maxMessageSize = 1 * 1024 * 1024      // 1 MiB
+	buf := make([]byte, bufio.MaxScanTokenSize) // Start with default, but allow growth
+	scanner.Buffer(buf, maxMessageSize)
 
 	t.logger.Info("StdioTransport: Reader goroutine started.")
 
