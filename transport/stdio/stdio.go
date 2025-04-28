@@ -53,12 +53,20 @@ func NewStdioTransportWithReadWriter(reader io.Reader, writer io.Writer, opts ty
 	}
 	logger.Info("Creating new StdioTransport")
 
+	// Keep original writer for potential closing
+	rawWriter := writer
+
+	// Wrap stdout/stderr with a buffered writer for reliable flushing
+	if f, ok := writer.(*os.File); ok && (f == os.Stdout || f == os.Stderr) {
+		writer = bufio.NewWriter(writer)
+	}
+
 	return &StdioTransport{
 		reader:    reader,
-		writer:    writer,
+		writer:    writer, // This might be the buffered writer now
 		logger:    logger,
 		rawReader: reader,
-		rawWriter: writer,
+		rawWriter: rawWriter, // Store the original writer
 		closed:    false,
 	}
 }
@@ -98,14 +106,10 @@ func (t *StdioTransport) Send(data []byte) error {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
 
-	// Attempt to flush
+	// Attempt to flush if the writer supports it (like bufio.Writer)
 	if flusher, ok := t.writer.(interface{ Flush() error }); ok {
 		if err := flusher.Flush(); err != nil {
 			t.logger.Warn("StdioTransport: Failed to flush writer: %v", err)
-		}
-	} else if f, ok := t.writer.(*os.File); ok && (f == os.Stdout || f == os.Stderr) {
-		if err := f.Sync(); err != nil {
-			t.logger.Warn("StdioTransport: Failed to sync writer (%s): %v", f.Name(), err)
 		}
 	}
 
@@ -175,11 +179,13 @@ func (t *StdioTransport) ReceiveWithContext(ctx context.Context) ([]byte, error)
 				if !json.Valid(lineBytes) {
 					t.logger.Error("StdioTransport: Received invalid JSON: %s", string(lineBytes))
 					_ = t.sendParseError("Received invalid JSON") // Attempt to notify other side
-					resultChan <- result{err: fmt.Errorf("received invalid JSON")}
+					// Don't return an error, just log it and try to read the next line.
+					lineBuffer.Reset() // Reset buffer for the next attempt
+					continue           // Continue the loop to read the next message
 				} else {
 					resultChan <- result{data: lineBytes, err: nil} // Success
+					return                                          // Exit goroutine on success
 				}
-				return // Exit goroutine
 			}
 			// If context is cancelled during the loop (between ReadByte calls),
 			// the next ReadByte might still block, but the select below will catch it.
