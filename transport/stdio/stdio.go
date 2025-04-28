@@ -139,56 +139,65 @@ func (t *StdioTransport) ReceiveWithContext(ctx context.Context) ([]byte, error)
 	}
 	resultChan := make(chan result, 1)
 
-	// Goroutine to perform the blocking read
+	// Goroutine to perform the blocking read using bufio.Scanner
 	go func() {
-		var byteReader io.ByteReader
-		if br, ok := t.reader.(io.ByteReader); ok {
-			byteReader = br
-		} else {
-			byteReader = bufio.NewReaderSize(t.reader, 1)
+		scanner := bufio.NewScanner(t.reader)
+		// Increase buffer size if needed, default is bufio.MaxScanTokenSize (64 * 1024)
+		// const maxMessageSize = 1024 * 1024 // 1MB example
+		// buf := make([]byte, maxMessageSize)
+		// scanner.Buffer(buf, maxMessageSize)
+
+		for scanner.Scan() { // Blocks until a line is read or an error occurs
+			// Check context cancellation *before* processing the line
+			select {
+			case <-ctx.Done():
+				t.logger.Warn("StdioTransport: Receive context canceled during scan: %v", ctx.Err())
+				resultChan <- result{err: ctx.Err()}
+				return // Exit goroutine
+			default:
+				// Continue processing
+			}
+
+			lineBytes := scanner.Bytes() // Get the line bytes (without newline)
+			// Make a copy because scanner.Bytes() buffer can be overwritten by next Scan()
+			lineCopy := make([]byte, len(lineBytes))
+			copy(lineCopy, lineBytes)
+
+			// Append the newline character back for consistency if needed,
+			// or adjust downstream processing. Assuming downstream expects newline.
+			lineCopy = append(lineCopy, '\n')
+
+			t.logger.Debug("StdioTransport Received raw line: %s", string(lineCopy))
+
+			// Basic JSON validation
+			if !json.Valid(lineCopy) {
+				t.logger.Error("StdioTransport: Received invalid JSON: %s", string(lineCopy))
+				_ = t.sendParseError("Received invalid JSON") // Attempt to notify other side
+				// Don't return an error, just log it and try to read the next line.
+				continue // Continue the loop to read the next message
+			} else {
+				resultChan <- result{data: lineCopy, err: nil} // Success
+				return                                         // Exit goroutine on success
+			}
 		}
 
-		var lineBuffer bytes.Buffer
-		for {
-			b, err := byteReader.ReadByte() // Blocking call
-			if err != nil {
-				// Handle EOF: return data if buffer has content, otherwise return EOF error
-				if err == io.EOF {
-					if lineBuffer.Len() > 0 {
-						t.logger.Warn("StdioTransport: Reached EOF with partial line data.")
-						resultChan <- result{data: lineBuffer.Bytes(), err: nil} // Return partial data on EOF
-					} else {
-						resultChan <- result{err: io.EOF} // Signal clean EOF
-					}
-				} else {
-					// Other read errors
-					t.logger.Error("StdioTransport: Error reading byte: %v", err)
-					resultChan <- result{err: fmt.Errorf("failed to read message line: %w", err)}
-				}
-				return // Exit goroutine
+		// After scanner.Scan() returns false, check for errors
+		if err := scanner.Err(); err != nil {
+			// Don't report context.Canceled as the primary error if select caught it
+			if !(errors.Is(err, context.Canceled) && ctx.Err() != nil) {
+				t.logger.Error("StdioTransport: Scanner error: %v", err)
+				resultChan <- result{err: fmt.Errorf("failed to read message line: %w", err)}
+			} else if ctx.Err() == nil {
+				// If scanner error is context.Canceled but ctx.Err() is nil,
+				// it means cancellation happened *during* the Scan operation itself.
+				t.logger.Warn("StdioTransport: Receive context canceled during scan operation.")
+				resultChan <- result{err: context.Canceled} // Use standard context error
 			}
-
-			lineBuffer.WriteByte(b)
-
-			// Check if we reached the delimiter
-			if b == '\n' {
-				lineBytes := lineBuffer.Bytes()
-				t.logger.Debug("StdioTransport Received raw line: %s", string(lineBytes))
-
-				// Basic JSON validation
-				if !json.Valid(lineBytes) {
-					t.logger.Error("StdioTransport: Received invalid JSON: %s", string(lineBytes))
-					_ = t.sendParseError("Received invalid JSON") // Attempt to notify other side
-					// Don't return an error, just log it and try to read the next line.
-					lineBuffer.Reset() // Reset buffer for the next attempt
-					continue           // Continue the loop to read the next message
-				} else {
-					resultChan <- result{data: lineBytes, err: nil} // Success
-					return                                          // Exit goroutine on success
-				}
-			}
-			// If context is cancelled during the loop (between ReadByte calls),
-			// the next ReadByte might still block, but the select below will catch it.
+			// If ctx.Err() is not nil, the select block already handled it.
+		} else {
+			// If Scan returned false and scanner.Err() is nil, it's EOF
+			t.logger.Info("StdioTransport: Reached EOF.")
+			resultChan <- result{err: io.EOF} // Signal clean EOF
 		}
 	}()
 
