@@ -58,6 +58,9 @@ jobs:
             --minify \
             -s docs
 
+      - name: Copy CNAME to published directory
+        run: cp docs/CNAME docs/public/CNAME
+
       - name: Deploy to documentation branch
         uses: peaceiris/actions-gh-pages@v4
         with:
