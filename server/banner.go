@@ -1,15 +1,17 @@
 package server
 
-import "fmt"
+import (
+	"log"
+)
 
 func printBanner() {
 	// Print GoMCP Banner
-	fmt.Println("\n ____       __  __  ____ ____")
-	fmt.Println("/ ___| ___ |  \\/  |/ ___|  _ \\")
-	fmt.Println("| |  _ / _ \\| |\\/| | |   | |_) |")
-	fmt.Println("| |_| | (_) | |  | | |___|  __/")
-	fmt.Println("\\____|\\___/|_|  |_|\\____|_|")
-	fmt.Println("Model Context Protocol Server")
-	fmt.Println("https://gomcp.dev")
-	fmt.Println("____________________________________")
+	log.Println("\n ____       __  __  ____ ____")
+	log.Println("/ ___| ___ |  \\/  |/ ___|  _ \\")
+	log.Println("| |  _ / _ \\| |\\/| | |   | |_) |")
+	log.Println("| |_| | (_) | |  | | |___|  __/")
+	log.Println("\\____|\\___/|_|  |_|\\____|_|")
+	log.Println("Model Context Protocol Server")
+	log.Println("https://gomcp.dev")
+	log.Println("____________________________________")
 }
