@@ -735,6 +735,34 @@ func (c *Client) closePendingRequests(err error) {
 	}
 }
 
+// IsConnected returns true if the client is connected to the server.
+func (c *Client) IsConnected() bool {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	return c.connected
+}
+
+// IsInitialized returns true if the client has been initialized.
+func (c *Client) IsInitialized() bool {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	return c.initialized
+}
+
+// IsClosed returns true if the client is closed.
+func (c *Client) IsClosed() bool {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	return c.closed
+}
+
+// Current state of the client
+func (c *Client) CurrentState() (connected bool, initialized bool, closed bool) {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	return c.connected, c.initialized, c.closed
+}
+
 // --- Default Logger ---
 type defaultLogger struct{}
 
