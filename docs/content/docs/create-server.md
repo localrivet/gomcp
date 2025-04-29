@@ -114,6 +114,15 @@ See [Defining Tools]({{< relref "defining-tools" >}}) for more details on tool r
 
 - **`Run(transport types.Transport)`:** Starts the server's main loop, using the provided transport to receive messages from clients and send messages back. This method typically blocks until the transport is closed or an unrecoverable error occurs.
 
+While `Run` is the core method requiring a pre-configured transport, the `server` package also provides convenience functions to quickly start a server with common transport mechanisms:
+
+- **`ServeStdio(srv *Server)`**: Runs the server using Standard Input/Output, suitable for local process communication.
+- **`ServeSSE(srv *Server, addr string, basePath string)`**: Runs the server using the HTTP+SSE transport (compatible with `2024-11-05` clients), listening on the specified network address (e.g., `:8080`) and base HTTP path (e.g., `/mcp`).
+- **`ServeWebSocket(srv *Server, addr string, path string)`**: Runs the server using the WebSocket transport (compatible with `2025-03-26` clients), listening on the specified network address (e.g., `:8080`) and WebSocket path (e.g., `/mcp`).
+- **`ServeTCP(srv *Server, addr string)`**: Runs the server using a raw TCP socket connection, listening on the specified network address (e.g., `:6000`).
+
+Choose the appropriate `ServeX` function based on the desired transport mechanism for your server.
+
 ## Handling Client Messages
 
 The `server.Server` automatically handles incoming JSON-RPC requests and notifications based on the registered capabilities and standard protocol methods (`initialize`, `$/cancelled`, etc.). You generally don't need to handle raw messages directly unless implementing custom notifications or requests.

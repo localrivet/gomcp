@@ -5,7 +5,7 @@ weight: 50
 
 The `gomcp` library provides tools for building applications that act as MCP clients, connecting to MCP servers to utilize their capabilities (tools, resources, prompts).
 
-The primary implementation for a client is found in the `client` package, which uses the SSE+HTTP hybrid transport model.
+The primary implementation for a client is found in the `client` package. This package provides the core client logic, while specific transport mechanisms (like SSE+HTTP, WebSocket, Stdio, TCP) are handled by dedicated constructors and implementations conforming to the `types.Transport` interface.
 
 ## Client Role
 
@@ -22,7 +22,7 @@ An MCP client typically:
 
 ## Initializing the Client (`client` package)
 
-The `client` package provides a `Client` struct that manages the connection and communication flow using the SSE+HTTP transport.
+The `client` package provides a `Client` struct that manages the connection and communication flow. It works with different underlying transport mechanisms provided during initialization.
 
 ```go
 package main
@@ -47,12 +47,17 @@ func main() {
 	// 1. Create Client Instance for Stdio
 	// NewStdioClient handles stdio transport setup internally.
 	// Provide a client name and optional ClientOptions.
+	// This example uses NewStdioClient for simplicity.
+	// For network connections, you would typically use:
+	// - client.NewSSEClient (for 2024-11-05 compatible servers using HTTP+SSE)
+	// - client.NewWebSocketClient (for 2025-03-26 compatible servers using WebSocket)
+	// - client.NewTCPClient (for raw TCP connections)
 	clt, err := client.NewStdioClient("my-stdio-client", client.ClientOptions{
-		// ClientInfo and Capabilities can be customized here if needed.
+		// ClientCapabilities can be customized here if needed.
 		// Example:
-		// ClientInfo: protocol.Implementation{Name: "my-stdio-client", Version: "1.0"},
-		// Capabilities: protocol.ClientCapabilities{ /* ... */ },
+		// ClientCapabilities: protocol.ClientCapabilities{ /* ... */ },
 		// Logger: provide a custom logger if desired
+		// PreferredProtocolVersion: &protocol.CurrentProtocolVersion, // Optionally specify preferred version
 	})
 	if err != nil {
 		log.Fatalf("Failed to create stdio client: %v", err)
@@ -105,7 +110,36 @@ func main() {
 
 ```
 
-_Note: This example assumes a server is running at `http://localhost:8080` using the SSE+HTTP transport._
+_Note: This example uses the simple Stdio transport. For network examples using SSE or WebSocket, see the `examples/` directory._
+
+## Choosing a Transport
+
+The `gomcp` client library supports multiple transport mechanisms to communicate with MCP servers. The choice of transport depends on the server's implementation and the desired protocol version compatibility.
+
+The `client` package provides specific constructors for each supported transport:
+
+- **`client.NewSSEClient(baseURL, basePath, opts)`**:
+
+  - Uses the **HTTP+SSE** transport.
+  - Suitable for connecting to servers implementing the `2024-11-05` specification's transport model.
+  - Requires the server's base HTTP URL (e.g., `http://localhost:8080`) and the MCP base path (e.g., `/mcp`).
+
+- **`client.NewWebSocketClient(wsURL, opts)`**:
+
+  - Uses the **WebSocket** transport.
+  - Suitable for connecting to servers implementing the `2025-03-26` specification's "Streamable HTTP" transport model.
+  - Requires the server's WebSocket URL (e.g., `ws://localhost:8080/mcp`).
+
+- **`client.NewStdioClient(clientName, opts)`**:
+
+  - Uses **Standard Input/Output (Stdio)**.
+  - Suitable for communicating with a server running as a local child process, where the client reads from the server's stdout and writes to its stdin.
+
+- **`client.NewTCPClient(addr, opts)`**:
+  - Uses a raw **TCP socket** connection.
+  - Suitable for connecting to servers listening on a specific TCP address (e.g., `localhost:6000`).
+
+When creating a client, select the constructor that matches the transport mechanism used by the target MCP server. The `ClientOptions` struct allows further customization, such as providing a logger or specifying client capabilities and the preferred protocol version for the handshake.
 
 ## Making Requests
 
@@ -127,4 +161,4 @@ Each method takes a `context.Context` for cancellation and deadlines, and the co
 
 ## Handling Server Messages
 
-Use `RegisterNotificationHandler` and `RegisterRequestHandler` _before_ calling `Connect` to set up functions that will be called when the server sends asynchronous notifications or requests over the SSE connection.
+Use `RegisterNotificationHandler` and `RegisterRequestHandler` _before_ calling `Connect` to set up functions that will be called when the server sends asynchronous notifications or requests over the established transport connection.
