@@ -1101,6 +1101,14 @@ title="Copy code"
 &lt;a href="#running-the-server" class="subheading-anchor" aria-label="Permalink for this section">&lt;/a>&lt;/h2>&lt;ul>
 &lt;li>&lt;strong>&lt;code>Run(transport types.Transport)&lt;/code>:&lt;/strong> Starts the server&amp;rsquo;s main loop, using the provided transport to receive messages from clients and send messages back. This method typically blocks until the transport is closed or an unrecoverable error occurs.&lt;/li>
 &lt;/ul>
+&lt;p>While &lt;code>Run&lt;/code> is the core method requiring a pre-configured transport, the &lt;code>server&lt;/code> package also provides convenience functions to quickly start a server with common transport mechanisms:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>&lt;code>ServeStdio(srv *Server)&lt;/code>&lt;/strong>: Runs the server using Standard Input/Output, suitable for local process communication.&lt;/li>
+&lt;li>&lt;strong>&lt;code>ServeSSE(srv *Server, addr string, basePath string)&lt;/code>&lt;/strong>: Runs the server using the HTTP+SSE transport (compatible with &lt;code>2024-11-05&lt;/code> clients), listening on the specified network address (e.g., &lt;code>:8080&lt;/code>) and base HTTP path (e.g., &lt;code>/mcp&lt;/code>).&lt;/li>
+&lt;li>&lt;strong>&lt;code>ServeWebSocket(srv *Server, addr string, path string)&lt;/code>&lt;/strong>: Runs the server using the WebSocket transport (compatible with &lt;code>2025-03-26&lt;/code> clients), listening on the specified network address (e.g., &lt;code>:8080&lt;/code>) and WebSocket path (e.g., &lt;code>/mcp&lt;/code>).&lt;/li>
+&lt;li>&lt;strong>&lt;code>ServeTCP(srv *Server, addr string)&lt;/code>&lt;/strong>: Runs the server using a raw TCP socket connection, listening on the specified network address (e.g., &lt;code>:6000&lt;/code>).&lt;/li>
+&lt;/ul>
+&lt;p>Choose the appropriate &lt;code>ServeX&lt;/code> function based on the desired transport mechanism for your server.&lt;/p>
 &lt;h2>Handling Client Messages&lt;span class="hx:absolute hx:-mt-20" id="handling-client-messages">&lt;/span>
 &lt;a href="#handling-client-messages" class="subheading-anchor" aria-label="Permalink for this section">&lt;/a>&lt;/h2>&lt;p>The &lt;code>server.Server&lt;/code> automatically handles incoming JSON-RPC requests and notifications based on the registered capabilities and standard protocol methods (&lt;code>initialize&lt;/code>, &lt;code>$/cancelled&lt;/code>, etc.). You generally don&amp;rsquo;t need to handle raw messages directly unless implementing custom notifications or requests.&lt;/p>
 &lt;h2>Sending Server Messages&lt;span class="hx:absolute hx:-mt-20" id="sending-server-messages">&lt;/span>
@@ -1658,7 +1666,7 @@ title="Copy code"
 &lt;/ol>
 &lt;p>Requests without the correct &lt;code>Authorization: Bearer my-secret-token&lt;/code> header will receive a &lt;code>401 Unauthorized&lt;/code> response.&lt;/p></description></item><item><title>Creating a Client</title><link>https://gomcp.dev/docs/create-client/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://gomcp.dev/docs/create-client/</guid><description>
 &lt;p>The &lt;code>gomcp&lt;/code> library provides tools for building applications that act as MCP clients, connecting to MCP servers to utilize their capabilities (tools, resources, prompts).&lt;/p>
-&lt;p>The primary implementation for a client is found in the &lt;code>client&lt;/code> package, which uses the SSE+HTTP hybrid transport model.&lt;/p>
+&lt;p>The primary implementation for a client is found in the &lt;code>client&lt;/code> package. This package provides the core client logic, while specific transport mechanisms (like SSE+HTTP, WebSocket, Stdio, TCP) are handled by dedicated constructors and implementations conforming to the &lt;code>types.Transport&lt;/code> interface.&lt;/p>
 &lt;h2>Client Role&lt;span class="hx:absolute hx:-mt-20" id="client-role">&lt;/span>
 &lt;a href="#client-role" class="subheading-anchor" aria-label="Permalink for this section">&lt;/a>&lt;/h2>&lt;p>An MCP client typically:&lt;/p>
 &lt;ol>
@@ -1672,7 +1680,7 @@ title="Copy code"
 &lt;li>Handles server-sent requests (if the server needs to request actions from the client, though less common).&lt;/li>
 &lt;/ol>
 &lt;h2>Initializing the Client (&lt;code>client&lt;/code> package)&lt;span class="hx:absolute hx:-mt-20" id="initializing-the-client-client-package">&lt;/span>
-&lt;a href="#initializing-the-client-client-package" class="subheading-anchor" aria-label="Permalink for this section">&lt;/a>&lt;/h2>&lt;p>The &lt;code>client&lt;/code> package provides a &lt;code>Client&lt;/code> struct that manages the connection and communication flow using the SSE+HTTP transport.&lt;/p>
+&lt;a href="#initializing-the-client-client-package" class="subheading-anchor" aria-label="Permalink for this section">&lt;/a>&lt;/h2>&lt;p>The &lt;code>client&lt;/code> package provides a &lt;code>Client&lt;/code> struct that manages the connection and communication flow. It works with different underlying transport mechanisms provided during initialization.&lt;/p>
 &lt;div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code">
 &lt;div>&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">package&lt;/span> &lt;span style="color:#a6e22e">main&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
@@ -1696,12 +1704,17 @@ title="Copy code"
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// 1. Create Client Instance for Stdio&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// NewStdioClient handles stdio transport setup internally.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// Provide a client name and optional ClientOptions.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// This example uses NewStdioClient for simplicity.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// For network connections, you would typically use:&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// - client.NewSSEClient (for 2024-11-05 compatible servers using HTTP+SSE)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// - client.NewWebSocketClient (for 2025-03-26 compatible servers using WebSocket)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// - client.NewTCPClient (for raw TCP connections)&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">clt&lt;/span>, &lt;span style="color:#a6e22e">err&lt;/span> &lt;span style="color:#f92672">:=&lt;/span> &lt;span style="color:#a6e22e">client&lt;/span>.&lt;span style="color:#a6e22e">NewStdioClient&lt;/span>(&lt;span style="color:#e6db74">&amp;#34;my-stdio-client&amp;#34;&lt;/span>, &lt;span style="color:#a6e22e">client&lt;/span>.&lt;span style="color:#a6e22e">ClientOptions&lt;/span>{
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// ClientInfo and Capabilities can be customized here if needed.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// ClientCapabilities can be customized here if needed.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// Example:&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// ClientInfo: protocol.Implementation{Name: &amp;#34;my-stdio-client&amp;#34;, Version: &amp;#34;1.0&amp;#34;},&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// Capabilities: protocol.ClientCapabilities{ /* ... */ },&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// ClientCapabilities: protocol.ClientCapabilities{ /* ... */ },&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// Logger: provide a custom logger if desired&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// PreferredProtocolVersion: &amp;amp;protocol.CurrentProtocolVersion, // Optionally specify preferred version&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> })
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#66d9ef">if&lt;/span> &lt;span style="color:#a6e22e">err&lt;/span> &lt;span style="color:#f92672">!=&lt;/span> &lt;span style="color:#66d9ef">nil&lt;/span> {
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">log&lt;/span>.&lt;span style="color:#a6e22e">Fatalf&lt;/span>(&lt;span style="color:#e6db74">&amp;#34;Failed to create stdio client: %v&amp;#34;&lt;/span>, &lt;span style="color:#a6e22e">err&lt;/span>)
@@ -1760,7 +1773,43 @@ title="Copy code"
 &lt;/button>
 &lt;/div>
 &lt;/div>
-&lt;p>&lt;em>Note: This example assumes a server is running at &lt;code>http://localhost:8080&lt;/code> using the SSE+HTTP transport.&lt;/em>&lt;/p>
+&lt;p>&lt;em>Note: This example uses the simple Stdio transport. For network examples using SSE or WebSocket, see the &lt;code>examples/&lt;/code> directory.&lt;/em>&lt;/p>
+&lt;h2>Choosing a Transport&lt;span class="hx:absolute hx:-mt-20" id="choosing-a-transport">&lt;/span>
+&lt;a href="#choosing-a-transport" class="subheading-anchor" aria-label="Permalink for this section">&lt;/a>&lt;/h2>&lt;p>The &lt;code>gomcp&lt;/code> client library supports multiple transport mechanisms to communicate with MCP servers. The choice of transport depends on the server&amp;rsquo;s implementation and the desired protocol version compatibility.&lt;/p>
+&lt;p>The &lt;code>client&lt;/code> package provides specific constructors for each supported transport:&lt;/p>
+&lt;ul>
+&lt;li>
+&lt;p>&lt;strong>&lt;code>client.NewSSEClient(baseURL, basePath, opts)&lt;/code>&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>Uses the &lt;strong>HTTP+SSE&lt;/strong> transport.&lt;/li>
+&lt;li>Suitable for connecting to servers implementing the &lt;code>2024-11-05&lt;/code> specification&amp;rsquo;s transport model.&lt;/li>
+&lt;li>Requires the server&amp;rsquo;s base HTTP URL (e.g., &lt;code>http://localhost:8080&lt;/code>) and the MCP base path (e.g., &lt;code>/mcp&lt;/code>).&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>&lt;code>client.NewWebSocketClient(wsURL, opts)&lt;/code>&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>Uses the &lt;strong>WebSocket&lt;/strong> transport.&lt;/li>
+&lt;li>Suitable for connecting to servers implementing the &lt;code>2025-03-26&lt;/code> specification&amp;rsquo;s &amp;ldquo;Streamable HTTP&amp;rdquo; transport model.&lt;/li>
+&lt;li>Requires the server&amp;rsquo;s WebSocket URL (e.g., &lt;code>ws://localhost:8080/mcp&lt;/code>).&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>&lt;code>client.NewStdioClient(clientName, opts)&lt;/code>&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>Uses &lt;strong>Standard Input/Output (Stdio)&lt;/strong>.&lt;/li>
+&lt;li>Suitable for communicating with a server running as a local child process, where the client reads from the server&amp;rsquo;s stdout and writes to its stdin.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>&lt;code>client.NewTCPClient(addr, opts)&lt;/code>&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>Uses a raw &lt;strong>TCP socket&lt;/strong> connection.&lt;/li>
+&lt;li>Suitable for connecting to servers listening on a specific TCP address (e.g., &lt;code>localhost:6000&lt;/code>).&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>When creating a client, select the constructor that matches the transport mechanism used by the target MCP server. The &lt;code>ClientOptions&lt;/code> struct allows further customization, such as providing a logger or specifying client capabilities and the preferred protocol version for the handshake.&lt;/p>
 &lt;h2>Making Requests&lt;span class="hx:absolute hx:-mt-20" id="making-requests">&lt;/span>
 &lt;a href="#making-requests" class="subheading-anchor" aria-label="Permalink for this section">&lt;/a>&lt;/h2>&lt;p>Once connected, you can use the methods provided by the &lt;code>client.Client&lt;/code> struct to interact with the server:&lt;/p>
 &lt;ul>
@@ -1778,7 +1827,7 @@ title="Copy code"
 &lt;/ul>
 &lt;p>Each method takes a &lt;code>context.Context&lt;/code> for cancellation and deadlines, and the corresponding parameter struct defined in the &lt;code>protocol&lt;/code> package.&lt;/p>
 &lt;h2>Handling Server Messages&lt;span class="hx:absolute hx:-mt-20" id="handling-server-messages">&lt;/span>
-&lt;a href="#handling-server-messages" class="subheading-anchor" aria-label="Permalink for this section">&lt;/a>&lt;/h2>&lt;p>Use &lt;code>RegisterNotificationHandler&lt;/code> and &lt;code>RegisterRequestHandler&lt;/code> &lt;em>before&lt;/em> calling &lt;code>Connect&lt;/code> to set up functions that will be called when the server sends asynchronous notifications or requests over the SSE connection.&lt;/p></description></item><item><title>Billing / Usage Tracking</title><link>https://gomcp.dev/examples/billing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://gomcp.dev/examples/billing/</guid><description>
+&lt;a href="#handling-server-messages" class="subheading-anchor" aria-label="Permalink for this section">&lt;/a>&lt;/h2>&lt;p>Use &lt;code>RegisterNotificationHandler&lt;/code> and &lt;code>RegisterRequestHandler&lt;/code> &lt;em>before&lt;/em> calling &lt;code>Connect&lt;/code> to set up functions that will be called when the server sends asynchronous notifications or requests over the established transport connection.&lt;/p></description></item><item><title>Billing / Usage Tracking</title><link>https://gomcp.dev/examples/billing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>https://gomcp.dev/examples/billing/</guid><description>
 &lt;p>This page details the example found in the &lt;code>/examples/billing&lt;/code> directory, demonstrating a conceptual approach to tracking usage or costs associated with MCP tool calls.&lt;/p>
 &lt;p>MCP doesn&amp;rsquo;t define a billing protocol, so this example shows one possible implementation strategy, likely involving middleware or logic within tool handlers to record usage events.&lt;/p>
 &lt;h2>Billing Server (&lt;code>examples/billing/server&lt;/code>)&lt;span class="hx:absolute hx:-mt-20" id="billing-server-examplesbillingserver">&lt;/span>
