@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 
 	"github.com/google/uuid"
+	"github.com/localrivet/gomcp/auth" // Added for ContextWithToken
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/types" // For Logger and ClientSession interface
 )
@@ -331,8 +332,19 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	if s.contextFunc != nil {
-		ctx = s.contextFunc(ctx, r)
+		ctx = s.contextFunc(ctx, r) // Apply original context func first
 	}
+
+	// --- Token Extraction from Header ---
+	tokenHeader := r.Header.Get("Authorization") // Standard header
+	if tokenHeader != "" {
+		// Add token to context for the auth hook
+		ctx = auth.ContextWithToken(ctx, tokenHeader)
+		s.logger.Debug("Session %s: Found Authorization header, added token to context.", sessionID)
+	} else {
+		s.logger.Debug("Session %s: No Authorization header found.", sessionID)
+	}
+	// --- End Token Extraction ---
 
 	var rawMessage json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&rawMessage); err != nil {

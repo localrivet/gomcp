@@ -6,20 +6,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 
+	"github.com/localrivet/gomcp/auth"
+	"github.com/localrivet/gomcp/hooks" // Added hooks import
+	"github.com/localrivet/gomcp/logx"  // Added logx import
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/types"
 )
 
-// ToolHandlerFunc defines the signature for functions that handle tool execution.
-// ToolHandlerFunc defines the signature for functions that handle tool execution.
-// progressToken is interface{} to accept string or number per spec.
-type ToolHandlerFunc func(ctx context.Context, progressToken interface{}, arguments any) (content []protocol.Content, isError bool)
-
 // NotificationHandlerFunc defines the signature for functions that handle client-to-server notifications.
+// Note: ToolHandlerFunc is now defined in the hooks package as hooks.FinalToolHandler
 type NotificationHandlerFunc func(ctx context.Context, params interface{}) error
+
+// Local ToolHandlerFunc definition removed. Use hooks.FinalToolHandler instead.
 
 // Server represents the core MCP server logic, independent of transport.
 type Server struct {
@@ -29,7 +29,7 @@ type Server struct {
 
 	// Registries
 	toolRegistry     map[string]protocol.Tool
-	toolHandlers     map[string]ToolHandlerFunc
+	toolHandlers     map[string]hooks.FinalToolHandler // Use type from hooks package
 	resourceRegistry map[string]protocol.Resource
 	promptRegistry   map[string]protocol.Prompt
 	registryMu       sync.RWMutex
@@ -49,6 +49,22 @@ type Server struct {
 	// Resource Subscriptions
 	resourceSubscriptions map[string]map[string]bool
 	subscriptionMu        sync.Mutex
+
+	// Hooks
+	hooksMu                             sync.RWMutex // Separate mutex for hook registration
+	beforeHandleMessageHooks            []hooks.BeforeHandleMessageHook
+	beforeUnmarshalHooks                []hooks.BeforeUnmarshalHook
+	serverBeforeHandleRequestHooks      []hooks.ServerBeforeHandleRequestHook
+	serverBeforeHandleNotificationHooks []hooks.ServerBeforeHandleNotificationHook
+	beforeToolCallHooks                 []hooks.BeforeToolCallHook
+	afterToolCallHooks                  []hooks.AfterToolCallHook
+	beforeSendResponseHooks             []hooks.BeforeSendResponseHook
+	serverBeforeSendNotificationHooks   []hooks.ServerBeforeSendNotificationHook
+	onSessionCreateHooks                []hooks.OnSessionCreateHook
+	beforeSessionDestroyHooks           []hooks.BeforeSessionDestroyHook
+
+	// Auth
+	permissionChecker auth.PermissionChecker // Added for authorization checks
 }
 
 // ServerOption defines a function signature for configuring a Server.
@@ -135,12 +151,104 @@ func WithInstructions(instructions string) ServerOption {
 	}
 }
 
+// --- Hook Registration Options ---
+
+// WithBeforeHandleMessageHook adds one or more BeforeHandleMessageHook functions.
+func WithBeforeHandleMessageHook(hooks ...hooks.BeforeHandleMessageHook) ServerOption {
+	return func(s *Server) {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		s.beforeHandleMessageHooks = append(s.beforeHandleMessageHooks, hooks...)
+	}
+}
+
+// WithBeforeUnmarshalHook adds one or more BeforeUnmarshalHook functions.
+func WithBeforeUnmarshalHook(hooks ...hooks.BeforeUnmarshalHook) ServerOption {
+	return func(s *Server) {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		s.beforeUnmarshalHooks = append(s.beforeUnmarshalHooks, hooks...)
+	}
+}
+
+// WithServerBeforeHandleRequestHook adds one or more ServerBeforeHandleRequestHook functions.
+func WithServerBeforeHandleRequestHook(hooks ...hooks.ServerBeforeHandleRequestHook) ServerOption {
+	return func(s *Server) {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		s.serverBeforeHandleRequestHooks = append(s.serverBeforeHandleRequestHooks, hooks...)
+	}
+}
+
+// WithServerBeforeHandleNotificationHook adds one or more ServerBeforeHandleNotificationHook functions.
+func WithServerBeforeHandleNotificationHook(hooks ...hooks.ServerBeforeHandleNotificationHook) ServerOption {
+	return func(s *Server) {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		s.serverBeforeHandleNotificationHooks = append(s.serverBeforeHandleNotificationHooks, hooks...)
+	}
+}
+
+// WithBeforeToolCallHook adds one or more BeforeToolCallHook functions.
+func WithBeforeToolCallHook(hooks ...hooks.BeforeToolCallHook) ServerOption {
+	return func(s *Server) {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		s.beforeToolCallHooks = append(s.beforeToolCallHooks, hooks...)
+	}
+}
+
+// WithAfterToolCallHook adds one or more AfterToolCallHook functions.
+func WithAfterToolCallHook(hooks ...hooks.AfterToolCallHook) ServerOption {
+	return func(s *Server) {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		s.afterToolCallHooks = append(s.afterToolCallHooks, hooks...)
+	}
+}
+
+// WithBeforeSendResponseHook adds one or more BeforeSendResponseHook functions.
+func WithBeforeSendResponseHook(hooks ...hooks.BeforeSendResponseHook) ServerOption {
+	return func(s *Server) {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		s.beforeSendResponseHooks = append(s.beforeSendResponseHooks, hooks...)
+	}
+}
+
+// WithServerBeforeSendNotificationHook adds one or more ServerBeforeSendNotificationHook functions.
+func WithServerBeforeSendNotificationHook(hooks ...hooks.ServerBeforeSendNotificationHook) ServerOption {
+	return func(s *Server) {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		s.serverBeforeSendNotificationHooks = append(s.serverBeforeSendNotificationHooks, hooks...)
+	}
+}
+
+// WithOnSessionCreateHook adds one or more OnSessionCreateHook functions.
+func WithOnSessionCreateHook(hooks ...hooks.OnSessionCreateHook) ServerOption {
+	return func(s *Server) {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		s.onSessionCreateHooks = append(s.onSessionCreateHooks, hooks...)
+	}
+}
+
+// WithBeforeSessionDestroyHook adds one or more BeforeSessionDestroyHook functions.
+func WithBeforeSessionDestroyHook(hooks ...hooks.BeforeSessionDestroyHook) ServerOption {
+	return func(s *Server) {
+		s.hooksMu.Lock()
+		defer s.hooksMu.Unlock()
+		s.beforeSessionDestroyHooks = append(s.beforeSessionDestroyHooks, hooks...)
+	}
+}
+
 // NewServer creates a new core MCP Server logic instance with the provided options.
 func NewServer(serverName string, opts ...ServerOption) *Server {
 	// Initialize with default values
 	srv := &Server{
 		serverName: serverName,
-		logger:     &defaultLogger{}, // Default logger
+		logger:     logx.NewDefaultLogger(), // Use logx default logger
 		serverCapabilities: protocol.ServerCapabilities{ // Default capabilities
 			Tools: &struct {
 				ListChanged bool `json:"listChanged,omitempty"`
@@ -155,12 +263,24 @@ func NewServer(serverName string, opts ...ServerOption) *Server {
 			// Initialize other capability fields to nil or default as needed
 		},
 		toolRegistry:          make(map[string]protocol.Tool),
-		toolHandlers:          make(map[string]ToolHandlerFunc),
+		toolHandlers:          make(map[string]hooks.FinalToolHandler), // Use type from hooks package
 		resourceRegistry:      make(map[string]protocol.Resource),
 		promptRegistry:        make(map[string]protocol.Prompt),
 		activeRequests:        make(map[string]context.CancelFunc),
 		notificationHandlers:  make(map[string]NotificationHandlerFunc),
 		resourceSubscriptions: make(map[string]map[string]bool),
+
+		// Initialize hook slices
+		beforeHandleMessageHooks:            make([]hooks.BeforeHandleMessageHook, 0),
+		beforeUnmarshalHooks:                make([]hooks.BeforeUnmarshalHook, 0),
+		serverBeforeHandleRequestHooks:      make([]hooks.ServerBeforeHandleRequestHook, 0),
+		serverBeforeHandleNotificationHooks: make([]hooks.ServerBeforeHandleNotificationHook, 0),
+		beforeToolCallHooks:                 make([]hooks.BeforeToolCallHook, 0),
+		afterToolCallHooks:                  make([]hooks.AfterToolCallHook, 0),
+		beforeSendResponseHooks:             make([]hooks.BeforeSendResponseHook, 0),
+		serverBeforeSendNotificationHooks:   make([]hooks.ServerBeforeSendNotificationHook, 0),
+		onSessionCreateHooks:                make([]hooks.OnSessionCreateHook, 0),
+		beforeSessionDestroyHooks:           make([]hooks.BeforeSessionDestroyHook, 0),
 	}
 
 	// Apply provided options
@@ -208,11 +328,67 @@ func (s *Server) RegisterSession(session types.ClientSession) error { // Use typ
 	s.resourceSubscriptions[sessionID] = make(map[string]bool)
 	s.subscriptionMu.Unlock()
 	s.logger.Info("Registered session: %s", sessionID)
+
+	// --- Execute OnSessionCreate hooks ---
+	s.hooksMu.RLock()
+	hooksToRun := make([]hooks.OnSessionCreateHook, len(s.onSessionCreateHooks))
+	copy(hooksToRun, s.onSessionCreateHooks)
+	s.hooksMu.RUnlock()
+
+	if len(hooksToRun) > 0 {
+		hookCtx := hooks.ServerHookContext{
+			// Ctx might need to be derived or passed in if RegisterSession gets context
+			Ctx:       context.Background(), // Placeholder context
+			Session:   session,
+			MessageID: nil, // Not applicable for session creation
+			Method:    "",  // Not applicable for session creation
+		}
+		for _, hook := range hooksToRun {
+			if err := hook(hookCtx); err != nil {
+				// Log error but don't prevent session registration? Or should it?
+				// For now, log and continue. Could make this configurable later.
+				s.logger.Error("Error executing OnSessionCreateHook for session %s: %v", sessionID, err)
+			}
+		}
+	}
+	// --- End Hook Execution ---
+
 	return nil
 }
 
 func (s *Server) UnregisterSession(sessionID string) {
 	s.logger.Info("UnregisterSession called for session: %s", sessionID)
+
+	// --- Execute BeforeSessionDestroy hooks ---
+	sessionI, sessionExists := s.sessions.Load(sessionID)
+	if sessionExists {
+		session := sessionI.(types.ClientSession) // Cast to the interface
+		s.hooksMu.RLock()
+		hooksToRun := make([]hooks.BeforeSessionDestroyHook, len(s.beforeSessionDestroyHooks))
+		copy(hooksToRun, s.beforeSessionDestroyHooks)
+		s.hooksMu.RUnlock()
+
+		if len(hooksToRun) > 0 {
+			hookCtx := hooks.ServerHookContext{
+				// Ctx might need to be derived or passed in if UnregisterSession gets context
+				Ctx:       context.Background(), // Placeholder context
+				Session:   session,
+				MessageID: nil, // Not applicable
+				Method:    "",  // Not applicable
+			}
+			for _, hook := range hooksToRun {
+				if err := hook(hookCtx); err != nil {
+					// Log error but proceed with unregistration
+					s.logger.Error("Error executing BeforeSessionDestroyHook for session %s: %v", sessionID, err)
+				}
+			}
+		}
+	} else {
+		s.logger.Warn("Attempted to run BeforeSessionDestroyHook for non-existent session: %s", sessionID)
+	}
+	// --- End Hook Execution ---
+
+	// Now proceed with actual unregistration
 	_, loaded := s.sessions.LoadAndDelete(sessionID)
 	s.logger.Info("Session %s: LoadAndDelete executed. Loaded: %t", sessionID, loaded)
 
@@ -237,13 +413,35 @@ func (s *Server) UnregisterSession(sessionID string) {
 // Returns nil or an empty slice if no responses should be sent.
 func (s *Server) HandleMessage(ctx context.Context, sessionID string, rawMessage json.RawMessage) []*protocol.JSONRPCResponse {
 	s.logger.Debug("HandleMessage for session %s: %s", sessionID, string(rawMessage))
+
+	// --- Get Session ---
 	sessionI, ok := s.sessions.Load(sessionID)
 	if !ok {
 		s.logger.Error("Received message for unknown session ID: %s", sessionID)
 		// Cannot determine request ID here, so return nil response slice. Error logged.
 		return nil
 	}
-	session := sessionI.(types.ClientSession) // Use types.ClientSession
+	session := sessionI.(types.ClientSession)
+
+	// --- Execute BeforeHandleMessage hooks ---
+	var err error
+	currentRawMessage := rawMessage // Start with the original message
+	s.hooksMu.RLock()
+	bhMsgHooks := make([]hooks.BeforeHandleMessageHook, len(s.beforeHandleMessageHooks))
+	copy(bhMsgHooks, s.beforeHandleMessageHooks)
+	s.hooksMu.RUnlock()
+
+	for _, hook := range bhMsgHooks {
+		currentRawMessage, err = hook(ctx, session, currentRawMessage)
+		if err != nil {
+			s.logger.Error("Error executing BeforeHandleMessageHook for session %s: %v. Stopping processing.", sessionID, err)
+			// Cannot determine request ID here, return nil response slice.
+			return nil
+		}
+	}
+	// Use the potentially modified message going forward
+	rawMessage = currentRawMessage
+	// --- End Hook Execution ---
 
 	// Trim whitespace and check if it's a batch request (starts with '[')
 	trimmedMsg := bytes.TrimSpace(rawMessage)
@@ -308,15 +506,51 @@ func (s *Server) handleSingleMessage(ctx context.Context, session types.ClientSe
 		Method  string          `json:"method"`
 		Params  json.RawMessage `json:"params"` // Keep params raw initially
 	}
+	// Use the potentially modified rawMessage from hooks
 	if err := json.Unmarshal(rawMessage, &baseMessage); err != nil {
 		s.logger.Error("Session %s: Failed to parse base message structure: %v. Raw: %s", sessionID, err, string(rawMessage))
-		return createErrorResponse(nil, protocol.ErrorCodeParseError, fmt.Sprintf("Failed to parse JSON: %v", err))
+		// Run hook for parse error response
+		errResp := createErrorResponse(nil, protocol.ErrorCodeParseError, fmt.Sprintf("Failed to parse JSON: %v", err))
+		modifiedResp, hookErr := s.runBeforeSendResponseHooks(ctx, session, errResp) // Session is known here
+		if hookErr != nil {
+			s.logger.Error("Error in BeforeSendResponseHook for ParseError: %v. Sending original error.", hookErr)
+		}
+		// Return modified (or original if hook error) response. If hook suppressed, modifiedResp is nil.
+		return modifiedResp
 	}
+
+	// --- Execute BeforeUnmarshal hooks ---
+	s.hooksMu.RLock()
+	bUnmarshalHooks := make([]hooks.BeforeUnmarshalHook, len(s.beforeUnmarshalHooks))
+	copy(bUnmarshalHooks, s.beforeUnmarshalHooks)
+	s.hooksMu.RUnlock()
+
+	if len(bUnmarshalHooks) > 0 {
+		hookCtx := hooks.ServerHookContext{
+			Ctx:       ctx,
+			Session:   session,
+			MessageID: baseMessage.ID,
+			Method:    baseMessage.Method,
+		}
+		for _, hook := range bUnmarshalHooks {
+			if err := hook(hookCtx, baseMessage.Params); err != nil {
+				s.logger.Error("Error executing BeforeUnmarshalHook for session %s, method %s: %v. Stopping processing.", sessionID, baseMessage.Method, err)
+				// Attempt to return error response if ID is available
+				return createErrorResponse(baseMessage.ID, protocol.ErrorCodeInternalError, fmt.Sprintf("Hook error before unmarshal: %v", err))
+			}
+		}
+	}
+	// --- End Hook Execution ---
 
 	// Basic validation
 	if baseMessage.JSONRPC != "2.0" {
 		s.logger.Warn("Session %s: Received message with invalid jsonrpc version: %s", sessionID, baseMessage.JSONRPC)
-		return createErrorResponse(baseMessage.ID, protocol.ErrorCodeInvalidRequest, "Invalid jsonrpc version")
+		errResp := createErrorResponse(baseMessage.ID, protocol.ErrorCodeInvalidRequest, "Invalid jsonrpc version")
+		modifiedResp, hookErr := s.runBeforeSendResponseHooks(ctx, session, errResp)
+		if hookErr != nil {
+			s.logger.Error("Error in BeforeSendResponseHook for InvalidVersion: %v. Sending original error.", hookErr)
+		}
+		return modifiedResp
 	}
 
 	// Handle Initialization Phase (should not happen in batch, but check anyway)
@@ -352,19 +586,80 @@ func (s *Server) handleSingleMessage(ctx context.Context, session types.ClientSe
 	isNotification := baseMessage.ID == nil && baseMessage.Method != ""
 
 	if isRequest {
+		// --- Execute ServerBeforeHandleRequest hooks ---
+		s.hooksMu.RLock()
+		bHandleReqHooks := make([]hooks.ServerBeforeHandleRequestHook, len(s.serverBeforeHandleRequestHooks))
+		copy(bHandleReqHooks, s.serverBeforeHandleRequestHooks)
+		s.hooksMu.RUnlock()
+
+		if len(bHandleReqHooks) > 0 {
+			// Note: Params are still raw here. Hooks needing parsed params must do it themselves or wait for later hooks.
+			// For now, pass rawParams by attempting a generic unmarshal.
+			var genericParams any
+			_ = json.Unmarshal(baseMessage.Params, &genericParams) // Attempt best-effort unmarshal
+
+			hookCtx := hooks.ServerHookContext{
+				Ctx:       ctx,
+				Session:   session,
+				MessageID: baseMessage.ID,
+				Method:    baseMessage.Method,
+			}
+			for _, hook := range bHandleReqHooks {
+				if err := hook(hookCtx, genericParams); err != nil {
+					s.logger.Error("Error executing ServerBeforeHandleRequestHook for session %s, method %s: %v. Rejecting request.", sessionID, baseMessage.Method, err)
+					// Return error response from hook
+					return createErrorResponse(baseMessage.ID, protocol.ErrorCodeInternalError, fmt.Sprintf("Request rejected by hook: %v", err))
+				}
+			}
+		}
+		// --- End Hook Execution ---
+
 		// Pass raw params to handleRequest
 		return s.handleRequest(ctx, session, baseMessage.ID, baseMessage.Method, baseMessage.Params) // Pass raw params
+
 	} else if isNotification {
+		// --- Execute ServerBeforeHandleNotification hooks ---
+		s.hooksMu.RLock()
+		bHandleNotifHooks := make([]hooks.ServerBeforeHandleNotificationHook, len(s.serverBeforeHandleNotificationHooks))
+		copy(bHandleNotifHooks, s.serverBeforeHandleNotificationHooks)
+		s.hooksMu.RUnlock()
+
+		if len(bHandleNotifHooks) > 0 {
+			var genericParams any
+			_ = json.Unmarshal(baseMessage.Params, &genericParams) // Attempt best-effort unmarshal
+
+			hookCtx := hooks.ServerHookContext{
+				Ctx:       ctx,
+				Session:   session,
+				MessageID: nil, // No ID for notifications
+				Method:    baseMessage.Method,
+			}
+			for _, hook := range bHandleNotifHooks {
+				if err := hook(hookCtx, genericParams); err != nil {
+					// Log error, but typically don't stop notification processing unless critical
+					s.logger.Error("Error executing ServerBeforeHandleNotificationHook for session %s, method %s: %v.", sessionID, baseMessage.Method, err)
+					// Decide whether to stop processing based on error? For now, just log.
+				}
+			}
+		}
+		// --- End Hook Execution ---
+
 		// Pass raw params to handleNotification
 		err := s.handleNotification(ctx, session, baseMessage.Method, baseMessage.Params) // Pass raw params
 		if err != nil {
 			s.logger.Error("Error handling notification '%s' for session %s: %v", baseMessage.Method, sessionID, err)
 		}
 		return nil // No response for notifications
+
 	} else {
 		// Invalid message (e.g., missing method for notification)
 		s.logger.Warn("Received message with no ID or Method for session %s: %s", sessionID, string(rawMessage))
-		return createErrorResponse(baseMessage.ID, protocol.ErrorCodeInvalidRequest, "Invalid message: must be request (with id) or notification (with method)")
+		errResp := createErrorResponse(baseMessage.ID, protocol.ErrorCodeInvalidRequest, "Invalid message: must be request (with id) or notification (with method)")
+		modifiedResp, hookErr := s.runBeforeSendResponseHooks(ctx, session, errResp)
+		if hookErr != nil {
+			s.logger.Error("Error in BeforeSendResponseHook for InvalidMessage: %v. Sending original error.", hookErr)
+		}
+		return modifiedResp
 	}
 }
 
@@ -458,6 +753,19 @@ func (s *Server) handleInitializeRequest(ctx context.Context, session types.Clie
 		ServerInfo:      protocol.Implementation{Name: s.serverName, Version: "0.1.0"}, // Using fixed version for now
 		Instructions:    s.serverInstructions,                                          // Add instructions
 	}
+
+	// --- Advertise Auth Capability if Configured ---
+	// Check the original server capabilities *before* potential adjustment for old protocol versions
+	if s.permissionChecker != nil {
+		// Ensure the Authorization capability struct exists in the *response* capabilities
+		// (even if it was nilled out for old protocol version compatibility, signal support if configured)
+		if responsePayload.Capabilities.Authorization == nil {
+			responsePayload.Capabilities.Authorization = &struct{}{} // Add an empty struct to signal support
+		}
+		s.logger.Info("Session %s: Advertising Authorization capability because permission checker is configured.", session.SessionID())
+	}
+	// --- End Auth Capability Advertising ---
+
 	resp := createSuccessResponse(requestID, responsePayload)
 	return resp, nil
 }
@@ -482,7 +790,8 @@ func (s *Server) handleRequest(ctx context.Context, session types.ClientSession,
 
 	switch method {
 	case protocol.MethodListTools:
-		return s.handleListToolsRequest(handlerCtx, id, rawParams)
+		// Pass session to handleListToolsRequest
+		return s.handleListToolsRequest(handlerCtx, session, id, rawParams)
 	case protocol.MethodCallTool:
 		return s.handleCallToolRequest(handlerCtx, session, id, rawParams)
 	case protocol.MethodListResources:
@@ -550,7 +859,7 @@ func (s *Server) RegisterNotificationHandler(method string, handler Notification
 	return nil
 }
 
-func (s *Server) RegisterTool(tool protocol.Tool, handler ToolHandlerFunc) error {
+func (s *Server) RegisterTool(tool protocol.Tool, handler hooks.FinalToolHandler) error { // Use type from hooks package
 	s.registryMu.Lock()
 	defer s.registryMu.Unlock()
 	if tool.Name == "" {
@@ -673,8 +982,9 @@ func (s *Server) UnregisterPrompt(uri string) error {
 // --- Built-in Request Handlers ---
 
 // handleListToolsRequest handles the 'tools/list' request. Params are expected to be json.RawMessage.
-func (s *Server) handleListToolsRequest(ctx context.Context, id interface{}, rawParams json.RawMessage) *protocol.JSONRPCResponse {
-	s.logger.Debug("Handling ListToolsRequest")
+// Added session parameter to support hooks needing session context.
+func (s *Server) handleListToolsRequest(ctx context.Context, session types.ClientSession, id interface{}, rawParams json.RawMessage) *protocol.JSONRPCResponse {
+	s.logger.Debug("Handling ListToolsRequest for session %s", session.SessionID())
 	// TODO: Potentially parse ListToolsRequestParams from rawParams if needed (e.g., for pagination cursor)
 	// var requestParams protocol.ListToolsRequestParams
 	// if err := protocol.UnmarshalPayload(rawParams, &requestParams); err != nil {
@@ -687,7 +997,15 @@ func (s *Server) handleListToolsRequest(ctx context.Context, id interface{}, raw
 		tools = append(tools, tool)
 	}
 	s.registryMu.RUnlock()
-	return createSuccessResponse(id, protocol.ListToolsResult{Tools: tools})
+	resp := createSuccessResponse(id, protocol.ListToolsResult{Tools: tools})
+	// Run hook before returning
+	modifiedResp, err := s.runBeforeSendResponseHooks(ctx, session, resp) // Assuming session is available or passed down
+	if err != nil {
+		s.logger.Error("Error in BeforeSendResponseHook for ListTools: %v. Sending original response.", err)
+		// Decide if hook error should prevent sending? For now, send original.
+		return resp
+	}
+	return modifiedResp
 }
 
 // handleCallToolRequest handles the 'tools/call' request. Params are expected to be json.RawMessage.
@@ -698,7 +1016,7 @@ func (s *Server) handleCallToolRequest(ctx context.Context, session types.Client
 		return createErrorResponse(id, protocol.ErrorCodeInvalidParams, fmt.Sprintf("Failed to unmarshal CallTool params: %v", err))
 	}
 	s.registryMu.RLock()
-	handler, exists := s.toolHandlers[requestParams.Name]
+	originalHandler, exists := s.toolHandlers[requestParams.Name]
 	s.registryMu.RUnlock()
 	if !exists {
 		return createErrorResponse(id, protocol.ErrorCodeMCPToolNotFound, fmt.Sprintf("Tool '%s' not found", requestParams.Name))
@@ -717,12 +1035,97 @@ func (s *Server) handleCallToolRequest(ctx context.Context, session types.Client
 		progressToken = requestParams.Meta.ProgressToken // Assign interface{} directly
 	}
 
-	content, isError := handler(reqCtx, progressToken, requestParams.Arguments) // Pass potentially nil progressToken
+	// --- Wrap handler with BeforeToolCall hooks ---
+	finalHandler := originalHandler // Start with the actual handler
+	s.hooksMu.RLock()
+	// Iterate hooks in reverse to build the chain correctly: Hook1(Hook2(Hook3(originalHandler)))
+	for i := len(s.beforeToolCallHooks) - 1; i >= 0; i-- {
+		hook := s.beforeToolCallHooks[i]
+		finalHandler = hook(finalHandler) // Wrap the current handler with the hook
+	}
+	s.hooksMu.RUnlock()
+	// --- End Hook Wrapping ---
+
+	// Call the final (potentially wrapped) handler
+	// The arguments are passed directly; any modification happens within the hook wrappers.
+	content, isError := finalHandler(reqCtx, progressToken, requestParams.Arguments)
+	var toolErr error // Initialize toolErr, hooks might populate it
+
+	// --- Get Tool Definition for Hooks ---
+	s.registryMu.RLock()
+	toolDef, toolDefExists := s.toolRegistry[requestParams.Name]
+	s.registryMu.RUnlock()
+	if !toolDefExists {
+		// This should technically not happen if the handler was found, but safety check.
+		s.logger.Error("Session %s: Tool definition not found for '%s' during hook processing.", session.SessionID(), requestParams.Name)
+		// Return error, as the tool definition is needed for context.
+		return createErrorResponse(id, protocol.ErrorCodeInternalError, fmt.Sprintf("Tool definition '%s' missing during hook processing", requestParams.Name))
+	}
+
+	// --- Execute AfterToolCall hooks ---
+	s.hooksMu.RLock()
+	aToolHooks := make([]hooks.AfterToolCallHook, len(s.afterToolCallHooks))
+	copy(aToolHooks, s.afterToolCallHooks)
+	s.hooksMu.RUnlock()
+
+	if len(aToolHooks) > 0 {
+		// Create context WITH the tool definition
+		hookCtx := hooks.ServerHookContext{
+			Ctx:            reqCtx,
+			Session:        session,
+			MessageID:      id,
+			Method:         protocol.MethodCallTool, // Corrected method constant if needed
+			ToolDefinition: &toolDef,                // Add the tool definition here
+		}
+		// Start with the results from the handler
+		currentContent := content
+		currentIsError := isError
+		currentToolErr := toolErr // This is currently nil if Before hook didn't error
+
+		for _, hook := range aToolHooks {
+			// Pass the *current* state and context to the After hook (signature updated)
+			currentContent, currentIsError, currentToolErr = hook(
+				hookCtx, // Pass context with ToolDefinition
+				requestParams.Arguments,
+				currentContent,
+				currentIsError,
+				currentToolErr, // Pass the error state *before* this hook runs
+			)
+			// Note: currentToolErr could be set/modified by the hook here
+		}
+		// Update results based on the final state after all hooks ran
+		content = currentContent
+		isError = currentIsError
+		// If hook introduced an error, reflect it
+		if currentToolErr != nil && !isError {
+			// If the handler didn't report an error but a hook did, log it and set isError
+			s.logger.Error("Error introduced by AfterToolCallHook for tool %s: %v.", toolDef.Name, currentToolErr)
+			isError = true
+			// Optionally modify content or return a specific error response based on hook error
+			// For now, just setting isError=true to indicate failure.
+		} else if currentToolErr != nil && isError {
+			// Log if hook modified an existing error (optional logging)
+			s.logger.Warn("AfterToolCallHook for tool %s modified error state: %v", toolDef.Name, currentToolErr)
+		} else if currentToolErr == nil && toolErr != nil {
+			// Log if hook cleared an error (optional logging)
+			s.logger.Warn("AfterToolCallHook for tool %s cleared a previous error.", toolDef.Name)
+		}
+	}
+	// --- End Hook Execution ---
+
 	responsePayload := protocol.CallToolResult{Content: content}
 	if isError {
 		responsePayload.IsError = &isError
 	}
-	return createSuccessResponse(id, responsePayload)
+	resp := createSuccessResponse(id, responsePayload)
+	// Run hook before returning
+	modifiedResp, err := s.runBeforeSendResponseHooks(reqCtx, session, resp) // Use reqCtx and session
+	if err != nil {
+		s.logger.Error("Error in BeforeSendResponseHook for CallTool %s: %v. Sending original response.", requestParams.Name, err)
+		return resp // Send original on hook error
+	}
+	// Return potentially modified response (or nil if suppressed)
+	return modifiedResp
 }
 
 // handleListResources handles the 'resources/list' request. Params are expected to be json.RawMessage.
@@ -770,12 +1173,36 @@ func (s *Server) handleGetPrompt(ctx context.Context, id interface{}, params int
 }
 
 func (s *Server) handleSubscribeResource(ctx context.Context, session types.ClientSession, id interface{}, params interface{}) *protocol.JSONRPCResponse { // Use types.ClientSession
-	s.logger.Debug("Handling SubscribeResource request for session %s", session.SessionID())
+	sessionID := session.SessionID()
+	method := protocol.MethodSubscribeResource // Use correct constant
+	s.logger.Debug("Session %s: Handling %s request ID %v", sessionID, method, id)
+
+	// --- Authorization Check ---
+	// Checking before unmarshalling params. Checker needs to handle interface{} or we unmarshal first.
+	if s.permissionChecker != nil {
+		principal, ok := auth.PrincipalFromContext(ctx)
+		if !ok {
+			s.logger.Warn("Session %s: No principal found in context for %s request ID %v.", sessionID, method, id)
+			return createErrorResponse(id, protocol.ErrorCodeMCPAuthenticationFailed, "Authentication required but no principal found")
+		}
+		if err := s.permissionChecker.CheckPermission(ctx, principal, method, params); err != nil {
+			s.logger.Warn("Session %s: Permission denied for %s request ID %v by principal '%s': %v", sessionID, method, id, principal.GetSubject(), err)
+			if mcpErr, ok := err.(*protocol.MCPError); ok {
+				return createErrorResponse(id, mcpErr.Code, mcpErr.Message)
+			}
+			return createErrorResponse(id, protocol.ErrorCodeMCPAccessDenied, fmt.Sprintf("Permission denied for %s: %v", method, err))
+		}
+		s.logger.Debug("Session %s: Permission granted for %s request ID %v by principal '%s'", sessionID, method, id, principal.GetSubject())
+	} else {
+		s.logger.Debug("Session %s: No permission checker configured, skipping auth check for %s request ID %v.", sessionID, method, id)
+	}
+	// --- End Authorization Check ---
+
 	var requestParams protocol.SubscribeResourceParams
 	if err := protocol.UnmarshalPayload(params, &requestParams); err != nil {
-		return createErrorResponse(id, protocol.ErrorCodeInvalidParams, fmt.Sprintf("Failed to unmarshal SubscribeResource params: %v", err))
+		return createErrorResponse(id, protocol.ErrorCodeInvalidParams, fmt.Sprintf("Failed to unmarshal %s params: %v", method, err))
 	}
-	sessionID := session.SessionID()
+	// sessionID already defined above
 	s.subscriptionMu.Lock()
 	if _, ok := s.resourceSubscriptions[sessionID]; !ok {
 		s.resourceSubscriptions[sessionID] = make(map[string]bool)
@@ -794,12 +1221,38 @@ func (s *Server) handleSubscribeResource(ctx context.Context, session types.Clie
 }
 
 func (s *Server) handleUnsubscribeResource(ctx context.Context, session types.ClientSession, id interface{}, params interface{}) *protocol.JSONRPCResponse { // Use types.ClientSession
-	s.logger.Debug("Handling UnsubscribeResource request for session %s", session.SessionID())
+	sessionID := session.SessionID()
+	method := protocol.MethodUnsubscribeResource // Use correct constant
+	s.logger.Debug("Session %s: Handling %s request ID %v", sessionID, method, id)
+
+	// --- Authorization Check ---
+	// Checking *after* unmarshalling params.
 	var requestParams protocol.UnsubscribeResourceParams
 	if err := protocol.UnmarshalPayload(params, &requestParams); err != nil {
-		return createErrorResponse(id, protocol.ErrorCodeInvalidParams, fmt.Sprintf("Failed to unmarshal UnsubscribeResource params: %v", err))
+		return createErrorResponse(id, protocol.ErrorCodeInvalidParams, fmt.Sprintf("Failed to unmarshal %s params: %v", method, err))
 	}
-	sessionID := session.SessionID()
+
+	if s.permissionChecker != nil {
+		principal, ok := auth.PrincipalFromContext(ctx)
+		if !ok {
+			s.logger.Warn("Session %s: No principal found in context for %s request ID %v.", sessionID, method, id)
+			return createErrorResponse(id, protocol.ErrorCodeMCPAuthenticationFailed, "Authentication required but no principal found")
+		}
+		// Pass parsed params to checker
+		if err := s.permissionChecker.CheckPermission(ctx, principal, method, requestParams); err != nil {
+			s.logger.Warn("Session %s: Permission denied for %s request ID %v by principal '%s': %v", sessionID, method, id, principal.GetSubject(), err)
+			if mcpErr, ok := err.(*protocol.MCPError); ok {
+				return createErrorResponse(id, mcpErr.Code, mcpErr.Message)
+			}
+			return createErrorResponse(id, protocol.ErrorCodeMCPAccessDenied, fmt.Sprintf("Permission denied for %s: %v", method, err))
+		}
+		s.logger.Debug("Session %s: Permission granted for %s request ID %v by principal '%s'", sessionID, method, id, principal.GetSubject())
+	} else {
+		s.logger.Debug("Session %s: No permission checker configured, skipping auth check for %s request ID %v.", sessionID, method, id)
+	}
+	// --- End Authorization Check ---
+
+	// sessionID already defined above
 	s.subscriptionMu.Lock()
 	if subs, ok := s.resourceSubscriptions[sessionID]; ok {
 		if len(requestParams.URIs) == 0 {
@@ -935,12 +1388,49 @@ func createErrorResponse(id interface{}, code int, message string) *protocol.JSO
 	}
 }
 
-// --- Default Logger ---
-type defaultLogger struct{}
+// --- Hook Execution Helper ---
 
-func (l *defaultLogger) Debug(msg string, args ...interface{}) { log.Printf("DEBUG: "+msg, args...) }
-func (l *defaultLogger) Info(msg string, args ...interface{})  { log.Printf("INFO: "+msg, args...) }
-func (l *defaultLogger) Warn(msg string, args ...interface{})  { log.Printf("WARN: "+msg, args...) }
-func (l *defaultLogger) Error(msg string, args ...interface{}) { log.Printf("ERROR: "+msg, args...) }
+// runBeforeSendResponseHooks executes the registered hooks before sending a response.
+// It returns the potentially modified response or an error if a hook failed.
+// If a hook returns (nil, nil), it means the response should be suppressed.
+func (s *Server) runBeforeSendResponseHooks(ctx context.Context, session types.ClientSession, response *protocol.JSONRPCResponse) (*protocol.JSONRPCResponse, error) {
+	s.hooksMu.RLock()
+	hooksToRun := make([]hooks.BeforeSendResponseHook, len(s.beforeSendResponseHooks))
+	copy(hooksToRun, s.beforeSendResponseHooks)
+	s.hooksMu.RUnlock()
+
+	if len(hooksToRun) == 0 || response == nil { // Also check if response is nil
+		return response, nil // No hooks or nothing to hook
+	}
+
+	currentResponse := response
+	var err error
+
+	// Create hook context - session might be nil if called outside session context (e.g., generic error)
+	hookCtx := hooks.ServerHookContext{
+		Ctx:       ctx,
+		Session:   session,     // Can be nil
+		MessageID: response.ID, // Get ID from response
+		Method:    "",          // Method isn't directly known here, maybe add if needed?
+	}
+
+	for _, hook := range hooksToRun {
+		currentResponse, err = hook(hookCtx, currentResponse)
+		if err != nil {
+			// Return the error and the *original* response
+			return response, fmt.Errorf("BeforeSendResponseHook failed: %w", err)
+		}
+		if currentResponse == nil {
+			// Hook decided to suppress the response entirely
+			s.logger.Warn("BeforeSendResponseHook suppressed response for ID %v", response.ID)
+			return nil, nil // Indicate response should not be sent
+		}
+	}
+	return currentResponse, nil
+}
+
+// --- Hook Execution Helper ---
+
+// Removed duplicate runBeforeSendResponseHooks function and defaultLogger
 
 // ServeStdio helper moved to stdio_server.go

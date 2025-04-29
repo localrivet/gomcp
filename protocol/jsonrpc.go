@@ -61,3 +61,27 @@ func UnmarshalPayload(payload interface{}, target interface{}) error {
 	}
 	return nil
 }
+
+// NewSuccessResponse creates a new JSON-RPC success response object.
+func NewSuccessResponse(id interface{}, result interface{}) *JSONRPCResponse {
+	return &JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      id,
+		Result:  result,
+		Error:   nil,
+	}
+}
+
+// NewErrorResponse creates a new JSON-RPC error response object.
+func NewErrorResponse(id interface{}, code int, message string, data interface{}) *JSONRPCResponse {
+	return &JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      id, // Can be null if error occurred before ID parsing
+		Result:  nil,
+		Error: &ErrorPayload{
+			Code:    code,
+			Message: message,
+			Data:    data,
+		},
+	}
+}

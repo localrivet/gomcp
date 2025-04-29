@@ -21,8 +21,8 @@ type ClientCapabilities struct {
 	Roots        *struct {
 		ListChanged bool `json:"listChanged,omitempty"`
 	} `json:"roots,omitempty"`
-	Sampling      *struct{} `json:"sampling,omitempty"`
-	Authorization *struct { // Added for 2025-03-26
+	Sampling      *SamplingCapability `json:"sampling,omitempty"` // Corrected type
+	Authorization *struct {           // Added for 2025-03-26
 		// Define specific authorization capabilities if needed by the spec
 	} `json:"authorization,omitempty"`
 }
@@ -288,6 +288,33 @@ type CreateMessageResultV20250326 struct {
 }
 
 // --- END: Added for 2025-03-26 Sampling ---
+
+// SamplingCapability defines capabilities related to sampling.
+type SamplingCapability struct {
+	Enabled bool `json:"enabled,omitempty"` // Indicates if the client supports handling sampling/request
+	// Add other sampling-related capabilities here if needed in the future
+}
+
+// SamplingRequestParams defines the parameters for a 'sampling/request'.
+// Note: This structure aligns with the 2025-03-26 spec's 'sampling/create_message' request.
+// If supporting 2024-11-05 sampling is needed, separate handling might be required.
+type SamplingRequestParams struct {
+	Messages         []SamplingMessage          `json:"messages"`
+	ModelPreferences *ModelPreferencesV20250326 `json:"modelPreferences,omitempty"`
+	SystemPrompt     *string                    `json:"systemPrompt,omitempty"`
+	MaxTokens        *int                       `json:"maxTokens,omitempty"`
+	Meta             *RequestMeta               `json:"_meta,omitempty"` // Allow progress reporting
+}
+
+// SamplingResult defines the result payload for a successful 'sampling/request' response.
+// Note: This structure aligns with the 2025-03-26 spec's 'sampling/create_message' result.
+type SamplingResult struct {
+	Role       string       `json:"role"`
+	Content    []Content    `json:"content"`
+	Model      *string      `json:"model,omitempty"`
+	StopReason *string      `json:"stopReason,omitempty"`
+	Meta       *RequestMeta `json:"_meta,omitempty"` // Allow progress reporting
+}
 
 // --- Roots Structures ---
 

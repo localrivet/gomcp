@@ -36,7 +36,8 @@ const (
 	MethodNotificationMessage = "notifications/message" // Note: This is a notification
 
 	// Sampling
-	MethodSamplingCreateMessage = "sampling/create_message"
+	MethodSamplingCreateMessage = "sampling/create_message" // Note: 2025 spec name
+	MethodSamplingRequest       = "sampling/request"        // Generic name used in client handler
 
 	// Roots
 	MethodRootsList              = "roots/list"
