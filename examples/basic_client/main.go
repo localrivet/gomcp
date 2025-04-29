@@ -95,20 +95,16 @@ func main() {
 	log.SetFlags(log.Ltime | log.Lmsgprefix)
 	log.SetPrefix("[BasicClient] ")
 
-	// Get server URL from environment or use default
-	serverURL := os.Getenv("SERVER_URL")
-	if serverURL == "" {
-		serverURL = "http://localhost:8681"
-	}
+	log.Println("Starting basic MCP client using Stdio transport...")
 
-	log.Printf("Starting basic MCP client, connecting to %s", serverURL)
-
-	// Create the client with options
-	clt, err := client.NewClient("BasicMCPClient", client.ClientOptions{
-		ServerBaseURL: serverURL,
+	// Create the client using the Stdio constructor
+	// No server URL needed for stdio
+	clt, err := client.NewStdioClient("BasicMCPClient", client.ClientOptions{
+		// Logger can be customized here if needed, e.g.:
+		// Logger: client.NewNilLogger(),
 	})
 	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
+		log.Fatalf("Failed to create stdio client: %v", err)
 	}
 
 	// Create a context with timeout

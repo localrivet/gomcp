@@ -44,7 +44,8 @@ func (s *stdioSession) SendNotification(notification protocol.JSONRPCNotificatio
 		s.logger.Error("StdioSession %s: Error marshaling notification: %v", s.id, err)
 		return err
 	}
-	return s.transport.Send(msg)
+	// Use context.Background() as notifications are server-initiated
+	return s.transport.Send(context.Background(), msg)
 }
 func (s *stdioSession) SendResponse(response protocol.JSONRPCResponse) error {
 	msg, err := json.Marshal(response)
@@ -52,7 +53,8 @@ func (s *stdioSession) SendResponse(response protocol.JSONRPCResponse) error {
 		s.logger.Error("StdioSession %s: Error marshaling response: %v", s.id, err)
 		return err
 	}
-	return s.transport.Send(msg)
+	// Use context.Background() as responses are server-initiated
+	return s.transport.Send(context.Background(), msg)
 }
 func (s *stdioSession) Close() error      { return nil } // No-op for stdio
 func (s *stdioSession) Initialize()       { s.initialized = true }
@@ -101,10 +103,10 @@ func ServeStdio(srv *Server) error {
 			logger.Info("ServeStdio: Context cancelled, shutting down...")
 			return ctx.Err()
 		default:
-			// Receive raw message
-			rawMsg, err := transport.ReceiveWithContext(ctx)
+			// Receive raw message using the updated Receive method
+			rawMsg, err := transport.Receive(ctx)
 			if err != nil {
-				if errors.Is(err, io.EOF) { // Assumes io package is imported
+				if errors.Is(err, io.EOF) {
 					logger.Info("ServeStdio: Input closed (EOF), shutting down...")
 					return nil // Clean shutdown on EOF
 				}
@@ -132,7 +134,8 @@ func ServeStdio(srv *Server) error {
 					continue // Skip this response, but log the error
 				}
 
-				if err := transport.Send(respBytes); err != nil {
+				// Pass the request context (ctx) when sending the response
+				if err := transport.Send(ctx, respBytes); err != nil {
 					logger.Error("ServeStdio: Error sending response: %v", err)
 					// If sending fails, it's likely fatal for stdio
 					return fmt.Errorf("failed to send response: %w", err)

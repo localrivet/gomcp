@@ -9,13 +9,13 @@ import (
 	"errors"        // Added for error checking
 	"fmt"
 	"io"
-	"log" // Added import for default logger
 	"os"
 	"strings" // Added for error checking
 	"sync"
 
 	// "time" // No longer needed directly in ReceiveWithContext
 
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/gomcp/protocol" // For ErrorPayload, ErrorCodeParseError
 	"github.com/localrivet/gomcp/types"    // For types.Transport, types.Logger
 )
@@ -61,7 +61,10 @@ func NewStdioTransportWithOptions(opts types.TransportOptions) *StdioTransport {
 func NewStdioTransportWithReadWriter(reader io.Reader, writer io.Writer, opts types.TransportOptions) *StdioTransport {
 	logger := opts.Logger
 	if logger == nil {
-		logger = &defaultLogger{}
+		// Use the centralized logx logger
+		logger = logx.NewDefaultLogger()
+		// Assign back to opts so the transport uses the created logger
+		opts.Logger = logger
 	}
 	logger.Info("Creating new StdioTransport")
 
@@ -96,9 +99,16 @@ func NewStdioTransportWithReadWriter(reader io.Reader, writer io.Writer, opts ty
 	return t
 }
 
-// Send writes a message to the underlying writer (stdout).
+// Send writes a message to the underlying writer (stdout), respecting the context.
 // It ensures the message ends with a newline and handles locking and flushing.
-func (t *StdioTransport) Send(data []byte) error {
+func (t *StdioTransport) Send(ctx context.Context, data []byte) error {
+	// Check context cancellation first
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	t.closeMutex.Lock()
 	if t.closed {
 		t.closeMutex.Unlock()
@@ -141,10 +151,65 @@ func (t *StdioTransport) Send(data []byte) error {
 	return nil
 }
 
-// Receive reads the next newline-delimited message from the underlying reader (stdin).
-// It blocks until a message is received or an error occurs.
-func (t *StdioTransport) Receive() ([]byte, error) {
-	return t.ReceiveWithContext(context.Background())
+// EstablishReceiver for StdioTransport does nothing, as the reader is started
+// automatically during construction. It exists to satisfy the Transport interface.
+func (t *StdioTransport) EstablishReceiver(ctx context.Context) error {
+	t.logger.Debug("StdioTransport: EstablishReceiver called (no-op).")
+	// Check if already closed
+	t.closeMutex.Lock()
+	defer t.closeMutex.Unlock()
+	if t.closed {
+		return fmt.Errorf("transport is closed")
+	}
+	return nil
+}
+
+// Receive reads the next available message from the internal channel,
+// waiting if necessary. It respects the provided context for cancellation.
+// This replaces the old Receive and ReceiveWithContext methods.
+func (t *StdioTransport) Receive(ctx context.Context) ([]byte, error) {
+	// Note: Reader goroutine is started in the constructor.
+
+	t.closeMutex.Lock()
+	isClosed := t.closed
+	t.closeMutex.Unlock()
+	// Check if closed *before* waiting on channel. Avoids race if Close happens
+	// between this check and the select statement. The select handles closure
+	// during the wait.
+	if isClosed {
+		return nil, fmt.Errorf("transport is closed")
+	}
+
+	select {
+	case <-ctx.Done():
+		t.logger.Warn("StdioTransport: Receive context canceled: %v", ctx.Err())
+		return nil, ctx.Err()
+	case msg, ok := <-t.messageChan:
+		if !ok {
+			// Channel closed, means reader stopped (EOF, error, or Close called).
+			t.logger.Info("StdioTransport: Message channel closed.")
+			// Ensure transport state reflects closure if not already set
+			t.closeMutex.Lock()
+			alreadyClosed := t.closed
+			if !alreadyClosed {
+				t.closed = true // Mark as closed if channel closure is the first indication
+			}
+			t.closeMutex.Unlock()
+			// Return EOF or a specific closed error
+			return nil, io.EOF // Consistent with reader goroutine sending EOF
+		}
+		// Return the message data or error received from the channel
+		if msg.err != nil && !errors.Is(msg.err, io.EOF) { // Don't log EOF as an error here
+			t.logger.Error("StdioTransport: Received error from reader channel: %v", msg.err)
+		}
+		// If EOF is received, mark transport as closed
+		if errors.Is(msg.err, io.EOF) {
+			t.closeMutex.Lock()
+			t.closed = true
+			t.closeMutex.Unlock()
+		}
+		return msg.data, msg.err
+	}
 }
 
 // startReader launches the persistent goroutine that reads from stdin,
@@ -238,53 +303,6 @@ func (t *StdioTransport) startReader() {
 	}
 }
 
-// ReceiveWithContext reads the next available message from the internal channel,
-// waiting if necessary. It respects the provided context for cancellation.
-func (t *StdioTransport) ReceiveWithContext(ctx context.Context) ([]byte, error) {
-	// Note: Reader goroutine is started in the constructor.
-
-	t.closeMutex.Lock()
-	isClosed := t.closed
-	t.closeMutex.Unlock()
-	// Check if closed *before* waiting on channel. Avoids race if Close happens
-	// between this check and the select statement. The select handles closure
-	// during the wait.
-	if isClosed {
-		return nil, fmt.Errorf("transport is closed")
-	}
-
-	select {
-	case <-ctx.Done():
-		t.logger.Warn("StdioTransport: Receive context canceled: %v", ctx.Err())
-		return nil, ctx.Err()
-	case msg, ok := <-t.messageChan:
-		if !ok {
-			// Channel closed, means reader stopped (EOF, error, or Close called).
-			t.logger.Info("StdioTransport: Message channel closed.")
-			// Ensure transport state reflects closure if not already set
-			t.closeMutex.Lock()
-			alreadyClosed := t.closed
-			if !alreadyClosed {
-				t.closed = true // Mark as closed if channel closure is the first indication
-			}
-			t.closeMutex.Unlock()
-			// Return EOF or a specific closed error
-			return nil, io.EOF // Consistent with reader goroutine sending EOF
-		}
-		// Return the message data or error received from the channel
-		if msg.err != nil && !errors.Is(msg.err, io.EOF) { // Don't log EOF as an error here
-			t.logger.Error("StdioTransport: Received error from reader channel: %v", msg.err)
-		}
-		// If EOF is received, mark transport as closed
-		if errors.Is(msg.err, io.EOF) {
-			t.closeMutex.Lock()
-			t.closed = true
-			t.closeMutex.Unlock()
-		}
-		return msg.data, msg.err
-	}
-}
-
 // Close signals the reader goroutine to stop and attempts to close the underlying reader/writer.
 func (t *StdioTransport) Close() error {
 	t.closeMutex.Lock()
@@ -345,8 +363,15 @@ func (t *StdioTransport) Close() error {
 	return firstErr
 }
 
+// IsClosed returns true if the transport has been closed.
+func (t *StdioTransport) IsClosed() bool {
+	t.closeMutex.Lock()
+	defer t.closeMutex.Unlock()
+	return t.closed
+}
+
 // sendParseError is a helper to send a JSON-RPC ParseError.
-func (t *StdioTransport) sendParseError(message string) error {
+func (t *StdioTransport) sendParseError(ctx context.Context, message string) error {
 	errResp := protocol.JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      nil, // No ID for parse errors before request ID is known
@@ -361,18 +386,8 @@ func (t *StdioTransport) sendParseError(message string) error {
 		return err
 	}
 	// Use Send directly, ignoring potential errors during error reporting
-	_ = t.Send(jsonData)
+	_ = t.Send(ctx, jsonData) // Pass context
 	return nil
 }
 
-// --- Default Logger ---
-
-// defaultLogger provides a basic logger implementation if none is provided.
-type defaultLogger struct{}
-
-func (l *defaultLogger) Debug(msg string, args ...interface{}) { log.Printf("DEBUG: "+msg, args...) }
-func (l *defaultLogger) Info(msg string, args ...interface{})  { log.Printf("INFO: "+msg, args...) }
-func (l *defaultLogger) Warn(msg string, args ...interface{})  { log.Printf("WARN: "+msg, args...) }
-func (l *defaultLogger) Error(msg string, args ...interface{}) { log.Printf("ERROR: "+msg, args...) }
-
-var _ types.Logger = (*defaultLogger)(nil) // Ensure interface compliance
+var _ types.Transport = (*StdioTransport)(nil) // Ensure interface compliance

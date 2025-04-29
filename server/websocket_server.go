@@ -48,7 +48,8 @@ func (s *wsSession) SendResponse(response protocol.JSONRPCResponse) error {
 		return fmt.Errorf("ws session marshal response: %w", err)
 	}
 	jsonData = append(jsonData, '\n') // MCP Framing
-	return s.transport.Send(jsonData)
+	// Use context.Background() as responses are server-initiated
+	return s.transport.Send(context.Background(), jsonData)
 }
 func (s *wsSession) SendNotification(notification protocol.JSONRPCNotification) error {
 	jsonData, err := json.Marshal(notification)
@@ -56,7 +57,8 @@ func (s *wsSession) SendNotification(notification protocol.JSONRPCNotification) 
 		return fmt.Errorf("ws session marshal notification: %w", err)
 	}
 	jsonData = append(jsonData, '\n') // MCP Framing
-	return s.transport.Send(jsonData)
+	// Use context.Background() as notifications are server-initiated
+	return s.transport.Send(context.Background(), jsonData)
 }
 func (s *wsSession) Close() error { return s.transport.Close() }
 func (s *wsSession) Initialized() bool {
@@ -142,7 +144,8 @@ func ServeWebSocket(srv *Server, addr string, path string) error {
 			for {
 				// Receive raw message using the transport
 				// Use background context for read loop; cancellation happens via Close()
-				rawMessage, err := mcpTransport.ReceiveWithContext(ctx)
+				// Use the updated Receive method
+				rawMessage, err := mcpTransport.Receive(ctx)
 				if err != nil {
 					// Check for expected closure errors
 					if errors.Is(err, io.EOF) || err.Error() == "transport is closed" || errors.Is(err, net.ErrClosed) {

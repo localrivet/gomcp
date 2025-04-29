@@ -133,11 +133,16 @@ func (erc EmbeddedResourceContent) GetType() string { return erc.Type }
 type LoggingLevel string
 
 const (
-	LogLevelError LoggingLevel = "error"
-	LogLevelWarn  LoggingLevel = "warn"
-	LogLevelInfo  LoggingLevel = "info"
-	LogLevelDebug LoggingLevel = "debug"
-	LogLevelTrace LoggingLevel = "trace"
+	// Syslog levels based on RFC 5424, used in 2025-03-26 spec
+	LogLevelEmergency LoggingLevel = "emergency"
+	LogLevelAlert     LoggingLevel = "alert"
+	LogLevelCritical  LoggingLevel = "critical"
+	LogLevelError     LoggingLevel = "error"
+	LogLevelWarn      LoggingLevel = "warning" // Renamed from 'warn'
+	LogLevelNotice    LoggingLevel = "notice"
+	LogLevelInfo      LoggingLevel = "info"
+	LogLevelDebug     LoggingLevel = "debug"
+	// LogLevelTrace is not a standard syslog level
 )
 
 // SetLevelRequestParams defines parameters for 'logging/set_level'.
@@ -146,9 +151,14 @@ type SetLevelRequestParams struct {
 }
 
 // LoggingMessageParams defines parameters for 'notifications/message'.
+// This struct now includes fields for both 2024-11-05 (Level, Message)
+// and 2025-03-26 (Level, Logger, Data).
+// Consuming code must check negotiatedVersion to determine which fields are expected/valid.
 type LoggingMessageParams struct {
 	Level   LoggingLevel `json:"level"`
-	Message string       `json:"message"`
+	Message string       `json:"message,omitempty"` // Kept for 2024-11-05 compatibility
+	Logger  *string      `json:"logger,omitempty"`  // Added for 2025-03-26
+	Data    interface{}  `json:"data,omitempty"`    // Added for 2025-03-26 (JSON object)
 }
 
 // --- Sampling Structures ---
@@ -215,7 +225,7 @@ func (sm *SamplingMessage) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// ModelPreferences specifies desired model characteristics.
+// ModelPreferences represents the 2024-11-05 structure.
 type ModelPreferences struct {
 	ModelURI    string   `json:"modelUri,omitempty"`
 	Temperature *float64 `json:"temperature,omitempty"`
@@ -223,7 +233,22 @@ type ModelPreferences struct {
 	TopK        *int     `json:"topK,omitempty"`
 }
 
-// ModelHint provides information about the model used for a response.
+// --- START: Added for 2025-03-26 Sampling ---
+
+// ModelHintV20250326 represents a model hint for 2025-03-26.
+type ModelHintV20250326 struct {
+	Name string `json:"name"`
+}
+
+// ModelPreferencesV20250326 represents the 2025-03-26 structure.
+type ModelPreferencesV20250326 struct {
+	Hints                []ModelHintV20250326 `json:"hints,omitempty"`
+	CostPriority         *float64             `json:"costPriority,omitempty"`         // 0-1
+	SpeedPriority        *float64             `json:"speedPriority,omitempty"`        // 0-1
+	IntelligencePriority *float64             `json:"intelligencePriority,omitempty"` // 0-1
+}
+
+// ModelHint represents the 2024-11-05 structure.
 type ModelHint struct {
 	ModelURI     string  `json:"modelUri"`
 	InputTokens  *int    `json:"inputTokens,omitempty"`
@@ -231,17 +256,38 @@ type ModelHint struct {
 	FinishReason *string `json:"finishReason,omitempty"`
 }
 
-// CreateMessageRequestParams defines parameters for 'sampling/create_message'.
+// --- Note: 2025-03-26 sampling result includes model/stopReason directly ---
+
+// CreateMessageRequestParams represents the 2024-11-05 structure.
 type CreateMessageRequestParams struct {
-	Context     []SamplingMessage `json:"context"`
+	Context     []SamplingMessage `json:"context"` // Renamed to 'messages' in 2025-03-26
 	Preferences *ModelPreferences `json:"preferences,omitempty"`
 }
 
-// CreateMessageResult defines the result for 'sampling/create_message'.
+// CreateMessageRequestParamsV20250326 represents the 2025-03-26 structure.
+type CreateMessageRequestParamsV20250326 struct {
+	Messages         []SamplingMessage          `json:"messages"`                   // Renamed from 'context'
+	ModelPreferences *ModelPreferencesV20250326 `json:"modelPreferences,omitempty"` // Use new struct
+	SystemPrompt     *string                    `json:"systemPrompt,omitempty"`     // Added field
+	MaxTokens        *int                       `json:"maxTokens,omitempty"`        // Added field
+}
+
+// CreateMessageResult represents the 2024-11-05 structure.
 type CreateMessageResult struct {
 	Message   SamplingMessage `json:"message"`
 	ModelHint *ModelHint      `json:"modelHint,omitempty"`
 }
+
+// CreateMessageResultV20250326 represents the 2025-03-26 structure.
+type CreateMessageResultV20250326 struct {
+	Role       string    `json:"role"`                 // Added field (e.g., "assistant")
+	Content    []Content `json:"content"`              // Added field (replaces Message.Content)
+	Model      *string   `json:"model,omitempty"`      // Added field (replaces ModelHint.ModelURI)
+	StopReason *string   `json:"stopReason,omitempty"` // Added field (replaces ModelHint.FinishReason)
+	// InputTokens and OutputTokens are not part of the 2025-03-26 result structure.
+}
+
+// --- END: Added for 2025-03-26 Sampling ---
 
 // --- Roots Structures ---
 
@@ -266,14 +312,15 @@ type ListRootsResult struct {
 
 // CancelledParams defines the parameters for the '$/cancelled' notification.
 type CancelledParams struct {
-	ID interface{} `json:"id"`
+	ID     interface{} `json:"id"`
+	Reason *string     `json:"reason,omitempty"` // Added for 2025-03-26
 }
 
 // ProgressParams defines the parameters for the '$/progress' notification.
 type ProgressParams struct {
 	Token   string      `json:"token"`
 	Value   interface{} `json:"value"`
-	Message *string     `json:"message,omitempty"` // Added for 2025-03-26
+	Message *string     `json:"message,omitempty"` // Ensure omitempty is present (relevant for 2025-03-26)
 }
 
 // ProgressToken is an identifier for reporting progress.

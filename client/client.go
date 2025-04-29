@@ -2,29 +2,25 @@
 package client
 
 import (
-	"bytes" // For HTTP POST body
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"       // Added import
-	"log"      // For default logger
-	"net/http" // For HTTP client
-	"net/url"  // For joining URLs
-	"strings"  // Added import
-	"sync"     // Added import
+	"io" // For EOF check in receive loop
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/localrivet/gomcp/logx" // Import the new logger package
 	"github.com/localrivet/gomcp/protocol"
+
+	// sse "github.com/localrivet/gomcp/transport/sse" // REMOVED - No longer needed for type assertion
 	"github.com/localrivet/gomcp/types"
-	"github.com/r3labs/sse/v2"     // SSE Client library
-	"gopkg.in/cenkalti/backoff.v1" // For backoff strategy
 )
 
-// Client represents an MCP client instance using the SSE+HTTP hybrid transport.
+// Client represents a generic MCP client instance.
 type Client struct {
-	// Removed transport field
+	transport  types.Transport // Abstract transport interface
 	clientName string
 	logger     types.Logger
 
@@ -32,18 +28,18 @@ type Client struct {
 	serverInfo         protocol.Implementation
 	serverCapabilities protocol.ServerCapabilities
 	clientCapabilities protocol.ClientCapabilities
-	negotiatedVersion  string // Added: Store the negotiated protocol version
+	negotiatedVersion  string // Store the negotiated protocol version
 	capabilitiesMu     sync.RWMutex
 
 	// Request handling
 	pendingRequests map[string]chan *protocol.JSONRPCResponse
 	pendingMu       sync.Mutex
 
-	// Request handlers (for server-to-client requests - less common in hybrid model)
+	// Request handlers (for server-to-client requests)
 	requestHandlers map[string]RequestHandlerFunc
 	handlerMu       sync.RWMutex
 
-	// Notification handlers (for server-to-client notifications via SSE)
+	// Notification handlers (for server-to-client notifications)
 	notificationHandlers map[string]NotificationHandlerFunc
 	notificationMu       sync.RWMutex
 
@@ -51,28 +47,15 @@ type Client struct {
 	roots   map[string]protocol.Root
 	rootsMu sync.Mutex
 
-	// HTTP + SSE specific fields
-	httpClient       *http.Client
-	serverBaseURL    string      // e.g., "http://localhost:8080"
-	messageEndpoint  string      // e.g., "/message" (relative path)
-	sseEndpoint      string      // e.g., "/sse" (relative path)
-	sessionID        string      // Received from server on SSE connection
-	sseClient        *sse.Client // SSE client connection handler
-	sseMu            sync.Mutex  // Mutex for SSE client state/reconnection?
-	preferredVersion string      // Added: Store the preferred version for initialization
-
-	// SSE reconnection state
-	sseReconnecting   bool
-	sseReconnectMu    sync.Mutex
-	maxReconnectTries int
+	preferredVersion string // Store the preferred version for initialization
 
 	// Client state
 	initialized bool
-	connected   bool // Represents SSE connection established
-	closed      bool
-	stateMu     sync.RWMutex
+	// 'connected' is implicitly managed by transport state and initialized flag
+	closed  bool
+	stateMu sync.RWMutex
 
-	// Message processing (for SSE messages)
+	// Message processing
 	processingCtx    context.Context
 	processingCancel context.CancelFunc
 	processingWg     sync.WaitGroup
@@ -88,88 +71,59 @@ type NotificationHandlerFunc func(ctx context.Context, params interface{}) error
 type ClientOptions struct {
 	Logger                   types.Logger
 	ClientCapabilities       protocol.ClientCapabilities
-	HTTPClient               *http.Client // Allow providing a custom HTTP client
-	ServerBaseURL            string       // Required: Base URL of the MCP server
-	MessageEndpoint          string       // Optional: Defaults to "/message"
-	SSEEndpoint              string       // Optional: Defaults to "/sse"
-	PreferredProtocolVersion string       // Optional: Defaults to CurrentProtocolVersion
+	PreferredProtocolVersion *string         // Optional: Defaults to OldProtocolVersion
+	Transport                types.Transport // Required: Must be provided by specific constructors
+	// Removed HTTP/SSE specific options
 }
 
-// NewClient creates a new Client for SSE+HTTP transport.
+// NewClient creates a new generic Client instance.
+// Transport must be provided via ClientOptions by specific constructors (NewSSEClient, NewWebSocketClient, etc.).
 func NewClient(clientName string, opts ClientOptions) (*Client, error) {
 	logger := opts.Logger
 	if logger == nil {
-		logger = &defaultLogger{}
+		logger = logx.NewDefaultLogger() // Use the new logger package
 	}
 
-	if opts.ServerBaseURL == "" {
-		return nil, fmt.Errorf("ServerBaseURL is required in ClientOptions")
-	}
-	baseURL, err := url.Parse(opts.ServerBaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid ServerBaseURL: %w", err)
-	}
-
-	messageEndpoint := opts.MessageEndpoint
-	if messageEndpoint == "" {
-		messageEndpoint = "/message"
-	}
-	if !strings.HasPrefix(messageEndpoint, "/") {
-		messageEndpoint = "/" + messageEndpoint
-	}
-
-	sseEndpoint := opts.SSEEndpoint
-	if sseEndpoint == "" {
-		sseEndpoint = "/sse"
-	}
-	if !strings.HasPrefix(sseEndpoint, "/") {
-		sseEndpoint = "/" + sseEndpoint
-	}
-
-	httpClient := opts.HTTPClient
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+	if opts.Transport == nil {
+		return nil, fmt.Errorf("transport is required in ClientOptions")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Determine preferred version
-	clientPreferredVersion := opts.PreferredProtocolVersion
-	if clientPreferredVersion == "" {
-		clientPreferredVersion = protocol.CurrentProtocolVersion
+	clientPreferredVersion := protocol.OldProtocolVersion // Default to old version for compatibility
+	if opts.PreferredProtocolVersion != nil {
+		clientPreferredVersion = *opts.PreferredProtocolVersion
 	}
 
 	c := &Client{
 		clientName:           clientName,
-		preferredVersion:     clientPreferredVersion, // Store preferred version
+		transport:            opts.Transport, // Store the provided transport
+		preferredVersion:     clientPreferredVersion,
 		logger:               logger,
 		clientCapabilities:   opts.ClientCapabilities,
-		httpClient:           httpClient,
-		serverBaseURL:        strings.TrimSuffix(baseURL.String(), "/"),
-		messageEndpoint:      messageEndpoint,
-		sseEndpoint:          sseEndpoint,
 		pendingRequests:      make(map[string]chan *protocol.JSONRPCResponse),
 		requestHandlers:      make(map[string]RequestHandlerFunc),
 		notificationHandlers: make(map[string]NotificationHandlerFunc),
 		roots:                make(map[string]protocol.Root),
 		initialized:          false,
-		connected:            false,
 		closed:               false,
-		maxReconnectTries:    3, // Default max reconnection attempts
 		processingCtx:        ctx,
 		processingCancel:     cancel,
 	}
 
-	logger.Info("MCP Client '%s' created for server %s", clientName, c.serverBaseURL)
+	logger.Info("MCP Client '%s' created", clientName)
 	return c, nil
 }
 
-// Connect establishes the SSE connection and performs the MCP handshake.
+// Connect performs the MCP handshake using the configured transport.
 func (c *Client) Connect(ctx context.Context) error {
 	c.stateMu.Lock()
-	if c.connected {
+	// Check the initialized and closed state directly instead of calling IsConnected()
+	// while holding the lock, which would cause a deadlock
+	if c.initialized && !c.closed {
 		c.stateMu.Unlock()
-		return fmt.Errorf("client is already connected")
+		return fmt.Errorf("client is already connected and initialized")
 	}
 	if c.closed {
 		c.stateMu.Unlock()
@@ -179,143 +133,66 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	c.logger.Info("Client '%s' starting connection & initialization...", c.clientName)
 
-	// --- Step 1: Establish SSE Connection ---
-	sseURL := c.serverBaseURL + c.sseEndpoint
-	c.logger.Info("Connecting to SSE endpoint: %s", sseURL)
-	c.sseClient = sse.NewClient(sseURL) // Create SSE client instance
+	// Start the message processing loop that uses c.transport.Receive
+	c.startMessageProcessing()
 
-	// Enable automatic reconnection
-	expBackoff := backoff.NewExponentialBackOff()
-	c.sseClient.ReconnectStrategy = backoff.WithMaxTries(expBackoff, uint64(c.maxReconnectTries))
-
-	endpointCh := make(chan string, 1)
-	errCh := make(chan error, 1)
-
-	// Start listening in a goroutine
-	c.processingWg.Add(1) // Add to wait group for graceful shutdown
-	go func() {
-		defer c.processingWg.Done() // Signal when done
-		c.logger.Debug("Starting SSE event listener goroutine...")
-		err := c.sseClient.SubscribeRawWithContext(c.processingCtx, func(msg *sse.Event) { // Use processingCtx
-			eventName := string(msg.Event)
-			eventData := string(msg.Data)
-			c.logger.Debug("SSE Received: Event=%s, Data=%s", eventName, eventData)
-
-			c.sseMu.Lock()
-			if eventName == "endpoint" && c.sessionID == "" {
-				fullMessageURL := eventData
-				u, err := url.Parse(fullMessageURL)
-				if err != nil {
-					c.logger.Error("Failed to parse message endpoint URL from endpoint event: %v", err)
-					select {
-					case errCh <- fmt.Errorf("invalid endpoint event data: %w", err):
-					default:
-					}
-				} else {
-					c.sessionID = u.Query().Get("sessionId")
-					if c.sessionID == "" {
-						c.logger.Error("No sessionId found in endpoint event URL: %s", fullMessageURL)
-						select {
-						case errCh <- fmt.Errorf("missing sessionId in endpoint event"):
-						default:
-						}
-					} else {
-						c.logger.Info("Received session ID: %s", c.sessionID)
-						// Update connection state
-						c.stateMu.Lock()
-						c.connected = true
-						c.stateMu.Unlock()
-
-						select {
-						case endpointCh <- c.sessionID:
-						default:
-						} // Signal success
-					}
-				}
-			} else if eventName == "message" && c.sessionID != "" {
-				go func(data []byte) { // Process concurrently
-					if err := c.processMessage(data); err != nil {
-						c.logger.Error("Error processing SSE message: %v", err)
-					}
-				}(append([]byte{}, msg.Data...)) // Pass data copy
-			} else {
-				c.logger.Warn("Received unexpected SSE event '%s' or message before session ID.", eventName)
-			}
-			c.sseMu.Unlock()
-		})
-
-		// SubscribeRaw returned, which means the connection ended
-		c.logger.Warn("SSE SubscribeRaw finished: %v", err)
-
-		// Only treat this as a fatal error if we never established a connection
-		c.sseMu.Lock()
-		c.stateMu.RLock()
-		hasSessionID := c.sessionID != ""
-		isClosed := c.closed
-		c.stateMu.RUnlock()
-
-		if !hasSessionID && err != nil && !isClosed {
-			select {
-			case errCh <- fmt.Errorf("sse connection failed: %w", err):
-			default:
-			}
-		} else if !isClosed {
-			// The connection was previously established but is now closed
-			// Attempt to reconnect in the background
-			go c.attemptSSEReconnect(ctx)
-		}
-		c.sseMu.Unlock()
-	}()
-
-	// Wait for session ID or error/timeout
-	select {
-	case <-ctx.Done():
-		c.logger.Error("Context canceled while waiting for SSE endpoint event.")
-		c.Close()
-		return ctx.Err()
-	case err := <-errCh:
-		c.logger.Error("Failed to establish SSE connection or get session ID: %v", err)
-		c.Close()
-		return err
-	case sessionID := <-endpointCh:
-		if sessionID == "" {
-			c.Close()
-			return fmt.Errorf("received empty session ID")
-		}
+	// --- Step 1: Establish Receiver (e.g., SSE GET stream) ---
+	c.logger.Info("Establishing transport receiver...")
+	if err := c.transport.EstablishReceiver(ctx); err != nil {
+		// Attempt to close transport if receiver setup fails
+		_ = c.Close()
+		return fmt.Errorf("failed to establish transport receiver: %w", err)
 	}
+	c.logger.Info("Transport receiver established.")
 
-	// --- Step 2: Send Initialize Request via HTTP POST ---
-	c.logger.Info("SSE connected (Session: %s). Sending InitializeRequest via HTTP POST...", c.sessionID)
+	// --- Step 2: Send Initialize Request & Process Response ---
+	c.logger.Info("Sending InitializeRequest via transport...")
 	clientInfo := protocol.Implementation{Name: c.clientName, Version: "0.1.0"} // Using fixed version for now
 	initParams := protocol.InitializeRequestParams{
 		ProtocolVersion: c.preferredVersion, // Use stored preferred version
 		Capabilities:    c.clientCapabilities,
 		ClientInfo:      clientInfo,
 	}
-	initReq := protocol.JSONRPCRequest{JSONRPC: "2.0", ID: uuid.NewString(), Method: protocol.MethodInitialize, Params: initParams}
+	initReqID := uuid.NewString() // Generate ID here
+	// initReqPayload := protocol.JSONRPCRequest{JSONRPC: "2.0", ID: initReqID, Method: protocol.MethodInitialize, Params: initParams} // No longer needed
+	// initReqBytes, err := json.Marshal(initReqPayload) // No longer needed, sendRequestAndWait handles marshaling
+	// if err != nil {
+	// 	return fmt.Errorf("failed to marshal initialize request: %w", err)
+	// }
 
+	// Use a specific timeout for the initialize request itself
 	initTimeout := 60 * time.Second
-	response, err := c.sendRequestAndWait(ctx, initReq.Method, initReq.ID, initParams, initTimeout)
+	initCtx, initCancel := context.WithTimeout(ctx, initTimeout)
+	defer initCancel()
+
+	// --- Removed SSE Specific Handling ---
+	// All transports now use sendRequestAndWait for initialize,
+	// after EstablishReceiver has been called.
+
+	// --- Standard Transport Handling (Applies to all transports now) ---
+	c.logger.Debug("Using standard transport initialization flow (sendRequestAndWait).")
+	// Use sendRequestAndWait for transports where response comes via Receive loop
+	response, err := c.sendRequestAndWait(initCtx, protocol.MethodInitialize, initReqID, initParams, initTimeout)
 	if err != nil {
-		c.Close()
+		_ = c.Close() // Attempt to close transport on handshake failure
 		return fmt.Errorf("initialization handshake failed: %w", err)
 	}
 
-	// --- Step 3: Process Initialize Response (received via SSE) ---
+	// Process the response received via the Receive loop
 	if response.Error != nil {
-		c.Close()
+		_ = c.Close()
 		return fmt.Errorf("received error response during initialization: [%d] %s", response.Error.Code, response.Error.Message)
 	}
 	var initResult protocol.InitializeResult
 	if err := protocol.UnmarshalPayload(response.Result, &initResult); err != nil {
-		c.Close()
+		_ = c.Close()
 		return fmt.Errorf("failed to parse initialize result: %w", err)
 	}
 
 	// Check if server responded with a version we support
 	serverSelectedVersion := initResult.ProtocolVersion
 	if serverSelectedVersion != protocol.CurrentProtocolVersion && serverSelectedVersion != protocol.OldProtocolVersion {
-		c.Close()
+		_ = c.Close()
 		return fmt.Errorf("server selected unsupported protocol version: %s (client supports %s, %s)",
 			serverSelectedVersion, protocol.CurrentProtocolVersion, protocol.OldProtocolVersion)
 	}
@@ -327,57 +204,86 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.capabilitiesMu.Unlock()
 	c.logger.Info("Negotiated protocol version: %s", serverSelectedVersion)
 
-	// --- Step 4: Send Initialized Notification via HTTP POST ---
-	c.logger.Info("Sending InitializedNotification via HTTP POST...")
+	// --- Step 3: Send Initialized Notification ---
+	c.logger.Info("Sending InitializedNotification via transport...")
 	initNotifParams := protocol.InitializedNotificationParams{}
 	initNotif := protocol.JSONRPCNotification{JSONRPC: "2.0", Method: protocol.MethodInitialized, Params: initNotifParams}
-	if err := c.sendNotificationViaPost(ctx, initNotif); err != nil {
+	// Use a short timeout context for sending the notification
+	notifCtx, notifCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer notifCancel()
+	if err := c.sendNotification(notifCtx, initNotif); err != nil {
+		// This is not necessarily fatal, but log it.
 		c.logger.Warn("Failed to send initialized notification: %v", err)
+		// Allow proceeding but log the warning.
 	}
 
 	c.stateMu.Lock()
 	c.initialized = true
-	c.connected = true
+	// 'connected' state is now implicitly true if initialized is true and not closed
 	c.stateMu.Unlock()
 
-	c.logger.Info("Initialization successful with server: %s", initResult.ServerInfo.Name)
+	// Log success - server info might not be available for SSE in this flow
+	c.logger.Info("Initialization successful.")
 	return nil
-}
-
-// attemptSSEReconnect tries to reconnect the SSE connection after unexpected disconnect
-func (c *Client) attemptSSEReconnect(ctx context.Context) {
-	c.sseReconnectMu.Lock()
-	if c.sseReconnecting {
-		c.sseReconnectMu.Unlock()
-		return // Already attempting to reconnect
-	}
-	c.sseReconnecting = true
-	c.sseReconnectMu.Unlock()
-
-	defer func() {
-		c.sseReconnectMu.Lock()
-		c.sseReconnecting = false
-		c.sseReconnectMu.Unlock()
-	}()
-
-	c.logger.Info("Attempting to reconnect SSE connection...")
-
-	// The r3labs SSE client should handle reconnections automatically
-	// but we'll keep this function for potential future enhancements
 }
 
 // --- Public Methods ---
 
+// ServerInfo returns the information about the connected server.
 func (c *Client) ServerInfo() protocol.Implementation {
 	c.capabilitiesMu.RLock()
 	defer c.capabilitiesMu.RUnlock()
 	return c.serverInfo
 }
+
+// ServerCapabilities returns the capabilities reported by the server.
 func (c *Client) ServerCapabilities() protocol.ServerCapabilities {
 	c.capabilitiesMu.RLock()
 	defer c.capabilitiesMu.RUnlock()
 	return c.serverCapabilities
 }
+
+// IsConnected returns true if the client has successfully completed the handshake
+// and the underlying transport is not known to be closed.
+func (c *Client) IsConnected() bool {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	transportClosed := true // Assume closed if transport is nil
+	if c.transport != nil {
+		transportClosed = c.transport.IsClosed()
+	}
+	// Considered connected if initialized and neither client nor transport is closed.
+	return c.initialized && !c.closed && !transportClosed
+}
+
+// IsInitialized returns true if the client has successfully completed the initialization handshake.
+func (c *Client) IsInitialized() bool {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	return c.initialized && !c.closed
+}
+
+// IsClosed returns true if the client has been explicitly closed.
+func (c *Client) IsClosed() bool {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	return c.closed
+}
+
+// CurrentState returns the current connection, initialization, and closed states.
+func (c *Client) CurrentState() (connected bool, initialized bool, closed bool) {
+	c.stateMu.RLock()
+	defer c.stateMu.RUnlock()
+	transportClosed := true // Assume closed if transport is nil
+	if c.transport != nil {
+		transportClosed = c.transport.IsClosed()
+	}
+	connected = c.initialized && !c.closed && !transportClosed
+	initialized = c.initialized && !c.closed
+	closed = c.closed
+	return
+}
+
 func (c *Client) RegisterNotificationHandler(method string, handler NotificationHandlerFunc) error {
 	c.notificationMu.Lock()
 	defer c.notificationMu.Unlock()
@@ -399,9 +305,9 @@ func (c *Client) RegisterRequestHandler(method string, handler RequestHandlerFun
 	return nil
 }
 
-// ListTools sends a 'tools/list' request via HTTP POST and waits for the response via SSE.
+// ListTools sends a 'tools/list' request via the transport.
 func (c *Client) ListTools(ctx context.Context, params protocol.ListToolsRequestParams) (*protocol.ListToolsResult, error) {
-	timeout := 15 * time.Second
+	timeout := 15 * time.Second // Default timeout for this request type
 	requestID := uuid.NewString()
 	response, err := c.sendRequestAndWait(ctx, protocol.MethodListTools, requestID, params, timeout)
 	if err != nil {
@@ -417,15 +323,13 @@ func (c *Client) ListTools(ctx context.Context, params protocol.ListToolsRequest
 	return &listResult, nil
 }
 
-// CallTool sends a 'tools/call' request via HTTP POST and waits for the response via SSE.
-// progressToken is now interface{} to accept string or number per spec.
+// CallTool sends a 'tools/call' request via the transport.
 func (c *Client) CallTool(ctx context.Context, params protocol.CallToolParams, progressToken interface{}) (*protocol.CallToolResult, error) {
-	timeout := 60 * time.Second
-	if progressToken != nil { // Check if a token was provided
+	timeout := 60 * time.Second // Default timeout, adjust as needed
+	if progressToken != nil {
 		if params.Meta == nil {
 			params.Meta = &protocol.RequestMeta{}
 		}
-		// Assign the interface{} directly. The receiving server handles the type.
 		params.Meta.ProgressToken = progressToken
 	}
 	requestID := uuid.NewString()
@@ -438,7 +342,6 @@ func (c *Client) CallTool(ctx context.Context, params protocol.CallToolParams, p
 	}
 
 	var callResult protocol.CallToolResult
-	// Standard unmarshalling should invoke CallToolResult's custom UnmarshalJSON if present
 	if err := protocol.UnmarshalPayload(response.Result, &callResult); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal CallTool result: %w", err)
 	}
@@ -452,235 +355,293 @@ func (c *Client) CallTool(ctx context.Context, params protocol.CallToolParams, p
 				errMsg = fmt.Sprintf("Tool '%s' failed with non-text error content: %T", params.Name, callResult.Content[0])
 			}
 		}
-		return &callResult, fmt.Errorf("%s", errMsg) // Use format specifier
+		// Return the result along with the error for inspection
+		return &callResult, fmt.Errorf("%s", errMsg)
 	}
 	return &callResult, nil
 }
 
-// Close gracefully shuts down the client connection.
+// Close gracefully shuts down the client connection and its transport.
 func (c *Client) Close() error {
 	c.stateMu.Lock()
 	if c.closed {
 		c.stateMu.Unlock()
-		return nil
+		return nil // Already closed
 	}
 	c.closed = true
-	c.connected = false
+	// Mark as uninitialized immediately
 	c.initialized = false
-	c.stateMu.Unlock()
+	c.stateMu.Unlock() // Unlock after setting closed flag
 
-	c.logger.Info("Closing client...")
-	c.processingCancel() // Signal background loop to stop
+	c.logger.Info("Closing client '%s'...", c.clientName)
 
-	// Close SSE connection if active
-	c.sseMu.Lock()
-	if c.sseClient != nil {
-		// r3labs client doesn't have explicit Close, rely on context cancellation
-		// Maybe we need to store the underlying http client/transport if used?
-		c.logger.Debug("SSE client Close() called (relying on context cancel)")
-		c.sseClient = nil
+	// 1. Signal background processing loop to stop
+	c.processingCancel()
+
+	// 2. Close the underlying transport
+	var transportErr error
+	if c.transport != nil {
+		c.logger.Debug("Closing transport...")
+		transportErr = c.transport.Close()
+		if transportErr != nil {
+			c.logger.Error("Error closing transport: %v", transportErr)
+		} else {
+			c.logger.Debug("Transport closed.")
+		}
 	}
-	c.sseMu.Unlock()
 
-	c.processingWg.Wait() // Wait for loop to finish
+	// 3. Wait for the processing loop to finish
+	c.logger.Debug("Waiting for processing loop to stop...")
+	c.processingWg.Wait()
+	c.logger.Debug("Processing loop stopped.")
 
+	// 4. Close all pending request channels to unblock callers
 	c.closePendingRequests(fmt.Errorf("client closed"))
 
-	if transport, ok := c.httpClient.Transport.(*http.Transport); ok {
-		transport.CloseIdleConnections()
-	}
-
-	c.logger.Info("Client closed.")
-	return nil
+	c.logger.Info("Client '%s' closed.", c.clientName)
+	return transportErr // Return the error from closing the transport, if any
 }
 
 // --- Internal Methods ---
 
-// sendRequestAndWait sends request via HTTP POST and waits for response via SSE channel.
+// sendRequestAndWait sends a request via the transport and waits for the response.
 func (c *Client) sendRequestAndWait(ctx context.Context, method string, id interface{}, params interface{}, timeout time.Duration) (*protocol.JSONRPCResponse, error) {
 	c.stateMu.RLock()
-	closed := c.closed
-	sessionID := c.sessionID
+	isClosed := c.closed
+	isInitialized := c.initialized
 	c.stateMu.RUnlock()
-	if closed {
+
+	if isClosed {
 		return nil, fmt.Errorf("client is closed")
 	}
-	if sessionID == "" {
-		return nil, fmt.Errorf("client is not connected (no session ID)")
+	// Allow initialize request even if not initialized
+	if !isInitialized && method != protocol.MethodInitialize {
+		return nil, fmt.Errorf("client is not initialized")
 	}
 
-	requestIDStr := fmt.Sprintf("%v", id)
-	responseCh := make(chan *protocol.JSONRPCResponse, 1)
+	requestIDStr, ok := id.(string)
+	if !ok {
+		requestIDStr = fmt.Sprintf("%v", id)
+	}
 
+	// Create channel for response
+	respChan := make(chan *protocol.JSONRPCResponse, 1)
 	c.pendingMu.Lock()
+	// Check again if closed after acquiring lock
 	if c.closed {
 		c.pendingMu.Unlock()
 		return nil, fmt.Errorf("client closed before request could be registered")
 	}
-	c.pendingRequests[requestIDStr] = responseCh
+	c.pendingRequests[requestIDStr] = respChan
 	c.pendingMu.Unlock()
 
-	defer func() { c.pendingMu.Lock(); delete(c.pendingRequests, requestIDStr); c.pendingMu.Unlock() }()
-
-	// Construct POST request
-	messageURL := fmt.Sprintf("%s%s?sessionId=%s", c.serverBaseURL, c.messageEndpoint, sessionID)
-	request := protocol.JSONRPCRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params}
-	reqBodyBytes, err := json.Marshal(request)
+	// Prepare request payload
+	request := protocol.JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  method,
+		Params:  params,
+	}
+	requestBytes, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	postReq, err := http.NewRequestWithContext(ctx, "POST", messageURL, bytes.NewBuffer(reqBodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create POST request: %w", err)
-	}
-	postReq.Header.Set("Content-Type", "application/json")
-
-	c.logger.Debug("Sending POST request to %s: %s", messageURL, string(reqBodyBytes))
-	httpResp, err := c.httpClient.Do(postReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send POST request: %w", err)
-	}
-	defer httpResp.Body.Close()
-
-	// Accept any 2xx status code as valid, especially 204 No Content which is standard for the MCP protocol
-	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-		bodyBytes, _ := io.ReadAll(httpResp.Body)
-		return nil, fmt.Errorf("http request failed: status %d, body: %s", httpResp.StatusCode, string(bodyBytes))
+	// Send request via the transport
+	c.logger.Debug("Sending request via transport: %s %s", method, requestIDStr)
+	// Use the context passed to sendRequestAndWait for the Send operation
+	if err := c.transport.Send(ctx, requestBytes); err != nil {
+		return nil, fmt.Errorf("failed to send request via transport: %w", err)
 	}
 
-	// For 204 No Content or other valid status codes, we'll wait for the response via SSE
-	c.logger.Debug("HTTP POST for method %s (ID: %s) returned status %d, waiting for response via SSE...",
-		method, requestIDStr, httpResp.StatusCode)
-
-	// Wait for the response via SSE with timeout
-	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	// Wait for response via the transport's receive loop (handled in processMessage)
+	// Use a timeout context derived from the original context
+	waitCtx, waitCancel := context.WithTimeout(ctx, timeout)
+	defer waitCancel()
 
 	select {
-	case response := <-responseCh:
-		if response == nil {
+	case resp := <-respChan:
+		if resp == nil { // Channel closed by Close() or handleResponse error
 			return nil, fmt.Errorf("connection closed or error occurred while waiting for response to %s (ID: %s)", method, requestIDStr)
 		}
-		return response, nil
-	case <-timeoutCtx.Done():
-		err := timeoutCtx.Err()
+		return resp, nil
+	case <-waitCtx.Done():
+		err := waitCtx.Err()
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, fmt.Errorf("request timed out after %v waiting for response to %s (ID: %s)", timeout, method, requestIDStr)
 		}
-		return nil, fmt.Errorf("request canceled while waiting for response to %s (ID: %s): %w", method, requestIDStr, err)
+		return nil, fmt.Errorf("context cancelled while waiting for response to %s (ID: %s): %w", method, requestIDStr, err)
 	}
 }
 
-// sendNotificationViaPost sends a notification via HTTP POST.
-func (c *Client) sendNotificationViaPost(ctx context.Context, notification protocol.JSONRPCNotification) error {
+// sendNotification sends a notification via the transport.
+func (c *Client) sendNotification(ctx context.Context, notification protocol.JSONRPCNotification) error {
 	c.stateMu.RLock()
-	closed := c.closed
-	sessionID := c.sessionID
+	isClosed := c.closed
+	isInitialized := c.initialized
 	c.stateMu.RUnlock()
-	if closed {
+
+	if isClosed {
 		return fmt.Errorf("client is closed")
 	}
-	if sessionID == "" {
-		return fmt.Errorf("client is not connected (no session ID)")
+	if !isInitialized {
+		// Allow initialized notification even if state isn't fully set yet
+		if notification.Method != protocol.MethodInitialized {
+			return fmt.Errorf("client is not initialized")
+		}
 	}
 
-	messageURL := fmt.Sprintf("%s%s?sessionId=%s", c.serverBaseURL, c.messageEndpoint, sessionID)
-	reqBodyBytes, err := json.Marshal(notification)
+	// Prepare notification payload
+	notificationBytes, err := json.Marshal(notification)
 	if err != nil {
 		return fmt.Errorf("failed to marshal notification: %w", err)
 	}
 
-	postReq, err := http.NewRequestWithContext(ctx, "POST", messageURL, bytes.NewBuffer(reqBodyBytes))
-	if err != nil {
-		return fmt.Errorf("failed to create POST request: %w", err)
+	// Send notification via the transport
+	c.logger.Debug("Sending notification via transport: %s", notification.Method)
+	// Use the context passed to sendNotification for the Send operation
+	if err := c.transport.Send(ctx, notificationBytes); err != nil {
+		return fmt.Errorf("failed to send notification via transport: %w", err)
 	}
-	postReq.Header.Set("Content-Type", "application/json")
 
-	c.logger.Debug("Sending POST notification to %s: %s", messageURL, string(reqBodyBytes))
-	httpResp, err := c.httpClient.Do(postReq)
-	if err != nil {
-		return fmt.Errorf("failed to send POST notification: %w", err)
-	}
-	defer httpResp.Body.Close()
-
-	// Accept any 2xx status code as valid for notifications
-	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-		bodyBytes, _ := io.ReadAll(httpResp.Body)
-		return fmt.Errorf("http notification request failed: status %d, body: %s", httpResp.StatusCode, string(bodyBytes))
-	}
 	return nil
 }
 
-// startMessageProcessing starts the background goroutine for SSE.
+// startMessageProcessing starts the background goroutine for receiving messages.
 func (c *Client) startMessageProcessing() {
-	// This is now handled within the Connect method's goroutine listening to c.sseClient.SubscribeRawWithContext
-	c.logger.Info("SSE message processing will be handled by the SubscribeRaw callback.")
+	c.processingWg.Add(1)
+	go func() {
+		defer c.processingWg.Done()
+		c.logger.Info("Starting transport message receiver loop...")
+		for {
+			select {
+			case <-c.processingCtx.Done():
+				c.logger.Info("Transport message receiver loop stopping due to context cancellation.")
+				return
+			default:
+				// Blocking receive call using the processing context
+				data, err := c.transport.Receive(c.processingCtx)
+				if err != nil {
+					// Check if the error is due to context cancellation or genuine error
+					if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) {
+						c.logger.Info("Transport Receive loop ending: %v", err)
+					} else if c.transport.IsClosed() {
+						// Check IsClosed explicitly after an error
+						c.logger.Info("Transport Receive loop ending because transport is closed.")
+					} else {
+						c.logger.Error("Error receiving message from transport: %v", err)
+						// Add a small delay to prevent tight loop on persistent errors?
+						// time.Sleep(100 * time.Millisecond)
+					}
+
+					// If context is done or transport is closed, exit the loop.
+					if c.processingCtx.Err() != nil || c.transport.IsClosed() {
+						// Ensure client state reflects closure if transport closed unexpectedly
+						if !c.IsClosed() {
+							c.logger.Warn("Transport closed unexpectedly, closing client.")
+							_ = c.Close() // Trigger client close logic
+						}
+						return
+					}
+					continue // Continue loop on recoverable errors if context is not done and transport not closed
+				}
+
+				// Process the received message in a separate goroutine
+				// to avoid blocking the receive loop.
+				// Add to the WaitGroup before starting the goroutine.
+				c.processingWg.Add(1)
+				go func(msgData []byte) {
+					// Ensure Done is called when the goroutine finishes.
+					defer c.processingWg.Done()
+					if err := c.processMessage(msgData); err != nil {
+						c.logger.Error("Error processing received message: %v", err)
+					}
+				}(data)
+			}
+		}
+	}()
 }
 
-// processIncomingMessages is called by the SSE SubscribeRaw callback.
+// processMessage handles a single raw message received from the transport.
 func (c *Client) processMessage(data []byte) error {
-	c.logger.Debug("Processing received SSE data: %s", string(data))
+	c.logger.Debug("Processing received message: %s", string(data))
 	var baseMessage struct {
-		ID     interface{}
-		Method string `json:"method"`
+		ID     interface{} `json:"id"` // Ensure ID is captured
+		Method string      `json:"method"`
 	}
 	if err := json.Unmarshal(data, &baseMessage); err != nil {
-		c.logger.Error("Failed to parse base message structure from SSE: %v", err)
-		return fmt.Errorf("failed to parse base message from SSE: %w", err)
+		c.logger.Error("Failed to parse base message structure: %v", err)
+		return fmt.Errorf("failed to parse base message: %w", err)
 	}
 
 	if baseMessage.ID != nil { // Response
 		return c.handleResponse(data)
 	} else if baseMessage.Method != "" { // Notification or Request (server->client)
+		// Check if it's a server-to-client request
 		c.handlerMu.RLock()
 		_, isRegisteredRequest := c.requestHandlers[baseMessage.Method]
 		c.handlerMu.RUnlock()
 
 		if isRegisteredRequest {
-			return c.handleRequest(data, baseMessage.Method, baseMessage.ID) // ID will be nil here
+			// Need to parse the ID properly for server->client requests
+			var reqMessage struct {
+				ID interface{} `json:"id"` // Re-parse to get ID correctly
+			}
+			if err := json.Unmarshal(data, &reqMessage); err != nil {
+				c.logger.Error("Failed to parse ID for server request %s: %v", baseMessage.Method, err)
+				return fmt.Errorf("failed to parse ID for server request %s: %w", baseMessage.Method, err)
+			}
+			return c.handleRequest(data, baseMessage.Method, reqMessage.ID)
 		} else {
+			// Assume it's a notification
 			return c.handleNotification(data, baseMessage.Method)
 		}
 	} else {
-		c.logger.Warn("Received SSE message with no ID or Method: %s", string(data))
-		return fmt.Errorf("invalid message format from SSE: missing id and method")
+		c.logger.Warn("Received message with no ID or Method: %s", string(data))
+		return fmt.Errorf("invalid message format: missing id and method")
 	}
 }
 
-// handleResponse routes incoming responses (via SSE) to waiting callers.
+// handleResponse routes incoming responses to waiting callers.
 func (c *Client) handleResponse(data []byte) error {
 	var response protocol.JSONRPCResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return fmt.Errorf("failed to parse response from SSE: %w", err)
+		return fmt.Errorf("failed to parse response: %w", err)
 	}
 	idStr := fmt.Sprintf("%v", response.ID)
 	c.pendingMu.Lock()
 	ch, ok := c.pendingRequests[idStr]
 	if ok {
+		// Found the channel, remove it from the map *before* unlocking
 		delete(c.pendingRequests, idStr)
 	}
-	c.pendingMu.Unlock()
+	c.pendingMu.Unlock() // Unlock *after* potential deletion
+
 	if ok {
+		// Channel was found and removed from map
 		select {
 		case ch <- &response:
 			c.logger.Debug("Routed response for ID %s", idStr)
 		default:
-			c.logger.Warn("Response channel for request ID %s closed or full (likely timeout).", idStr)
+			// It might indicate a logic error or unexpected server behavior.
+			// Or the channel might have been closed by closePendingRequests concurrently.
+			c.logger.Warn("Response channel for request ID %s closed or full (unexpected).", idStr)
 		}
 	} else {
-		c.logger.Warn("Received response via SSE for unknown or timed-out request ID: %v", response.ID)
+		c.logger.Warn("Received response for unknown or timed-out request ID: %v", response.ID)
 	}
 	return nil
 }
 
-// handleRequest handles incoming requests from the server (via SSE - less common).
+// handleRequest handles incoming requests from the server.
 func (c *Client) handleRequest(data []byte, method string, id interface{}) error {
 	c.handlerMu.RLock()
 	handler, ok := c.requestHandlers[method]
 	c.handlerMu.RUnlock()
 	if !ok {
 		c.logger.Warn("No request handler registered for server-sent method: %s", method)
+		// TODO: Should we send an error response back to the server?
+		// MethodNotFound error? Requires sending a response.
 		return fmt.Errorf("no handler for server request method: %s", method)
 	}
 	var baseMessage struct {
@@ -689,30 +650,34 @@ func (c *Client) handleRequest(data []byte, method string, id interface{}) error
 	if err := json.Unmarshal(data, &baseMessage); err != nil {
 		return fmt.Errorf("failed to parse params for server request %s: %w", method, err)
 	}
+	// Execute handler in a goroutine to avoid blocking message processing loop
 	go func() {
-		err := handler(c.processingCtx, id, baseMessage.Params) // ID will be nil if server sent request as notification
+		err := handler(c.processingCtx, id, baseMessage.Params)
 		if err != nil {
 			c.logger.Error("Error executing server request handler for method %s: %v", method, err)
+			// TODO: Send error response back to server? Requires request ID.
 		}
+		// TODO: Send success response back to server? Requires request ID.
 	}()
 	return nil
 }
 
-// handleNotification handles incoming notifications from the server (via SSE).
+// handleNotification handles incoming notifications from the server.
 func (c *Client) handleNotification(data []byte, method string) error {
 	c.notificationMu.RLock()
 	handler, ok := c.notificationHandlers[method]
 	c.notificationMu.RUnlock()
 	if !ok {
 		c.logger.Info("No notification handler registered for method: %s", method)
-		return nil
+		return nil // Ignore notifications without handlers
 	}
 	var baseMessage struct {
 		Params interface{} `json:"params"`
 	}
 	if err := json.Unmarshal(data, &baseMessage); err != nil {
-		return fmt.Errorf("failed to parse notification params %s: %w", method, err)
+		return fmt.Errorf("failed to parse params for notification %s: %w", method, err)
 	}
+	// Execute handler in a goroutine
 	go func() {
 		err := handler(c.processingCtx, baseMessage.Params)
 		if err != nil {
@@ -722,60 +687,30 @@ func (c *Client) handleNotification(data []byte, method string) error {
 	return nil
 }
 
-// closePendingRequests closes all pending request channels.
+// closePendingRequests closes all pending request channels with an error.
 func (c *Client) closePendingRequests(err error) {
 	c.pendingMu.Lock()
 	defer c.pendingMu.Unlock()
 	if len(c.pendingRequests) > 0 {
-		c.logger.Warn("Closing %d pending request channels due to error: %v", len(c.pendingRequests), err)
-		for id, ch := range c.pendingRequests {
-			close(ch)
-			delete(c.pendingRequests, id)
+		c.logger.Warn("Closing %d pending requests due to client closure.", len(c.pendingRequests))
+		// Create a copy of the map keys to iterate over, as we modify the map
+		idsToClose := make([]string, 0, len(c.pendingRequests))
+		for id := range c.pendingRequests {
+			idsToClose = append(idsToClose, id)
+		}
+
+		for _, id := range idsToClose {
+			if ch, exists := c.pendingRequests[id]; exists {
+				// Send error response non-blockingly in case channel is full/closed
+				select {
+				case ch <- &protocol.JSONRPCResponse{JSONRPC: "2.0", ID: id, Error: &protocol.ErrorPayload{Code: protocol.ErrorCodeInternalError, Message: fmt.Sprintf("Client closed: %v", err)}}:
+				default:
+				}
+				close(ch)                     // Close channel *after* attempting send
+				delete(c.pendingRequests, id) // Delete entry
+			}
 		}
 	}
 }
 
-// IsConnected returns true if the client is connected to the server.
-func (c *Client) IsConnected() bool {
-	c.stateMu.RLock()
-	defer c.stateMu.RUnlock()
-	return c.connected
-}
-
-// IsInitialized returns true if the client has been initialized.
-func (c *Client) IsInitialized() bool {
-	c.stateMu.RLock()
-	defer c.stateMu.RUnlock()
-	return c.initialized
-}
-
-// IsClosed returns true if the client is closed.
-func (c *Client) IsClosed() bool {
-	c.stateMu.RLock()
-	defer c.stateMu.RUnlock()
-	return c.closed
-}
-
-// Current state of the client
-func (c *Client) CurrentState() (connected bool, initialized bool, closed bool) {
-	c.stateMu.RLock()
-	defer c.stateMu.RUnlock()
-	return c.connected, c.initialized, c.closed
-}
-
-// --- Default Logger ---
-type defaultLogger struct{}
-
-func (l *defaultLogger) Debug(msg string, args ...interface{}) { log.Printf("DEBUG: "+msg, args...) }
-func (l *defaultLogger) Info(msg string, args ...interface{})  { log.Printf("INFO: "+msg, args...) }
-func (l *defaultLogger) Warn(msg string, args ...interface{})  { log.Printf("WARN: "+msg, args...) }
-func (l *defaultLogger) Error(msg string, args ...interface{}) { log.Printf("ERROR: "+msg, args...) }
-
-// --- TODO ---
-// - AddRoot, RemoveRoot (need POST endpoints)
-// - SendCancellation (needs POST endpoint)
-// - Ping (needs POST endpoint)
-// - Robust error handling for SSE connection/disconnection
-// - Reconnection logic for SSE client?
-// - Custom headers for Dial/POST (e.g., Auth)
-// - Refine Content unmarshalling in CallTool if needed
+// Default logger definition removed, now in logx package

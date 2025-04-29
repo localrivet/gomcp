@@ -9,21 +9,25 @@ import (
 // It abstracts the underlying transport mechanism (stdio, websocket, etc.) and
 // provides a consistent API for sending and receiving messages.
 type Transport interface {
-	// Send transmits a message over the transport.
-	// It returns an error if the message could not be sent.
-	Send(data []byte) error
+	// Send transmits a message over the transport, respecting the provided context.
+	// It returns an error if the message could not be sent or if the context is cancelled.
+	Send(ctx context.Context, data []byte) error
 
-	// Receive blocks until a message is received or an error occurs.
-	// It returns the received message as a byte slice and any error that occurred.
-	Receive() ([]byte, error)
+	// Receive blocks until a message is received, respecting the provided context, or an error occurs.
+	// It returns the received message as a byte slice and any error that occurred (including context errors).
+	Receive(ctx context.Context) ([]byte, error)
 
-	// ReceiveWithContext is like Receive but respects the provided context.
-	// It allows for cancellation and timeouts when waiting for messages.
-	ReceiveWithContext(ctx context.Context) ([]byte, error)
+	// EstablishReceiver sets up the channel for receiving messages from the server.
+	// For transports like SSE, this might involve making a GET request.
+	// This should be called before sending the 'initialize' request in some protocols.
+	EstablishReceiver(ctx context.Context) error // ADDED
 
 	// Close terminates the transport connection.
 	// After Close is called, the transport should not be used.
 	Close() error
+
+	// IsClosed returns true if the transport connection is closed.
+	IsClosed() bool
 }
 
 // TransportFactory creates new Transport instances.

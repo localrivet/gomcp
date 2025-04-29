@@ -32,7 +32,7 @@ type TCPTransport struct {
 }
 
 // Ensure TCPTransport implements types.Transport
-var _ types.Transport = (*TCPTransport)(nil)
+var _ types.Transport = (*TCPTransport)(nil) // Updated to ensure interface compliance
 
 // NewTCPTransport creates a new TCPTransport wrapping an existing net.Conn.
 func NewTCPTransport(conn net.Conn, opts types.TransportOptions) *TCPTransport {
@@ -58,9 +58,16 @@ func NewTCPTransport(conn net.Conn, opts types.TransportOptions) *TCPTransport {
 	}
 }
 
-// Send writes a message to the TCP connection.
+// Send writes a message to the TCP connection, respecting the context.
 // Uses newline framing similar to stdio transport.
-func (t *TCPTransport) Send(data []byte) error {
+func (t *TCPTransport) Send(ctx context.Context, data []byte) error {
+	// Check context cancellation first
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	t.closeMutex.Lock()
 	if t.closed {
 		t.closeMutex.Unlock()
@@ -99,13 +106,9 @@ func (t *TCPTransport) Send(data []byte) error {
 	return nil
 }
 
-// Receive reads the next newline-delimited message from the TCP connection.
-func (t *TCPTransport) Receive() ([]byte, error) {
-	return t.ReceiveWithContext(context.Background())
-}
-
-// ReceiveWithContext reads a message from the TCP connection with context support using ReadByte.
-func (t *TCPTransport) ReceiveWithContext(ctx context.Context) ([]byte, error) {
+// Receive reads the next newline-delimited message from the TCP connection, respecting context.
+// This replaces the old Receive and ReceiveWithContext methods.
+func (t *TCPTransport) Receive(ctx context.Context) ([]byte, error) {
 	t.closeMutex.Lock()
 	if t.closed {
 		t.closeMutex.Unlock()
@@ -186,7 +189,8 @@ func (t *TCPTransport) ReceiveWithContext(ctx context.Context) ([]byte, error) {
 
 		if !json.Valid(lineBytes) {
 			t.logger.Error("TCPTransport: Received invalid JSON: %s", string(lineBytes))
-			_ = t.sendParseError("Received invalid JSON")
+			// Pass background context to internal error reporting
+			_ = t.sendParseError(context.Background(), "Received invalid JSON")
 			resultCh <- struct {
 				data []byte
 				err  error
@@ -230,6 +234,13 @@ func (t *TCPTransport) Close() error {
 	return err
 }
 
+// IsClosed returns true if the transport connection is closed.
+func (t *TCPTransport) IsClosed() bool {
+	t.closeMutex.Lock()
+	defer t.closeMutex.Unlock()
+	return t.closed
+}
+
 // RemoteAddr returns the remote network address.
 func (t *TCPTransport) RemoteAddr() net.Addr {
 	return t.conn.RemoteAddr()
@@ -241,13 +252,33 @@ func (t *TCPTransport) LocalAddr() net.Addr {
 }
 
 // sendParseError is a helper to send a JSON-RPC ParseError.
-func (t *TCPTransport) sendParseError(message string) error {
+func (t *TCPTransport) sendParseError(ctx context.Context, message string) error {
 	errResp := protocol.JSONRPCResponse{
 		JSONRPC: "2.0", ID: nil,
 		Error: &protocol.ErrorPayload{Code: protocol.ErrorCodeParseError, Message: message},
 	}
-	jsonData, _ := json.Marshal(errResp)
-	_ = t.Send(jsonData)
+	jsonData, err := json.Marshal(errResp)
+	if err != nil {
+		t.logger.Error("TCPTransport: Failed to marshal parse error response: %v", err)
+		return err // Return the marshal error
+	}
+	// Use Send directly, ignoring potential errors during error reporting
+	// Pass a background context as this is internal error reporting
+	_ = t.Send(context.Background(), jsonData)
+	return nil
+}
+
+// EstablishReceiver for TCPTransport does nothing, as the connection
+// is already established when the transport is created, and reading
+// happens directly within the Receive method. It exists to satisfy the Transport interface.
+func (t *TCPTransport) EstablishReceiver(ctx context.Context) error {
+	t.logger.Debug("TCPTransport: EstablishReceiver called (no-op).")
+	// Check if already closed
+	t.closeMutex.Lock()
+	defer t.closeMutex.Unlock()
+	if t.closed {
+		return fmt.Errorf("transport is closed")
+	}
 	return nil
 }
 

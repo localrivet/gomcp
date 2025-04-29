@@ -27,7 +27,7 @@ type WebSocketTransport struct {
 }
 
 // Ensure WebSocketTransport implements types.Transport
-var _ types.Transport = (*WebSocketTransport)(nil)
+// var _ types.Transport = (*WebSocketTransport)(nil) // Will be updated after methods are adjusted
 
 // NewWebSocketTransport creates a new WebSocketTransport wrapping an existing net.Conn.
 // The state determines if outgoing frames should be masked (ws.StateClient).
@@ -50,8 +50,15 @@ func NewWebSocketTransport(conn net.Conn, state ws.State, opts types.TransportOp
 }
 
 // Send writes a message to the WebSocket connection as a TextMessage.
-// Assumes data is a complete JSON message (including newline if needed by receiver).
-func (t *WebSocketTransport) Send(data []byte) error {
+// Assumes data is a complete JSON message. Context is used for cancellation/deadlines.
+func (t *WebSocketTransport) Send(ctx context.Context, data []byte) error {
+	// Check context cancellation first
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	t.closeMutex.Lock()
 	if t.closed {
 		t.closeMutex.Unlock()
@@ -71,11 +78,19 @@ func (t *WebSocketTransport) Send(data []byte) error {
 	// MCP uses newline-delimited JSON, so the caller of Send should ensure data ends with '\n'.
 	t.logger.Debug("WebSocketTransport Send: %s", string(data))
 
-	// Set a write deadline
-	// TODO: Make deadline configurable
-	deadline := time.Now().Add(10 * time.Second)
-	if err := t.conn.SetWriteDeadline(deadline); err != nil {
-		t.logger.Warn("WebSocketTransport: Failed to set write deadline: %v", err)
+	// Set write deadline based on context if available
+	deadline, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		if err := t.conn.SetWriteDeadline(deadline); err != nil {
+			t.logger.Warn("WebSocketTransport: Failed to set write deadline from context: %v", err)
+			// Continue anyway, but log the warning
+		}
+	} else {
+		// Apply a default reasonable deadline if context has none
+		defaultDeadline := time.Now().Add(30 * time.Second) // Default 30s
+		if err := t.conn.SetWriteDeadline(defaultDeadline); err != nil {
+			t.logger.Warn("WebSocketTransport: Failed to set default write deadline: %v", err)
+		}
 	}
 
 	// Use wsutil.WriteMessage for simplicity (handles framing)
@@ -95,8 +110,9 @@ func (t *WebSocketTransport) Send(data []byte) error {
 		return fmt.Errorf("failed to write websocket message: %w", err)
 	}
 
-	// Reset deadline after successful write
+	// Reset deadline after write attempt (success or failure)
 	if err := t.conn.SetWriteDeadline(time.Time{}); err != nil {
+		// Don't return error here, just log it. The primary error is the write error (if any).
 		t.logger.Warn("WebSocketTransport: Failed to reset write deadline: %v", err)
 	}
 
@@ -104,15 +120,10 @@ func (t *WebSocketTransport) Send(data []byte) error {
 	return nil
 }
 
-// Receive reads the next message from the WebSocket connection.
-func (t *WebSocketTransport) Receive() ([]byte, error) {
-	return t.ReceiveWithContext(context.Background())
-}
-
-// ReceiveWithContext reads the next message from the WebSocket connection with context support.
-// Note: gobwas/ws doesn't directly support context cancellation for reads.
-// We rely on read deadlines or closing the connection from another goroutine.
-func (t *WebSocketTransport) ReceiveWithContext(ctx context.Context) ([]byte, error) {
+// Receive reads the next message from the WebSocket connection, respecting context.
+// This replaces the old Receive and ReceiveWithContext methods.
+// Uses read deadlines derived from the context for cancellation.
+func (t *WebSocketTransport) Receive(ctx context.Context) ([]byte, error) {
 	t.closeMutex.Lock()
 	if t.closed {
 		t.closeMutex.Unlock()
@@ -120,12 +131,21 @@ func (t *WebSocketTransport) ReceiveWithContext(ctx context.Context) ([]byte, er
 	}
 	t.closeMutex.Unlock()
 
-	// TODO: Implement context cancellation using read deadlines.
-	// deadline, hasDeadline := ctx.Deadline()
-	// if hasDeadline {
-	// 	t.conn.SetReadDeadline(deadline)
-	// 	defer t.conn.SetReadDeadline(time.Time{}) // Reset deadline afterwards
-	// }
+	// Set read deadline based on context
+	deadline, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		if err := t.conn.SetReadDeadline(deadline); err != nil {
+			t.logger.Warn("WebSocketTransport: Failed to set read deadline from context: %v", err)
+			// If we can't set deadline, context cancellation might not work reliably via this mechanism
+		}
+		// Ensure deadline is reset when function returns
+		defer func() {
+			if err := t.conn.SetReadDeadline(time.Time{}); err != nil {
+				t.logger.Warn("WebSocketTransport: Failed to reset read deadline: %v", err)
+			}
+		}()
+	}
+	// If no deadline, read will block indefinitely until data arrives, connection closes, or Close() is called.
 
 	t.logger.Debug("WebSocketTransport: Attempting ws.ReadFrame()...")
 
@@ -134,13 +154,22 @@ func (t *WebSocketTransport) ReceiveWithContext(ctx context.Context) ([]byte, er
 	// Assuming MCP messages fit in single frames for now.
 	frame, err := ws.ReadFrame(t.conn)
 	if err != nil {
-		t.logger.Error("WebSocketTransport: Error reading frame: %v", err)
-		// Check for EOF or closed connection errors
-		if err == io.EOF || errors.Is(err, net.ErrClosed) {
-			t.logger.Info("WebSocketTransport: Connection closed while reading.")
+		// Check if the error is due to context deadline
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			// Check if the timeout corresponds to our context deadline
+			if hasDeadline && time.Now().After(deadline.Add(-time.Millisecond*50)) { // Allow small grace period
+				t.logger.Warn("WebSocketTransport: Read timed out due to context deadline.")
+				return nil, context.DeadlineExceeded // Return context error
+			}
+			// Otherwise, it might be a standard network timeout
+			t.logger.Error("WebSocketTransport: Read timed out (network): %v", err)
+		} else if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+			t.logger.Info("WebSocketTransport: Connection closed while reading: %v", err)
+		} else {
+			t.logger.Error("WebSocketTransport: Error reading frame: %v", err)
 		}
-		_ = t.Close() // Ensure closed state is set
-		return nil, fmt.Errorf("failed to read websocket frame: %w", err)
+		_ = t.Close()                                                     // Ensure closed state is set on any read error
+		return nil, fmt.Errorf("failed to read websocket frame: %w", err) // Return the original error
 	}
 
 	t.logger.Debug("WebSocketTransport: ws.ReadFrame() returned OpCode: %v, Len: %d", frame.Header.OpCode, frame.Header.Length)
@@ -156,7 +185,15 @@ func (t *WebSocketTransport) ReceiveWithContext(ctx context.Context) ([]byte, er
 		t.logger.Debug("WebSocketTransport: Received control frame: %v", frame.Header.OpCode)
 		// Continue reading for the next data frame
 		// Recursive call might be dangerous, use a loop instead if strict handling needed
-		return t.ReceiveWithContext(ctx)
+		// Loop to read the next frame instead of recursion
+		// This requires restructuring the read logic slightly, or simply returning
+		// an indicator that a control frame was processed. For simplicity,
+		// let's just log and try reading again in the next call to Receive.
+		// A better approach would involve a dedicated read loop goroutine.
+		// For now, return a temporary error or nil to prompt caller to retry?
+		// Let's return nil, nil and log it. The caller should ideally loop.
+		t.logger.Debug("Processed control frame, caller should retry Receive.")
+		return nil, nil // Indicate non-data frame received, caller should retry
 	}
 
 	// Unmask payload if necessary (client state)
@@ -180,6 +217,20 @@ func (t *WebSocketTransport) ReceiveWithContext(ctx context.Context) ([]byte, er
 	t.logger.Debug("WebSocketTransport Received raw: %s", string(data))
 
 	return data, nil
+}
+
+// EstablishReceiver for WebSocketTransport does nothing, as the connection
+// is assumed to be established before the transport is created, and reading
+// happens within the Receive method. It exists to satisfy the Transport interface.
+func (t *WebSocketTransport) EstablishReceiver(ctx context.Context) error {
+	t.logger.Debug("WebSocketTransport: EstablishReceiver called (no-op).")
+	// Check if already closed
+	t.closeMutex.Lock()
+	defer t.closeMutex.Unlock()
+	if t.closed {
+		return fmt.Errorf("transport is closed")
+	}
+	return nil
 }
 
 // Close sends a close frame and closes the underlying WebSocket connection.
@@ -215,6 +266,7 @@ func (t *WebSocketTransport) Close() error {
 	} else {
 		t.logger.Info("WebSocketTransport: Connection closed successfully.")
 	}
+	// Return the first significant error encountered during close
 	return err
 }
 
@@ -228,6 +280,13 @@ func (t *WebSocketTransport) LocalAddr() net.Addr {
 	return t.conn.LocalAddr()
 }
 
+// IsClosed returns true if the transport connection is closed.
+func (t *WebSocketTransport) IsClosed() bool {
+	t.closeMutex.Lock()
+	defer t.closeMutex.Unlock()
+	return t.closed
+}
+
 // --- Default Logger (Placeholder) ---
 type defaultLogger struct{}
 
@@ -235,3 +294,5 @@ func (l *defaultLogger) Debug(msg string, args ...interface{}) { log.Printf("DEB
 func (l *defaultLogger) Info(msg string, args ...interface{})  { log.Printf("INFO: "+msg, args...) }
 func (l *defaultLogger) Warn(msg string, args ...interface{})  { log.Printf("WARN: "+msg, args...) }
 func (l *defaultLogger) Error(msg string, args ...interface{}) { log.Printf("ERROR: "+msg, args...) }
+
+var _ types.Transport = (*WebSocketTransport)(nil) // Ensure interface compliance
