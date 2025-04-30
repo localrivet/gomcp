@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http" // ADDED for tracing
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -235,7 +236,22 @@ func (t *SSETransport) Send(ctx context.Context, data []byte) error {
 
 	// For 2024-11-05 protocol, use the messageEndpointURL if set
 	if t.protocolVersion == protocol.OldProtocolVersion && t.messageEndpointURL != "" {
-		messageURL = t.messageEndpointURL
+		rawURL := t.messageEndpointURL
+
+		// Check if messageEndpointURL is relative and resolve it with serverBaseURL
+		if strings.HasPrefix(rawURL, "/") {
+			// Absolute path relative URL (starts with /)
+			messageURL = t.serverBaseURL + rawURL
+			t.logger.Debug("SSETransport: Resolved absolute path URL to: %s", messageURL)
+		} else if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+			// Relative URL without / prefix
+			messageURL = fmt.Sprintf("%s/%s", t.serverBaseURL, strings.TrimPrefix(rawURL, "./"))
+			t.logger.Debug("SSETransport: Resolved relative path URL to: %s", messageURL)
+		} else {
+			// Already an absolute URL with scheme
+			messageURL = rawURL
+		}
+
 		t.logger.Debug("SSETransport: Using 2024-11-05 endpoint URL: %s", messageURL)
 	} else {
 		// For 2025-03-26 or if messageEndpointURL not set, use the default URL
@@ -243,10 +259,23 @@ func (t *SSETransport) Send(ctx context.Context, data []byte) error {
 		t.logger.Debug("SSETransport: Using default endpoint URL: %s", messageURL)
 	}
 
-	postReq, err := http.NewRequestWithContext(ctx, "POST", messageURL, bytes.NewBuffer(data))
-	if err != nil {
-		return fmt.Errorf("failed to create POST request: %w", err)
+	// Validate the constructed URL
+	urlObj, urlErr := url.Parse(messageURL)
+	if urlErr != nil {
+		return fmt.Errorf("invalid message endpoint URL: %s - %w", messageURL, urlErr)
 	}
+
+	// Ensure URL has a scheme
+	if urlObj.Scheme == "" {
+		return fmt.Errorf("URL missing scheme: %s", messageURL)
+	}
+
+	// Create the request
+	postReq, reqErr := http.NewRequestWithContext(ctx, "POST", messageURL, bytes.NewBuffer(data))
+	if reqErr != nil {
+		return fmt.Errorf("failed to create POST request: %w", reqErr)
+	}
+
 	postReq.Header.Set("Content-Type", "application/json")
 	postReq.Header.Set("Accept", "application/json, text/event-stream") // Per spec
 	if sessionID != "" && !isInitialize {
@@ -254,20 +283,21 @@ func (t *SSETransport) Send(ctx context.Context, data []byte) error {
 	}
 
 	t.logger.Debug("SSETransport Sending POST to %s: %s", messageURL, string(data))
-	httpResp, err := t.httpClient.Do(postReq)
-	// ADDED LOGGING immediately after Do returns:
+	httpResp, respErr := t.httpClient.Do(postReq)
+	// Log response details
 	if httpResp != nil {
-		t.logger.Debug("SSETransport httpClient.Do completed for POST. Error: %v, Response Status: %s", err, httpResp.Status)
+		t.logger.Debug("SSETransport httpClient.Do completed for POST. Error: %v, Response Status: %s", respErr, httpResp.Status)
 	} else {
-		t.logger.Debug("SSETransport httpClient.Do completed for POST. Error: %v, Response: nil", err)
+		t.logger.Debug("SSETransport httpClient.Do completed for POST. Error: %v, Response: nil", respErr)
 	}
-	// END ADDED LOGGING
-	if err != nil {
-		return fmt.Errorf("failed to send POST request: %w", err)
+
+	if respErr != nil {
+		return fmt.Errorf("failed to send POST request: %w", respErr)
 	}
-	// Process response in a nested func to ensure body is closed before potentially starting receiver
-	t.logger.Debug("SSETransport processing POST response in nested func...") // ADDED LOGGING
-	err = func() error {
+
+	// Process response in a nested func to ensure body is closed
+	t.logger.Debug("SSETransport processing POST response...")
+	processErr := func() error {
 		defer httpResp.Body.Close() // Ensure body closed within this scope
 
 		bodyBytes, readErr := io.ReadAll(httpResp.Body)
@@ -291,29 +321,20 @@ func (t *SSETransport) Send(ctx context.Context, data []byte) error {
 			}
 
 			newSessionID := httpResp.Header.Get("Mcp-Session-Id")
-			// shouldStartReceiver := false // REMOVED - Unused variable
 			if newSessionID != "" {
 				t.sessionMu.Lock()
 				if t.sessionID == "" {
 					t.sessionID = newSessionID
 					t.logger.Info("SSETransport: Stored session ID from InitializeResponse header: %s", newSessionID)
-					// shouldStartReceiver = true // REMOVED - Unused variable
 				} else if t.sessionID != newSessionID {
 					t.logger.Warn("SSETransport: Received different session ID (%s) on subsequent InitializeResponse? Sticking with old (%s).", newSessionID, t.sessionID)
-					// Check if receiver needs starting (e.g., if first attempt failed without session ID)
-					// This logic might need refinement depending on desired reconnect behavior.
-					// For now, assume we only start receiver once on first successful session ID retrieval.
 				}
 				t.sessionMu.Unlock()
 			} else {
 				t.logger.Warn("SSETransport: Mcp-Session-Id header not found in InitializeResponse")
-				// Decide if receiver should start even without session ID.
-				// For this test, let's assume it should to establish the stream.
-				// shouldStartReceiver = true // REMOVED - Unused variable
 			}
 
 			// For Initialize requests, send the response to the receive channel
-			// This is necessary because the client expects all responses to come through the receive channel
 			t.logger.Debug("SSETransport: Forwarding initialize response to receive channel")
 			t.sendToReceiveChan(bodyBytes, nil)
 
@@ -326,7 +347,7 @@ func (t *SSETransport) Send(ctx context.Context, data []byte) error {
 		return nil // Success for non-initialize
 	}() // End of nested func call
 
-	return err // Return error from nested func
+	return processErr // Return error from nested func
 }
 
 // Receive waits for the next message from the SSE stream.
@@ -461,6 +482,8 @@ func (t *SSETransport) connectAndListenSSE(ctx context.Context, result chan<- er
 			case "endpoint":
 				// For 2024-11-05 protocol, we get the endpoint URL in the data field
 				if t.protocolVersion == protocol.OldProtocolVersion {
+					// Store the endpoint URL exactly as received from the server
+					// The Send method will handle resolving relative URLs when needed
 					t.messageEndpointURL = event.Data
 					t.logger.Debug("SSETransport: Got endpoint URL (proto 2024-11-05): %s", t.messageEndpointURL)
 

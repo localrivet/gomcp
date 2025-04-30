@@ -36,7 +36,6 @@ func NewSSEClient(clientName string, baseURL string, basePath string, opts Clien
 		BaseURL:  baseURL,  // Pass the normalized base URL
 		BasePath: basePath, // Pass the normalized base path for the single MCP endpoint
 		Logger:   opts.Logger,
-		// HTTPClient can be optionally set here if needed, but defaults work for tests
 	}
 
 	// If a preferred protocol version is specified in client options, use it for the transport
@@ -52,11 +51,6 @@ func NewSSEClient(clientName string, baseURL string, basePath string, opts Clien
 
 	// Assign the created transport to the main client options
 	opts.Transport = sseTransport
-	// Remove assignments to old fields
-	// opts.ServerBaseURL = nil
-	// opts.MessageEndpoint = nil
-	// opts.SSEEndpoint = nil
-	// opts.HTTPClient = nil // HTTPClient is now part of SSETransportOptions
 
 	// Create the generic client with the SSE transport
 	return NewClient(clientName, opts)
