@@ -1,89 +1,148 @@
 package main
 
 import (
-	"context" // Needed for handler
-	// Needed for handler
+	"context"
+	"errors"
 	"log"
+	"net/http"
 	"os"
+	"time"
 
-	// Needed for handler
+	"github.com/localrivet/gomcp/auth"
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
-	// "github.com/localrivet/gomcp/types" // No longer needed directly
 )
 
-// For this simple example, the expected API key is hardcoded.
-const expectedApiKey = "test-key-123"
-
-// Define the secure echo tool
-var secureEchoTool = protocol.Tool{
-	Name:        "secure-echo",
-	Description: "Echoes back the provided message (Requires API Key Auth).",
-	InputSchema: protocol.ToolInputSchema{
-		Type: "object",
-		Properties: map[string]protocol.PropertyDetail{
-			"message": {Type: "string", Description: "The message to echo."},
-		},
-		Required: []string{"message"},
-	},
+// SecureEchoArgs defines arguments for the secure-echo tool.
+type SecureEchoArgs struct {
+	Message string `json:"message" description:"The message to echo." required:"true"`
 }
 
 // secureEchoHandler implements the logic for the secure-echo tool.
-// Note: In this simplified example, the API key check happens at startup.
-// A real implementation might involve passing auth info via context.
-func secureEchoHandler(ctx context.Context, progressToken *protocol.ProgressToken, arguments any) (content []protocol.Content, isError bool) {
-	args, ok := arguments.(map[string]interface{})
-	if !ok {
-		return []protocol.Content{protocol.TextContent{Type: "text", Text: "Invalid arguments for tool 'secure-echo' (expected object)"}}, true
-	}
-	log.Printf("Executing secure-echo tool with args: %v", args) // Use standard log
+// This handler will only be called if authentication succeeds via the auth hook
+func secureEchoHandler(args SecureEchoArgs) (protocol.Content, error) {
+	log.Printf("Executing secure-echo tool with message: %s", args.Message)
 
-	newErrorContent := func(msg string) []protocol.Content {
-		return []protocol.Content{protocol.TextContent{Type: "text", Text: msg}}
+	if args.Message == "" {
+		return nil, errors.New("message cannot be empty")
 	}
 
-	messageArg, ok := args["message"]
-	if !ok {
-		return newErrorContent("Missing required argument 'message' for tool 'secure-echo'"), true
-	}
-	messageStr, ok := messageArg.(string)
-	if !ok {
-		return newErrorContent("Argument 'message' for tool 'secure-echo' must be a string"), true
-	}
-	log.Printf("Securely Echoing message: %s", messageStr) // Use standard log
-	successContent := protocol.TextContent{Type: "text", Text: messageStr}
-	return []protocol.Content{successContent}, false
+	log.Printf("Securely Echoing message: %s", args.Message)
+	successContent := protocol.TextContent{Type: "text", Text: args.Message}
+	return successContent, nil
 }
 
 func main() {
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.Ltime | log.Lshortfile)
 
-	// --- API Key Check ---
-	apiKey := os.Getenv("MCP_API_KEY")
-	if apiKey == "" {
-		log.Fatal("FATAL: MCP_API_KEY environment variable not set.")
+	// Get JWKS URL from environment variable or use a default for testing
+	jwksURL := os.Getenv("JWKS_URL")
+	if jwksURL == "" {
+		// This is just an example - in production you would require a real JWKS URL
+		log.Println("JWKS_URL not set, using a mock TokenValidator for demonstration")
 	}
-	if apiKey != expectedApiKey {
-		log.Fatalf("FATAL: Invalid MCP_API_KEY provided. Expected '%s'", expectedApiKey)
+
+	// Configure the server with JWT auth
+	log.Println("Starting Auth Example MCP Server with JWT Authentication...")
+
+	// Create a validator (using either real JWKS or a mock for demonstration)
+	var tokenValidator auth.TokenValidator
+	var authSetupErr error
+
+	if jwksURL != "" {
+		// Set up a real JWKS validator
+		jwksConfig := auth.JWKSConfig{
+			JWKSURL:          jwksURL,
+			ExpectedIssuer:   os.Getenv("JWT_ISSUER"),   // Optional
+			ExpectedAudience: os.Getenv("JWT_AUDIENCE"), // Optional
+			ClockSkew:        5 * time.Second,           // Allow 5 seconds of clock skew
+			RefreshInterval:  12 * time.Hour,            // Refresh JWKS cache daily
+		}
+		tokenValidator, authSetupErr = auth.NewJWKSTokenValidator(jwksConfig, http.DefaultClient)
+	} else {
+		// Example only: For demo purposes, create a simple mock validator
+		// that accepts a fixed token (you should never do this in production)
+		tokenValidator = &MockTokenValidator{validToken: "test-token-123"}
 	}
-	log.Println("API Key validated successfully.")
-	// --- End API Key Check ---
 
-	log.Println("Starting Auth Example MCP Server...")
+	if authSetupErr != nil {
+		log.Fatalf("Failed to create token validator: %v", authSetupErr)
+	}
 
-	// Create the server with default options (uses internal default logger)
-	srv := server.NewServer("GoAuthServer") // Use default options
+	// Configure the auth hook
+	authConfig := auth.AuthHookConfig{
+		Validator:   tokenValidator,
+		TokenHeader: "Authorization", // Standard header name
+		TokenPrefix: "Bearer ",       // Standard bearer token prefix
+	}
 
-	// Register the secure echo tool and its handler
-	if err := srv.RegisterTool(secureEchoTool, secureEchoHandler); err != nil {
+	authHook, err := auth.NewAuthenticationHook(authConfig)
+	if err != nil {
+		log.Fatalf("Failed to create authentication hook: %v", err)
+	}
+
+	// Create server with auth hook
+	srv := server.NewServer("GoAuthServer-JWT",
+		server.WithBeforeHandleMessageHook(authHook),
+	)
+
+	// Register the secure echo tool
+	err = server.AddTool(
+		srv,
+		"secure-echo",
+		"Echoes back the provided message (Requires JWT Auth).",
+		secureEchoHandler,
+	)
+	if err != nil {
 		log.Fatalf("Failed to register secure-echo tool: %v", err)
 	}
 
 	// Run the server using the ServeStdio helper
+	log.Println("Server setup complete. Listening on stdio...")
 	if err := server.ServeStdio(srv); err != nil {
 		log.Fatalf("Server exited with error: %v", err)
 	}
 
 	log.Println("Server shutdown complete.")
 }
+
+// MockTokenValidator is for DEMO PURPOSES ONLY - used when no real JWKS URL is provided
+// In a real application, you would use the JWKSTokenValidator instead
+type MockTokenValidator struct {
+	validToken string
+}
+
+func (m *MockTokenValidator) ValidateToken(ctx context.Context, tokenString string) (auth.Principal, error) {
+	if tokenString == m.validToken {
+		// Create a simple principal with minimal claims
+		return &mockPrincipal{
+			claims: map[string]interface{}{
+				"sub":  "mock-user-id",
+				"name": "Mock User",
+			},
+		}, nil
+	}
+
+	return nil, &protocol.MCPError{
+		ErrorPayload: protocol.ErrorPayload{
+			Code:    protocol.ErrorCodeMCPAuthenticationFailed,
+			Message: "Invalid token",
+		},
+	}
+}
+
+type mockPrincipal struct {
+	claims map[string]interface{}
+}
+
+func (p *mockPrincipal) GetClaims() interface{} {
+	return p.claims
+}
+
+func (p *mockPrincipal) GetSubject() string {
+	sub, _ := p.claims["sub"].(string)
+	return sub
+}
+
+// Removed manual tool definition (secureEchoTool)

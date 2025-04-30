@@ -1,87 +1,115 @@
-# Hello‑Demo – Tiny MCP Server Example
+# Hello Demo
 
-A minimal Go program that shows **all three** MCP primitives in action:
-
-| Primitive    | Demo Name  | Purpose                                                |
-| ------------ | ---------- | ------------------------------------------------------ |
-| **Tool**     | `hello`    | Returns a plain‑text greeting                          |
-| **Prompt**   | `greet`    | Sends an assistant message (useful for chat preambles) |
-| **Resource** | `icon.png` | Serves a binary blob (here, fake Base64 PNG data)      |
+> **Minimal MCP Server Showcase.** A tiny Go program demonstrating all three core MCP primitives: Tools, Prompts, and Resources. Ideal for understanding the basics or as a starting point for your own server.
 
 ---
 
-## Why This Exists
+## Why This Demo?
 
-- **Boilerplate starter** – Copy‑paste to spin up your own tool/prompt/resource server.
-- **End‑to‑end reference** – Shows how each primitive is registered and invoked.
-- **Tiny surface** – Under 70 LOC, easy to grok.
+| Goal                  | How Hello Demo Helps                             |
+| --------------------- | ------------------------------------------------ |
+| Understand MCP Basics | Clearly shows registration and use of primitives |
+| Quick Start Template  | Easy to copy and adapt for new MCP servers       |
+| Simplicity & Clarity  | Minimal code (~70 LOC) focused on core concepts  |
+| Primitive Reference   | Provides a concrete example for each MCP type    |
+
+The demo focuses on clarity over complexity, providing a solid foundation.
 
 ---
 
-## Run It
+## Primitive Line-Up
 
-> Requires Go 1.24+
+| Primitive | Name       | Responsibility                                     |
+| --------- | ---------- | -------------------------------------------------- |
+| Tool      | `hello`    | Returns a plain-text greeting based on input name  |
+| Prompt    | `greet`    | Provides a standard assistant welcome message      |
+| Resource  | `icon.png` | Serves a static binary blob (placeholder PNG data) |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph "Client (e.g., Pipe via Stdio)"
+        direction LR
+        ReqHello["{\"method\":\"hello\"..."] --> Srv
+        ReqGreet["{\"method\":\"greet\"..."] --> Srv
+        ReqIcon["{\"method\":\"icon.png\"..."] --> Srv
+    end
+    subgraph "Hello Demo Server (Stdio Transport)"
+        direction LR
+        Srv(MCP Server Instance)
+        Srv -- Registers --> T(Tool: hello)
+        Srv -- Registers --> P(Prompt: greet)
+        Srv -- Registers --> R(Resource: icon.png)
+    end
+    T -->|Response| ClientRes
+    P -->|Response| ClientRes
+    R -->|Response| ClientRes
+    ClientRes[Response]
+```
+
+---
+
+## Quick Start
+
+> **Prerequisite:** Go 1.24+
+
+Run the server (listens on stdio):
 
 ```bash
 go run .
 ```
 
-The server listens on **stdio** (great for ChatGPT plug‑in testing). You can pipe JSON requests directly:
+Send a request via stdin:
 
 ```bash
 # Call the hello tool
-printf '{"method":"hello","params":{"name":"Alma"}}\n' | go run .
+printf '{"method":"hello","params":{"name":"World"}}\n' | go run .
 ```
 
 Expected response:
 
 ```jsonc
-{ "role": "tool", "name": "hello", "content": "Hello, Alma!" }
+// Example response for 'hello' tool
+{
+  "role": "tool",
+  "name": "hello",
+  "content": {
+    "type": "text",
+    "text": "Hello, World!"
+  },
+  "isError": false
+}
 ```
 
 ---
 
-## Anatomy of `main.go`
+## Features
 
-1. **Server init**
-   ```go
-   srv := server.NewServer("demo-server")
-   ```
-2. **Tool** – `hello`
-   ```go
-   server.AddTool(srv, "hello", "Say hello to someone", func(args HelloArgs) (protocol.Content, error) {
-       return server.Text(fmt.Sprintf("Hello, %s!", args.Name)), nil
-   })
-   ```
-3. **Prompt** – `greet`
-   ```go
-   server.AddPrompt(srv, "greet", "Greeting prompt", func(_ HelloArgs) (protocol.PromptMessage, error) {
-       return server.Message("assistant", "How can I help you today?"), nil
-   })
-   ```
-4. **Resource** – `icon.png`
-   ```go
-   server.AddResource(srv, "icon.png", "image/png", "Server icon", "1.0", fetchIcon)
-   ```
-5. **Serve**
-   ```go
-   server.ServeStdio(srv)
-   ```
+- **Tool Implementation:** Demonstrates a simple tool (`hello`) that takes arguments and returns text content.
+- **Prompt Implementation:** Shows how to register a prompt (`greet`) for generating canned messages.
+- **Resource Implementation:** Provides an example of serving static binary data (`icon.png`) via a resource.
+- **Server Setup:** Minimal server initialization using `gomcp/server`.
+- **Stdio Transport:** Utilizes the standard input/output transport, suitable for simple integrations or testing.
 
 ---
 
-## Extending
+## Extending the Demo
 
-- **Add auth** – Wrap handlers with an auth guard before calling `AddTool`/`AddPrompt`.
-- **Swap transport** – Use `ServeHTTP` or gRPC instead of stdio if you need network access.
-- **Real resources** – Load files from disk or S3; set correct `ContentType`.
+- **Add Authentication:** Secure the `hello` tool using techniques from the `auth` example.
+- **Swap Transport:** Replace `ServeStdio` with `ServeHTTP` (using SSE or WebSockets) for network accessibility.
+- **Real Resources:** Modify `icon.png` to load an actual image file from disk.
+- **More Primitives:** Add more complex tools, prompts with arguments, or different resource types.
+- **Configuration:** Introduce configuration loading (e.g., for server name or ports).
 
 ---
 
-## Directory Layout
+## Project Structure
 
 ```
 hello-demo/
-├── main.go           # this sample program
-└── README.md
+├── main.go     # Server implementation with tool, prompt, resource
+└── README.md   # You are here
 ```

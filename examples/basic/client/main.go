@@ -1,20 +1,16 @@
 package main
 
 import (
-	"context" // Added context
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"strings"
-	"time" // Added for timeout context
+	"time"
 
-	// Import new packages
 	"github.com/localrivet/gomcp/client"
 	"github.com/localrivet/gomcp/protocol"
-	// "github.com/localrivet/gomcp/transport/stdio" // No longer using stdio directly here
-	// "github.com/localrivet/gomcp/types" // Not needed directly here
-	// "github.com/google/uuid" // For progress token generation if needed
 )
 
 // --- Helper Functions ---
@@ -34,15 +30,15 @@ func StringPtr(s string) *string {
 // runClientLogic connects the provided client and executes the example tool calls sequence.
 // Returns an error if any fatal step fails (connection, getting tool defs).
 // Tool usage errors are logged but do not cause this function to return an error.
-func runClientLogic(ctx context.Context, clt *client.Client) error { // Accept *client.Client, add ctx
+func runClientLogic(ctx context.Context, clt *client.Client) error {
 	// Connect and perform initialization
 	log.Println("Connecting to server...")
 	// Pass context to Connect
-	err := clt.Connect(ctx) // Use the provided client and ctx
+	err := clt.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("client failed to connect: %w", err)
 	}
-	defer clt.Close() // Ensure connection is closed eventually
+	defer clt.Close()
 
 	// Access server info and capabilities using the new getters
 	serverInfo := clt.ServerInfo()
@@ -53,13 +49,13 @@ func runClientLogic(ctx context.Context, clt *client.Client) error { // Accept *
 	// --- Request Tool Definitions ---
 	log.Println("\n--- Requesting Tool Definitions ---")
 	listParams := protocol.ListToolsRequestParams{}
-	toolsResult, err := clt.ListTools(ctx, listParams) // Add ctx
+	toolsResult, err := clt.ListTools(ctx, listParams)
 	if err != nil {
 		// Treat failure to get definitions as fatal for this example client
 		return fmt.Errorf("failed to get tool definitions: %w", err)
 	}
 	log.Printf("Received %d tool definitions:", len(toolsResult.Tools))
-	tools := toolsResult.Tools // Store for later checks
+	tools := toolsResult.Tools
 	for _, tool := range tools {
 		toolJson, _ := json.MarshalIndent(tool, "", "  ")
 		fmt.Fprintf(os.Stderr, "%s\n", string(toolJson))
@@ -80,13 +76,13 @@ func runClientLogic(ctx context.Context, clt *client.Client) error { // Accept *
 		args := map[string]interface{}{"message": echoMessage}
 		callParams := protocol.CallToolParams{Name: "echo", Arguments: args}
 		// Call tool without requesting progress
-		result, err := clt.CallTool(ctx, callParams, nil) // Add ctx
+		result, err := clt.CallTool(ctx, callParams, nil)
 		if err != nil {
 			log.Printf("ERROR: Failed to use 'echo' tool: %v", err)
 		} else {
 			log.Printf("Successfully used 'echo' tool.")
 			log.Printf("  Sent: %s", echoMessage)
-			log.Printf("  Received Content: %+v", result.Content) // Log the content slice
+			log.Printf("  Received Content: %+v", result.Content)
 			// Extract text from the first TextContent element
 			if len(result.Content) > 0 {
 				if textContent, ok := result.Content[0].(protocol.TextContent); ok {
@@ -111,7 +107,7 @@ func runClientLogic(ctx context.Context, clt *client.Client) error { // Accept *
 	// --- Use the Calculator Tool (Add) ---
 	calculatorToolFound := false
 	for _, tool := range tools {
-		if tool.Name == "add" { // Assuming kitchen-sink uses 'add' now
+		if tool.Name == "add" {
 			calculatorToolFound = true
 			break
 		}
@@ -121,7 +117,7 @@ func runClientLogic(ctx context.Context, clt *client.Client) error { // Accept *
 		// Example 1: Add
 		calcArgs1 := map[string]interface{}{"a": 5.0, "b": 7.0} // Use 'a' and 'b' as per kitchen-sink
 		calcParams1 := protocol.CallToolParams{Name: "add", Arguments: calcArgs1}
-		result1, err1 := clt.CallTool(ctx, calcParams1, nil) // Add ctx
+		result1, err1 := clt.CallTool(ctx, calcParams1, nil)
 		if err1 != nil {
 			log.Printf("ERROR: Failed to use 'add' tool: %v", err1)
 		} else {
@@ -145,13 +141,13 @@ func runClientLogic(ctx context.Context, clt *client.Client) error { // Accept *
 		// Example 2: Missing argument (expecting error in result)
 		calcArgs3 := map[string]interface{}{"a": 10.0} // Missing 'b'
 		calcParams3 := protocol.CallToolParams{Name: "add", Arguments: calcArgs3}
-		result3, err3 := clt.CallTool(ctx, calcParams3, nil) // Add ctx
+		result3, err3 := clt.CallTool(ctx, calcParams3, nil)
 		if err3 == nil {
 			if result3.IsError != nil && *result3.IsError {
 				log.Printf("Add(missing arg) failed as expected (IsError=true): Content=%+v", result3.Content)
 				if len(result3.Content) > 0 {
 					if textContent, ok := result3.Content[0].(protocol.TextContent); ok {
-						if !strings.Contains(textContent.Text, "Invalid or missing") { // Check error message from handler
+						if !strings.Contains(textContent.Text, "Invalid or missing") {
 							log.Printf("WARNING: Add(missing arg) error message unexpected: %s", textContent.Text)
 						}
 					}
@@ -178,7 +174,7 @@ func runClientLogic(ctx context.Context, clt *client.Client) error { // Accept *
 	if getTinyImageToolFound {
 		log.Println("\n--- Testing GetTinyImage Tool ---")
 		callParams := protocol.CallToolParams{Name: "getTinyImage"}
-		result, err := clt.CallTool(ctx, callParams, nil) // Add ctx
+		result, err := clt.CallTool(ctx, callParams, nil)
 		if err != nil {
 			log.Printf("ERROR: Failed to use 'getTinyImage' tool: %v", err)
 		} else {
@@ -212,7 +208,7 @@ func runClientLogic(ctx context.Context, clt *client.Client) error { // Accept *
 		log.Println("\n--- Testing LongRunning Tool (No Progress Requested) ---")
 		lrArgs := map[string]interface{}{"duration": 2.0, "steps": 4.0} // Shorter duration for test
 		lrParams := protocol.CallToolParams{Name: "longRunningOperation", Arguments: lrArgs}
-		lrResult, lrErr := clt.CallTool(ctx, lrParams, nil) // Add ctx, No progress token
+		lrResult, lrErr := clt.CallTool(ctx, lrParams, nil)
 		if lrErr != nil {
 			log.Printf("ERROR: Failed to use 'longRunningOperation' tool: %v", lrErr)
 		} else {
@@ -230,7 +226,7 @@ func runClientLogic(ctx context.Context, clt *client.Client) error { // Accept *
 		// }
 		// // Need to register a progress handler before calling
 		// // clt.RegisterNotificationHandler(protocol.MethodProgress, func(ctx context.Context, params interface{}) error { ... })
-		// lrResultProg, lrErrProg := clt.CallTool(ctx, lrParamsWithProgress, &progressToken) // Pass token pointer? Check signature
+		// lrResultProg, lrErrProg := clt.CallTool(ctx, lrParamsWithProgress, &progressToken)
 		// ... handle result and progress notifications ...
 
 	} else {
@@ -249,20 +245,19 @@ func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 	log.Println("Starting Example MCP Client...")
 
-	clientName := "GoExampleClient-Refactored"
-	// Create client assuming kitchen-sink server runs on 8080
-	clt, err := client.NewClient(clientName, client.ClientOptions{
-		ServerBaseURL: "http://127.0.0.1:8080",
-	})
+	clientName := "GoExampleClient-Stdio"
+
+	// Create client using NewStdioClient helper
+	clt, err := client.NewStdioClient(clientName, client.ClientOptions{})
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second) // Longer timeout for tests
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	// Run the main client logic
-	err = runClientLogic(ctx, clt) // Pass client instance and ctx
+	err = runClientLogic(ctx, clt)
 	if err != nil {
 		// Log fatal error from the client logic run
 		log.Fatalf("Client exited with error: %v", err)
