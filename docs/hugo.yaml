@@ -4,18 +4,37 @@ title: "GoMCP"
 theme: "hextra"
 menu:
   main:
-    - name: Documentation
-      pageRef: /docs
-      weight: 1
-    - name: License
-      pageRef: /license # Points to the new license page
-      weight: 2
     - name: Search
-      weight: 3
+      weight: 10
       params:
         type: search
     - name: GitHub
-      weight: 4
+      weight: 20
       url: "https://github.com/localrivet/gomcp"
       params:
         icon: github
+
+markup:
+  highlight:
+    noClasses: false
+  goldmark:
+    renderer:
+      unsafe: true
+    extensions:
+      passthrough:
+        delimiters:
+          block: [['\[', '\]'], ["$$", "$$"]]
+          inline: [['\(', '\)']]
+        enable: true
+
+enableInlineShortcodes: true
+
+params:
+  # Search
+  search:
+    enable: true
+    type: flexsearch
+
+    flexsearch:
+      # index page by: content | summary | heading | title
+      index: content

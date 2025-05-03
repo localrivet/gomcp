@@ -10,17 +10,23 @@
 <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
 <link fetchpriority="low" href="/site.webmanifest" rel="manifest" />
-<title>Categories – GoMCP</title>
-  <meta name="description" content="" /><link rel="canonical" href="http://localhost:1313/categories/" itemprop="url" />
+<title>Servers – GoMCP</title>
+  <meta name="description" content="The gomcp library provides the core logic for building mcp servers. The main server logic resides in the server package, which is designed to be transport-agnostic. This means the core server doesn’t care how messages are sent or received; that’s handled by a separate Transport implementation.
+The server.Server and client.Client server.Server: The central object for your MCP server application. You register tools, resources, and prompts with it. client.Client: Represents a connection to an MCP server, allowing you to interact with its capabilities. // Server Initialization srv := server.NewServer(&#34;my-awesome-server&#34;) // Client Initialization (Stdio example) clt, err := client.NewStdioClient(&#34;my-cool-client&#34;, client.ClientOptions{}) if err != nil { /* handle error */ } Server Role An MCP server built with gomcp typically performs the following functions:" /><link rel="canonical" href="http://localhost:1313/servers/" itemprop="url" />
 
-<meta property="og:title" content="Categories" />
+<meta property="og:title" content="Servers" />
 <meta property="og:description" content="" />
 <meta property="og:type" content="website" />
-<meta property="og:url" content="http://localhost:1313/categories/" />
+<meta property="og:url" content="http://localhost:1313/servers/" />
 
-  <meta itemprop="name" content="Categories">
+  <meta itemprop="name" content="Servers">
+  <meta itemprop="description" content="The gomcp library provides the core logic for building mcp servers. The main server logic resides in the server package, which is designed to be transport-agnostic. This means the core server doesn’t care how messages are sent or received; that’s handled by a separate Transport implementation.
+The server.Server and client.Client server.Server: The central object for your MCP server application. You register tools, resources, and prompts with it. client.Client: Represents a connection to an MCP server, allowing you to interact with its capabilities. // Server Initialization srv := server.NewServer(&#34;my-awesome-server&#34;) // Client Initialization (Stdio example) clt, err := client.NewStdioClient(&#34;my-cool-client&#34;, client.ClientOptions{}) if err != nil { /* handle error */ } Server Role An MCP server built with gomcp typically performs the following functions:">
+  <meta itemprop="wordCount" content="885">
   <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Categories">
+  <meta name="twitter:title" content="Servers">
+  <meta name="twitter:description" content="The gomcp library provides the core logic for building mcp servers. The main server logic resides in the server package, which is designed to be transport-agnostic. This means the core server doesn’t care how messages are sent or received; that’s handled by a separate Transport implementation.
+The server.Server and client.Client server.Server: The central object for your MCP server application. You register tools, resources, and prompts with it. client.Client: Represents a connection to an MCP server, allowing you to interact with its capabilities. // Server Initialization srv := server.NewServer(&#34;my-awesome-server&#34;) // Client Initialization (Stdio example) clt, err := client.NewStdioClient(&#34;my-cool-client&#34;, client.ClientOptions{}) if err != nil { /* handle error */ } Server Role An MCP server built with gomcp typically performs the following functions:">
 
     <link href="/css/compiled/main.css" rel="stylesheet" />
 
@@ -149,13 +155,45 @@
     </li></ul>
 </div></li>
 <li class="open"><a class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:contrast-more:border hx:contrast-more:border-transparent hx:contrast-more:text-gray-900 hx:contrast-more:hover:border-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:dark:text-gray-50 hx:contrast-more:dark:hover:border-gray-50" href="/servers/" >Servers
+      sidebar-active-item hx:bg-primary-100 hx:font-semibold hx:text-primary-800 hx:contrast-more:border hx:contrast-more:border-primary-500 hx:dark:bg-primary-400/10 hx:dark:text-primary-600 hx:contrast-more:dark:border-primary-500" href="/servers/" >Servers
   <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor"
   class="hx:h-[18px] hx:min-w-[18px] hx:rounded-xs hx:p-0.5 hx:hover:bg-gray-800/5 hx:dark:hover:bg-gray-100/5">
   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"
     class="hx:origin-center hx:transition-transform hx:rtl:-rotate-180"></path>
 </svg></span>
-  </a><div class="hx:ltr:pr-0 hx:overflow-hidden">
+  </a>
+
+<ul
+  class='hx:flex hx:flex-col hx:gap-1 hx:relative hx:before:absolute hx:before:inset-y-1 hx:before:w-px hx:before:bg-gray-200 hx:before:content-[""] hx:dark:before:bg-neutral-800 hx:ltr:pl-3 hx:ltr:before:left-0 hx:rtl:pr-3 hx:rtl:before:right-0 hx:ltr:ml-3 hx:rtl:mr-3'><li>
+    <a href="#"
+      class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50"></a>
+  </li>
+  <li>
+    <a href="#server-role"
+      class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50">Server Role</a>
+  </li>
+  <li>
+    <a href="#initializing-the-server-server-package"
+      class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50">Initializing the Server (server package)</a>
+  </li>
+  <li>
+    <a href="#registering-capabilities"
+      class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50">Registering Capabilities</a>
+  </li>
+  <li>
+    <a href="#running-the-server"
+      class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50">Running the Server</a>
+  </li>
+  <li>
+    <a href="#handling-client-messages"
+      class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50">Handling Client Messages</a>
+  </li>
+  <li>
+    <a href="#sending-server-messages"
+      class="hx:flex hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [word-break:break-word] hx:cursor-pointer [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] hx:contrast-more:border hx:gap-2 hx:before:opacity-25 hx:before:content-['#'] hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:text-gray-900 hx:contrast-more:dark:text-gray-50 hx:contrast-more:border-transparent hx:contrast-more:hover:border-gray-900 hx:contrast-more:dark:hover:border-gray-50">Sending Server Messages</a>
+  </li>
+  </ul>
+<div class="hx:ltr:pr-0 hx:overflow-hidden">
   <ul
     class='hx:relative hx:flex hx:flex-col hx:gap-1 hx:before:absolute hx:before:inset-y-1 hx:before:w-px hx:before:bg-gray-200 hx:before:content-[""] hx:ltr:ml-3 hx:ltr:pl-3 hx:ltr:before:left-0 hx:rtl:mr-3 hx:rtl:pr-3 hx:rtl:before:right-0 hx:dark:before:bg-neutral-800'><li class="hx:flex hx:flex-col "><a class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
       hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:contrast-more:border hx:contrast-more:border-transparent hx:contrast-more:text-gray-900 hx:contrast-more:hover:border-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:dark:text-gray-50 hx:contrast-more:dark:hover:border-gray-50" href="/servers/defining-tools/" >Tools
@@ -220,7 +258,7 @@
     </li></ul>
 </div></li>
 <li class="open"><a class="hx:flex hx:items-center hx:justify-between hx:gap-2 hx:cursor-pointer hx:rounded-sm hx:px-2 hx:py-1.5 hx:text-sm hx:transition-colors [-webkit-tap-highlight-color:transparent] [-webkit-touch-callout:none] [word-break:break-word]
-      hx:text-gray-500 hx:hover:bg-gray-100 hx:hover:text-gray-900 hx:contrast-more:border hx:contrast-more:border-transparent hx:contrast-more:text-gray-900 hx:contrast-more:hover:border-gray-900 hx:dark:text-neutral-400 hx:dark:hover:bg-primary-100/5 hx:dark:hover:text-gray-50 hx:contrast-more:dark:text-gray-50 hx:contrast-more:dark:hover:border-gray-50" href="/servers/" >Servers
+      sidebar-active-item hx:bg-primary-100 hx:font-semibold hx:text-primary-800 hx:contrast-more:border hx:contrast-more:border-primary-500 hx:dark:bg-primary-400/10 hx:dark:text-primary-600 hx:contrast-more:dark:border-primary-500" href="/servers/" >Servers
   <span class="hextra-sidebar-collapsible-button"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor"
   class="hx:h-[18px] hx:min-w-[18px] hx:rounded-xs hx:p-0.5 hx:hover:bg-gray-800/5 hx:dark:hover:bg-gray-100/5">
   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"
@@ -286,8 +324,36 @@
 </div></div></aside>
     
 <nav class="hextra-toc hx:order-last hx:hidden hx:w-64 hx:shrink-0 hx:xl:block hx:print:hidden hx:px-4" aria-label="table of contents">
-    <div class="hextra-scrollbar hx:sticky hx:top-16 hx:overflow-y-auto hx:pr-4 hx:pt-6 hx:text-sm [hyphens:auto] hx:max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] hx:ltr:-mr-4 hx:rtl:-ml-4">
-      <div class=" hx:sticky hx:bottom-0 hx:flex hx:flex-col hx:items-start hx:gap-2 hx:pb-8 hx:border-gray-200 hx:dark:border-neutral-800 hx:contrast-more:border-t hx:contrast-more:border-neutral-400 hx:contrast-more:shadow-none hx:contrast-more:dark:border-neutral-400">
+    <div class="hextra-scrollbar hx:sticky hx:top-16 hx:overflow-y-auto hx:pr-4 hx:pt-6 hx:text-sm [hyphens:auto] hx:max-h-[calc(100vh-var(--navbar-height)-env(safe-area-inset-bottom))] hx:ltr:-mr-4 hx:rtl:-ml-4"><p class="hx:mb-4 hx:font-semibold hx:tracking-tight">On this page</p><ul>
+      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
+        <a class="hx:ltr:pl-4 hx:rtl:pr-4 hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#the-serverserver-and-clientclient">The server.Server and client.Client
+        </a>
+      </li>
+      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
+        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#server-role">Server Role
+        </a>
+      </li>
+      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
+        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#initializing-the-server-server-package">Initializing the Server (server package)
+        </a>
+      </li>
+      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
+        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#registering-capabilities">Registering Capabilities
+        </a>
+      </li>
+      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
+        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#running-the-server">Running the Server
+        </a>
+      </li>
+      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
+        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#handling-client-messages">Handling Client Messages
+        </a>
+      </li>
+      <li class="hx:my-2 hx:scroll-my-6 hx:scroll-py-6">
+        <a class="hx:font-semibold hx:inline-block hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-300 hx:contrast-more:text-gray-900 hx:contrast-more:underline hx:contrast-more:dark:text-gray-50 hx:w-full hx:break-words" href="#sending-server-messages">Sending Server Messages
+        </a>
+      </li></ul>
+      <div class="hx:mt-8 hx:border-t hx:bg-white hx:pt-8 hx:shadow-[0_-12px_16px_white] hx:dark:bg-dark hx:dark:shadow-[0_-12px_16px_#111] hx:sticky hx:bottom-0 hx:flex hx:flex-col hx:items-start hx:gap-2 hx:pb-8 hx:border-gray-200 hx:dark:border-neutral-800 hx:contrast-more:border-t hx:contrast-more:border-neutral-400 hx:contrast-more:shadow-none hx:contrast-more:dark:border-neutral-400">
         <button aria-hidden="true" id="backToTop" onClick="scrollUp();" class="hx:cursor-pointer hx:transition-all hx:duration-75 hx:opacity-0 hx:text-xs hx:font-medium hx:text-gray-500 hx:hover:text-gray-900 hx:dark:text-gray-400 hx:dark:hover:text-gray-100 hx:contrast-more:text-gray-800 hx:contrast-more:dark:text-gray-50">
           <span>Scroll to top</span>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="hx:inline hx:ltr:ml-1 hx:rtl:mr-1 hx:h-3.5 hx:w-3.5 hx:rounded-full hx:border hx:border-gray-500 hx:hover:border-gray-900 hx:dark:border-gray-400 hx:dark:hover:border-gray-100 hx:contrast-more:border-gray-800 hx:contrast-more:dark:border-gray-50">
@@ -302,12 +368,136 @@
     <article class="hx:w-full hx:break-words hx:flex hx:min-h-[calc(100vh-var(--navbar-height))] hx:min-w-0 hx:justify-center hx:pb-8 hx:pr-[calc(env(safe-area-inset-right)-1.5rem)]">
       <main class="hx:w-full hx:min-w-0 hx:max-w-6xl hx:px-6 hx:pt-4 hx:md:px-12">
         
-  <div class="hx:mt-1.5 hx:flex hx:items-center hx:gap-1 hx:overflow-hidden hx:text-sm hx:text-gray-500 hx:dark:text-gray-400 hx:contrast-more:text-current"><div class="hx:whitespace-nowrap hx:transition-colors hx:font-medium hx:text-gray-700 hx:contrast-more:font-bold hx:contrast-more:text-current hx:dark:text-gray-100 hx:contrast-more:dark:text-current">Categories</div>
+  <div class="hx:mt-1.5 hx:flex hx:items-center hx:gap-1 hx:overflow-hidden hx:text-sm hx:text-gray-500 hx:dark:text-gray-400 hx:contrast-more:text-current"><div class="hx:whitespace-nowrap hx:transition-colors hx:font-medium hx:text-gray-700 hx:contrast-more:font-bold hx:contrast-more:text-current hx:dark:text-gray-100 hx:contrast-more:dark:text-current">Servers</div>
   </div>
 
         <div class="content">
-          <h1>Categories</h1>
-          
+          <h1>Servers</h1>
+          <p>The <code>gomcp</code> library provides the core logic for building mcp servers. The main server logic resides in the <code>server</code> package, which is designed to be transport-agnostic. This means the core server doesn&rsquo;t care how messages are sent or received; that&rsquo;s handled by a separate <code>Transport</code> implementation.</p>
+<h3>The <code>server.Server</code> and <code>client.Client</code><span class="hx:absolute hx:-mt-20" id="the-serverserver-and-clientclient"></span>
+    <a href="#the-serverserver-and-clientclient" class="subheading-anchor" aria-label="Permalink for this section"></a></h3><ul>
+<li><code>server.Server</code>: The central object for your MCP server application. You register tools, resources, and prompts with it.</li>
+<li><code>client.Client</code>: Represents a connection to an MCP server, allowing you to interact with its capabilities.</li>
+</ul>
+<div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code">
+
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="c1">// Server Initialization</span>
+</span></span><span class="line"><span class="cl"><span class="nx">srv</span> <span class="o">:=</span> <span class="nx">server</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span><span class="s">&#34;my-awesome-server&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="c1">// Client Initialization (Stdio example)</span>
+</span></span><span class="line"><span class="cl"><span class="nx">clt</span><span class="p">,</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">client</span><span class="p">.</span><span class="nf">NewStdioClient</span><span class="p">(</span><span class="s">&#34;my-cool-client&#34;</span><span class="p">,</span> <span class="nx">client</span><span class="p">.</span><span class="nx">ClientOptions</span><span class="p">{})</span>
+</span></span><span class="line"><span class="cl"><span class="k">if</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span> <span class="cm">/* handle error */</span> <span class="p">}</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0">
+  <button
+    class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+    title="Copy code"
+  >
+    <div class="copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"></div>
+    <div class="success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"></div>
+  </button>
+</div>
+</div>
+<h2>Server Role<span class="hx:absolute hx:-mt-20" id="server-role"></span>
+    <a href="#server-role" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>An MCP server built with <code>gomcp</code> typically performs the following functions:</p>
+<ol>
+<li><strong>Listens for Connections:</strong> Accepts incoming client connections via a specific transport mechanism (e.g., Stdio, SSE+HTTP, WebSockets).</li>
+<li><strong>Handles Initialization:</strong> Manages the MCP initialization handshake (<code>initialize</code> request and <code>initialized</code> notification) with connecting clients to exchange capabilities and establish a session.</li>
+<li><strong>Exposes Capabilities:</strong> Advertises its supported features and the capabilities it provides (tools, resources, prompts) to connected clients.</li>
+<li><strong>Registers Offerings:</strong> Allows you to register the specific tools, resources, and prompts that your server makes available.</li>
+<li><strong>Handles Client Requests:</strong> Processes incoming JSON-RPC requests from clients (e.g., <code>tools/call</code>, <code>resources/get</code>, <code>prompts/list</code>) and sends back appropriate responses or errors.</li>
+<li><strong>Handles Client Notifications:</strong> Processes incoming JSON-RPC notifications from clients (e.g., <code>$/cancelled</code>, <code>initialized</code>).</li>
+<li><strong>Sends Server Messages:</strong> Can send server-initiated notifications to clients (e.g., <code>$/progress</code>, <code>notifications/message</code>, <code>notifications/resources/updated</code>) to provide updates or information.</li>
+</ol>
+<h2>Initializing the Server (<code>server</code> package)<span class="hx:absolute hx:-mt-20" id="initializing-the-server-server-package"></span>
+    <a href="#initializing-the-server-server-package" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>The <code>server.Server</code> struct holds the state and core logic for your MCP server instance. You create a new server using the <code>server.NewServer</code> constructor, providing a server name and optional configuration options.</p>
+<div class="hextra-code-block hx:relative hx:mt-6 hx:first:mt-0 hx:group/code">
+
+<div><div class="highlight"><pre tabindex="0" class="chroma"><code class="language-go" data-lang="go"><span class="line"><span class="cl"><span class="kn">package</span> <span class="nx">main</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kn">import</span> <span class="p">(</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;log&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;os&#34;</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;github.com/localrivet/gomcp/server&#34;</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// Import necessary transport package(s)</span>
+</span></span><span class="line"><span class="cl">	<span class="s">&#34;github.com/localrivet/gomcp/transport/stdio&#34;</span>
+</span></span><span class="line"><span class="cl"><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl"><span class="kd">func</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// Configure logger (optional, defaults to stderr)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">SetOutput</span><span class="p">(</span><span class="nx">os</span><span class="p">.</span><span class="nx">Stderr</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">SetFlags</span><span class="p">(</span><span class="nx">log</span><span class="p">.</span><span class="nx">Ltime</span> <span class="p">|</span> <span class="nx">log</span><span class="p">.</span><span class="nx">Lshortfile</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Starting My MCP Server...&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// 1. Create the Server Instance</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// Provide a unique name for your server and optional server options.</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">srv</span> <span class="o">:=</span> <span class="nx">server</span><span class="p">.</span><span class="nf">NewServer</span><span class="p">(</span><span class="s">&#34;my-gomcp-server&#34;</span><span class="p">,</span> <span class="nx">server</span><span class="p">.</span><span class="nx">ServerOptions</span><span class="p">{</span>
+</span></span><span class="line"><span class="cl">		<span class="c1">// Optional: Configure server capabilities if needed (defaults are reasonable)</span>
+</span></span><span class="line"><span class="cl">		<span class="c1">// ServerCapabilities: protocol.ServerCapabilities{</span>
+</span></span><span class="line"><span class="cl">		<span class="c1">// 	Tools: &amp;protocol.ToolsCaps{ListChanged: true}, // Example: Indicate support for tools list changes</span>
+</span></span><span class="line"><span class="cl">		<span class="c1">// },</span>
+</span></span><span class="line"><span class="cl">		<span class="c1">// Optional: Provide a custom logger</span>
+</span></span><span class="line"><span class="cl">		<span class="c1">// Logger: myCustomLogger,</span>
+</span></span><span class="line"><span class="cl">		<span class="c1">// Optional: Set server instructions (sent to client during initialization)</span>
+</span></span><span class="line"><span class="cl">		<span class="c1">// Instructions: &#34;This server provides tools for data analysis.&#34;,</span>
+</span></span><span class="line"><span class="cl">	<span class="p">})</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// 2. Define and Register Capabilities (Tools, Resources, Prompts)</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// This is where you define and register the specific functionalities</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// your server offers. See the dedicated guides for each type:</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// - [Tools](http://localhost:1313/servers/defining-tools/)</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// - [Resources](http://localhost:1313/servers/resources/)</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// - [Prompts](http://localhost:1313/servers/prompts/)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// Example: Register a simple tool (details in the Tools guide)</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// srv.RegisterTool(...)</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="c1">// 3. Run the Server using a built-in transport handler</span>
+</span></span><span class="line"><span class="cl">	<span class="c1">// Choose the appropriate ServeX function based on your desired transport.</span>
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Server setup complete. Starting server...&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="k">if</span> <span class="nx">err</span> <span class="o">:=</span> <span class="nx">server</span><span class="p">.</span><span class="nf">ServeStdio</span><span class="p">(</span><span class="nx">srv</span><span class="p">);</span> <span class="nx">err</span> <span class="o">!=</span> <span class="kc">nil</span> <span class="p">{</span> <span class="c1">// Example using Stdio transport</span>
+</span></span><span class="line"><span class="cl">		<span class="c1">// ServeStdio blocks until the transport is closed or an error occurs</span>
+</span></span><span class="line"><span class="cl">		<span class="nx">log</span><span class="p">.</span><span class="nf">Fatalf</span><span class="p">(</span><span class="s">&#34;Server exited with error: %v&#34;</span><span class="p">,</span> <span class="nx">err</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl">	<span class="p">}</span>
+</span></span><span class="line"><span class="cl">
+</span></span><span class="line"><span class="cl">	<span class="nx">log</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">&#34;Server stopped.&#34;</span><span class="p">)</span>
+</span></span><span class="line"><span class="cl"><span class="p">}</span></span></span></code></pre></div></div><div class="hextra-code-copy-btn-container hx:opacity-0 hx:transition hx:group-hover/code:opacity-100 hx:flex hx:gap-1 hx:absolute hx:m-[11px] hx:right-0 hx:top-0">
+  <button
+    class="hextra-code-copy-btn hx:group/copybtn hx:cursor-pointer hx:transition-all hx:active:opacity-50 hx:bg-primary-700/5 hx:border hx:border-black/5 hx:text-gray-600 hx:hover:text-gray-900 hx:rounded-md hx:p-1.5 hx:dark:bg-primary-300/10 hx:dark:border-white/10 hx:dark:text-gray-400 hx:dark:hover:text-gray-50"
+    title="Copy code"
+  >
+    <div class="copy-icon hx:group-[.copied]/copybtn:hidden hx:pointer-events-none hx:h-4 hx:w-4"></div>
+    <div class="success-icon hx:hidden hx:group-[.copied]/copybtn:block hx:pointer-events-none hx:h-4 hx:w-4"></div>
+  </button>
+</div>
+</div>
+<p>The <code>server.ServerOptions</code> struct allows you to customize the server&rsquo;s behavior:</p>
+<ul>
+<li><code>ServerCapabilities</code> (<code>protocol.ServerCapabilities</code>): Define the features your server supports.</li>
+<li><code>Logger</code> (<code>types.Logger</code>): Provide a custom logger implementation.</li>
+<li><code>Instructions</code> (<code>string</code>): A string containing instructions or a brief description of the server, sent to the client during initialization.</li>
+</ul>
+<h2>Registering Capabilities<span class="hx:absolute hx:-mt-20" id="registering-capabilities"></span>
+    <a href="#registering-capabilities" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Before running the server, you need to register the specific tools, resources, and prompts that your server will expose to clients. The <code>server.Server</code> provides methods for this:</p>
+<ul>
+<li><code>RegisterTool(tool protocol.Tool, handler hooks.FinalToolHandler)</code>: Registers a tool definition and the handler function that will be executed when a client calls the tool. See the <a href="http://localhost:1313/servers/defining-tools/" >Tools</a> guide for details.</li>
+<li><code>RegisterResource(resource protocol.Resource)</code>: Registers a resource definition. See the <a href="http://localhost:1313/servers/resources/" >Resources</a> guide for details on defining and providing resource content.</li>
+<li><code>RegisterPrompt(prompt protocol.Prompt)</code>: Registers a prompt template definition. See the <a href="http://localhost:1313/servers/prompts/" >Prompts</a> guide for details.</li>
+</ul>
+<h2>Running the Server<span class="hx:absolute hx:-mt-20" id="running-the-server"></span>
+    <a href="#running-the-server" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>After creating the server instance and registering its capabilities, you need to start it using a transport handler. The <code>server</code> package provides convenience functions for common transports:</p>
+<ul>
+<li><code>server.ServeStdio(srv *Server)</code>: Runs the server using Standard Input/Output.</li>
+<li><code>server.ServeSSE(srv *Server, addr string, basePath string)</code>: Runs the server using the HTTP+SSE transport.</li>
+<li><code>server.ServeWebSocket(srv *Server, addr string, path string)</code>: Runs the server using the WebSocket transport.</li>
+<li><code>server.ServeTCP(srv *Server, addr string)</code>: Runs the server using a raw TCP socket connection.</li>
+</ul>
+<p>Choose the appropriate <code>ServeX</code> function based on how you want your server to communicate. These functions typically block, running the server&rsquo;s main loop until the transport is closed or an error occurs.</p>
+<p>Alternatively, for more control, you can implement the <code>types.Transport</code> interface yourself and use the <code>srv.Run(transport types.Transport)</code> method.</p>
+<h2>Handling Client Messages<span class="hx:absolute hx:-mt-20" id="handling-client-messages"></span>
+    <a href="#handling-client-messages" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>The <code>server.Server</code> automatically handles incoming JSON-RPC requests and notifications based on the registered capabilities and standard protocol methods (like <code>initialize</code>, <code>tools/call</code>, <code>resources/get</code>, <code>$/cancelled</code>). You generally don&rsquo;t need to handle raw messages directly unless implementing custom notifications or requests.</p>
+<h2>Sending Server Messages<span class="hx:absolute hx:-mt-20" id="sending-server-messages"></span>
+    <a href="#sending-server-messages" class="subheading-anchor" aria-label="Permalink for this section"></a></h2><p>Your server application can send notifications or requests to connected clients. This is usually done via the <code>types.ClientSession</code> interface, which is managed internally by the server and implemented by the transport layer. Methods like <code>session.SendNotification</code> and <code>session.SendResponse</code> (accessible via the <code>ClientSession</code> object passed to handlers or retrieved from the server&rsquo;s session management) facilitate this. The <code>server.Server</code> also provides convenience methods like <code>srv.SendProgress</code> and <code>srv.NotifyResourceUpdated</code> for common notifications. See the <a href="http://localhost:1313/servers/context/" >Context</a> guide for more on accessing session context and sending messages.</p>
+
         </div>
         <div class="hx:mt-16"></div>
         
