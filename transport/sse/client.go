@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http" // ADDED for tracing
 	"net/url"
 	"strings"
@@ -232,122 +233,119 @@ func (t *SSETransport) Send(ctx context.Context, data []byte) error {
 	}
 
 	// Construct the full URL for the POST request
-	var messageURL string
+	var postURL string
+	var postErr error
 
 	// For 2024-11-05 protocol, use the messageEndpointURL if set
 	if t.protocolVersion == protocol.OldProtocolVersion && t.messageEndpointURL != "" {
-		rawURL := t.messageEndpointURL
+		rawEndpointURL := t.messageEndpointURL
 
-		// Check if messageEndpointURL is relative and resolve it with serverBaseURL
-		if strings.HasPrefix(rawURL, "/") {
-			// Absolute path relative URL (starts with /)
-			messageURL = t.serverBaseURL + rawURL
-			t.logger.Debug("SSETransport: Resolved absolute path URL to: %s", messageURL)
-		} else if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
-			// Relative URL without / prefix
-			messageURL = fmt.Sprintf("%s/%s", t.serverBaseURL, strings.TrimPrefix(rawURL, "./"))
-			t.logger.Debug("SSETransport: Resolved relative path URL to: %s", messageURL)
+		// Try parsing endpoint as a URL itself
+		endpointParsed, err := url.Parse(rawEndpointURL)
+		if err != nil {
+			postErr = fmt.Errorf("failed to parse messageEndpointURL '%s': %w", rawEndpointURL, err)
+		} else if endpointParsed.IsAbs() {
+			// If endpoint is already absolute, use it directly
+			postURL = rawEndpointURL
+			t.logger.Debug("SSETransport: Using absolute endpoint URL: %s", postURL)
 		} else {
-			// Already an absolute URL with scheme
-			messageURL = rawURL
+			// If endpoint is relative, resolve it against the base server URL
+			baseParsed, err := url.Parse(t.serverBaseURL)
+			if err != nil {
+				postErr = fmt.Errorf("failed to parse serverBaseURL '%s': %w", t.serverBaseURL, err)
+			} else {
+				log.Printf("[DEBUG TEMP] SSETransport: Resolving Ref: Base='%s', Rel='%s'", baseParsed.String(), endpointParsed.String())
+				resolvedURL := baseParsed.ResolveReference(endpointParsed)
+				postURL = resolvedURL.String()
+				t.logger.Debug("SSETransport: Resolved relative endpoint URL '%s' against base '%s' to: %s", rawEndpointURL, t.serverBaseURL, postURL)
+			}
 		}
-
-		t.logger.Debug("SSETransport: Using 2024-11-05 endpoint URL: %s", messageURL)
 	} else {
-		// For 2025-03-26 or if messageEndpointURL not set, use the default URL
-		messageURL = fmt.Sprintf("%s%s", t.serverBaseURL, t.mcpEndpoint)
-		t.logger.Debug("SSETransport: Using default endpoint URL: %s", messageURL)
+		// Default behavior (e.g., 2025 protocol or if endpoint URL not received)
+		// Resolve mcpEndpoint against serverBaseURL
+		baseParsed, err := url.Parse(t.serverBaseURL)
+		if err != nil {
+			postErr = fmt.Errorf("failed to parse serverBaseURL '%s': %w", t.serverBaseURL, err)
+		} else {
+			mcpEndpointParsed, err := url.Parse(t.mcpEndpoint) // Assuming mcpEndpoint is a relative path
+			if err != nil {
+				postErr = fmt.Errorf("failed to parse mcpEndpoint '%s': %w", t.mcpEndpoint, err)
+			} else {
+				log.Printf("[DEBUG TEMP] SSETransport: Resolving Ref (Default): Base='%s', Rel='%s'", baseParsed.String(), mcpEndpointParsed.String())
+				resolvedURL := baseParsed.ResolveReference(mcpEndpointParsed)
+				postURL = resolvedURL.String()
+				t.logger.Debug("SSETransport: Using default resolved endpoint: %s", postURL)
+			}
+		}
 	}
 
-	// Validate the constructed URL
-	urlObj, urlErr := url.Parse(messageURL)
-	if urlErr != nil {
-		return fmt.Errorf("invalid message endpoint URL: %s - %w", messageURL, urlErr)
+	// Check for errors during URL construction
+	if postErr != nil {
+		t.logger.Error("SSETransport: Failed to construct POST URL: %v", postErr)
+		return postErr
 	}
 
-	// Ensure URL has a scheme
-	if urlObj.Scheme == "" {
-		return fmt.Errorf("URL missing scheme: %s", messageURL)
+	t.logger.Debug("SSETransport Sending POST to %s: %s", postURL, string(data))
+
+	// Create the HTTP request
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, postURL, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to create POST request: %w", err)
 	}
 
-	// Create the request
-	postReq, reqErr := http.NewRequestWithContext(ctx, "POST", messageURL, bytes.NewBuffer(data))
-	if reqErr != nil {
-		return fmt.Errorf("failed to create POST request: %w", reqErr)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json") // Expect JSON response
+	if sessionID != "" {
+		httpReq.Header.Set("Mcp-Session-Id", sessionID)
 	}
 
-	postReq.Header.Set("Content-Type", "application/json")
-	postReq.Header.Set("Accept", "application/json, text/event-stream") // Per spec
-	if sessionID != "" && !isInitialize {
-		postReq.Header.Set("Mcp-Session-Id", sessionID)
+	// Execute the request
+	resp, err := t.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to send POST request: %w", err)
 	}
+	defer resp.Body.Close()
 
-	t.logger.Debug("SSETransport Sending POST to %s: %s", messageURL, string(data))
-	httpResp, respErr := t.httpClient.Do(postReq)
-	// Log response details
-	if httpResp != nil {
-		t.logger.Debug("SSETransport httpClient.Do completed for POST. Error: %v, Response Status: %s", respErr, httpResp.Status)
-	} else {
-		t.logger.Debug("SSETransport httpClient.Do completed for POST. Error: %v, Response: nil", respErr)
-	}
-
-	if respErr != nil {
-		return fmt.Errorf("failed to send POST request: %w", respErr)
-	}
+	t.logger.Debug("SSETransport httpClient.Do completed for POST. Error: %v, Response Status: %s", err, resp.Status)
 
 	// Process response in a nested func to ensure body is closed
-	t.logger.Debug("SSETransport processing POST response...")
-	processErr := func() error {
-		defer httpResp.Body.Close() // Ensure body closed within this scope
-
-		bodyBytes, readErr := io.ReadAll(httpResp.Body)
-		if readErr != nil {
-			t.logger.Error("SSETransport: Failed to read POST response body: %v", readErr)
-			return fmt.Errorf("failed to read POST response body: %w", readErr)
+	processResponse := func() error {
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			bodyBytes, _ := io.ReadAll(resp.Body) // Read body for error details
+			t.logger.Error("SSETransport: POST request failed with status %s: %s", resp.Status, string(bodyBytes))
+			return fmt.Errorf("POST request failed with status %s", resp.Status)
 		}
 
-		if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
-			return fmt.Errorf("http POST request failed: status %d, body: %s", httpResp.StatusCode, string(bodyBytes))
-		}
-
-		// --- Handle Initialize Response Specifically ---
+		// If this was the Initialize request, extract the session ID from the header
 		if isInitialize {
-			var initResp protocol.JSONRPCResponse
-			if err := json.Unmarshal(bodyBytes, &initResp); err != nil {
-				return fmt.Errorf("failed to unmarshal InitializeResponse body: %w", err)
-			}
-			if initResp.Error != nil {
-				return fmt.Errorf("received JSON-RPC error during initialization: [%d] %s", initResp.Error.Code, initResp.Error.Message)
-			}
-
-			newSessionID := httpResp.Header.Get("Mcp-Session-Id")
-			if newSessionID != "" {
-				t.sessionMu.Lock()
-				if t.sessionID == "" {
-					t.sessionID = newSessionID
-					t.logger.Info("SSETransport: Stored session ID from InitializeResponse header: %s", newSessionID)
-				} else if t.sessionID != newSessionID {
-					t.logger.Warn("SSETransport: Received different session ID (%s) on subsequent InitializeResponse? Sticking with old (%s).", newSessionID, t.sessionID)
-				}
-				t.sessionMu.Unlock()
+			receivedSessionID := resp.Header.Get("Mcp-Session-Id")
+			if receivedSessionID == "" {
+				t.logger.Warn("SSETransport: Initialize response missing Mcp-Session-Id header")
+				// Continue processing, but session ID will remain unset
 			} else {
-				t.logger.Warn("SSETransport: Mcp-Session-Id header not found in InitializeResponse")
+				t.sessionMu.Lock()
+				t.sessionID = receivedSessionID
+				t.sessionMu.Unlock()
+				t.logger.Info("SSETransport: Stored session ID from InitializeResponse header: %s", receivedSessionID)
 			}
-
-			// For Initialize requests, send the response to the receive channel
+			// Forward the response body (which contains the InitializeResult) to the receive channel
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("failed to read initialize response body: %w", err)
+			}
 			t.logger.Debug("SSETransport: Forwarding initialize response to receive channel")
 			t.sendToReceiveChan(bodyBytes, nil)
-
 			t.logger.Debug("SSETransport Initialize POST successful.")
-			return nil // Success for initialize
+			return nil
+		} else {
+			// For non-initialize POSTs, the response body is usually empty (e.g., 202 Accepted)
+			// We don't need to forward it.
+			t.logger.Debug("SSETransport non-Initialize POST successful (Status: %d)", resp.StatusCode)
+			return nil
 		}
+	}
 
-		// For non-initialize messages, success is indicated by 2xx status.
-		t.logger.Debug("SSETransport non-Initialize POST successful (Status: %d)", httpResp.StatusCode)
-		return nil // Success for non-initialize
-	}() // End of nested func call
-
-	return processErr // Return error from nested func
+	return processResponse()
 }
 
 // Receive waits for the next message from the SSE stream.

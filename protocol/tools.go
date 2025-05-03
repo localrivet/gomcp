@@ -3,11 +3,12 @@ package protocol
 
 import (
 	"encoding/json" // Added for UnmarshalJSON
-	"fmt"           // Added for UnmarshalJSON
-	"log"           // Added for UnmarshalJSON
+	// Added for UnmarshalJSON
+	// Added for UnmarshalJSON
+	// "github.com/localrivet/gomcp/types" // REMOVED to break import cycle
 )
 
-// --- Tooling Structures and Messages ---
+// --- Tooling Structures and Messages (Schema 2025-03-26) ---
 
 // ToolInputSchema defines the expected input structure for a tool (JSON Schema subset).
 type ToolInputSchema struct {
@@ -52,80 +53,30 @@ type ListToolsResult struct {
 	NextCursor string `json:"nextCursor,omitempty"`
 }
 
-// CallToolParams defines the parameters for a 'tools/call' request.
-type CallToolParams struct {
-	Name      string                 `json:"name"`
-	Arguments map[string]interface{} `json:"arguments,omitempty"`
-	Meta      *RequestMeta           `json:"_meta,omitempty"` // Defined in messages.go
+// ToolCall defines the structure for a tool call request (mirrors types.ToolCall).
+type ToolCall struct {
+	ID       string          `json:"id"`
+	ToolName string          `json:"tool_name"`
+	Input    json.RawMessage `json:"input,omitempty"`
 }
 
-// CallToolResult defines the result payload for a successful 'tools/call' response.
+// CallToolRequestParams defines the parameters for a 'tools/call' request (Schema 2025-03-26).
+type CallToolRequestParams struct {
+	ToolCall *ToolCall    `json:"tool_call"` // Use protocol.ToolCall
+	Meta     *RequestMeta `json:"_meta,omitempty"`
+}
+
+// ToolError defines the structure for reporting errors during tool execution (Schema 2025-03-26).
+type ToolError struct {
+	Code    ErrorCode   `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// CallToolResult defines the result payload for a 'tools/call' response (Schema 2025-03-26).
 type CallToolResult struct {
-	Content []Content    `json:"content"` // Defined in messages.go
-	IsError *bool        `json:"isError,omitempty"`
-	Meta    *RequestMeta `json:"_meta,omitempty"` // Defined in messages.go
-}
-
-// UnmarshalJSON implements custom unmarshalling for CallToolResult to handle the Content interface slice.
-func (r *CallToolResult) UnmarshalJSON(data []byte) error {
-	// 1. Define an auxiliary type to prevent recursion
-	type Alias CallToolResult
-	aux := &struct {
-		Content []json.RawMessage `json:"content"` // Unmarshal Content into RawMessage first
-		*Alias
-	}{
-		Alias: (*Alias)(r),
-	}
-
-	// 2. Unmarshal into the auxiliary type
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return fmt.Errorf("failed to unmarshal base CallToolResult: %w", err)
-	}
-
-	// 3. Iterate over RawMessages and unmarshal into concrete types
-	r.Content = make([]Content, 0, len(aux.Content)) // Initialize the slice
-	for _, raw := range aux.Content {
-		var typeDetect struct {
-			Type string `json:"type"`
-		}
-		if err := json.Unmarshal(raw, &typeDetect); err != nil {
-			return fmt.Errorf("failed to detect content type: %w", err)
-		}
-
-		var actualContent Content
-		switch typeDetect.Type {
-		case "text":
-			var tc TextContent // Defined in messages.go
-			if err := json.Unmarshal(raw, &tc); err != nil {
-				return fmt.Errorf("failed to unmarshal TextContent: %w", err)
-			}
-			actualContent = tc
-		case "image":
-			var ic ImageContent // Defined in messages.go
-			if err := json.Unmarshal(raw, &ic); err != nil {
-				return fmt.Errorf("failed to unmarshal ImageContent: %w", err)
-			}
-			actualContent = ic
-		case "audio":
-			var ac AudioContent // Defined in messages.go
-			if err := json.Unmarshal(raw, &ac); err != nil {
-				return fmt.Errorf("failed to unmarshal AudioContent: %w", err)
-			}
-			actualContent = ac
-		case "resource":
-			var erc EmbeddedResourceContent // Defined in messages.go
-			if err := json.Unmarshal(raw, &erc); err != nil {
-				return fmt.Errorf("failed to unmarshal EmbeddedResourceContent: %w", err)
-			}
-			actualContent = erc
-		default:
-			// Handle unknown content types if necessary, maybe return an error or skip
-			log.Printf("Warning: Unknown content type '%s' encountered during unmarshalling", typeDetect.Type)
-			// Or return fmt.Errorf("unknown content type '%s'", typeDetect.Type)
-			continue // Skip unknown types for now
-		}
-		r.Content = append(r.Content, actualContent)
-	}
-
-	return nil
+	ToolCallID string          `json:"tool_call_id"`
+	Output     json.RawMessage `json:"output,omitempty"`
+	Error      *ToolError      `json:"error,omitempty"`
+	Meta       *RequestMeta    `json:"_meta,omitempty"`
 }

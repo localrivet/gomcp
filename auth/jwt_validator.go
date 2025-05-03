@@ -89,8 +89,8 @@ func (v *JWKSTokenValidator) ValidateToken(ctx context.Context, tokenString stri
 		// Distinguish between parsing errors and validation errors (like expired)
 		return nil, &protocol.MCPError{
 			ErrorPayload: protocol.ErrorPayload{
-				Code:    protocol.ErrorCodeMCPAuthenticationFailed,
-				Message: fmt.Sprintf("Invalid token format or signature: %v", err),
+				Code:    protocol.CodeMCPAuthenticationFailed,
+				Message: fmt.Sprintf("Error parsing token: %v", err),
 			},
 		}
 	}
@@ -99,8 +99,8 @@ func (v *JWKSTokenValidator) ValidateToken(ctx context.Context, tokenString stri
 	if !token.Valid {
 		return nil, &protocol.MCPError{
 			ErrorPayload: protocol.ErrorPayload{
-				Code:    protocol.ErrorCodeMCPAuthenticationFailed,
-				Message: "Token is invalid (potentially expired, inactive, or signature mismatch)",
+				Code:    protocol.CodeMCPAuthenticationFailed,
+				Message: "JWT token is invalid or expired",
 			},
 		}
 	}
@@ -110,7 +110,7 @@ func (v *JWKSTokenValidator) ValidateToken(ctx context.Context, tokenString stri
 	if !ok {
 		return nil, &protocol.MCPError{
 			ErrorPayload: protocol.ErrorPayload{
-				Code:    protocol.ErrorCodeMCPAuthenticationFailed,
+				Code:    protocol.CodeMCPAuthenticationFailed,
 				Message: "Invalid token claims format",
 			},
 		}
@@ -133,8 +133,8 @@ func (v *JWKSTokenValidator) ValidateToken(ctx context.Context, tokenString stri
 	if err != nil {
 		return nil, &protocol.MCPError{
 			ErrorPayload: protocol.ErrorPayload{
-				Code:    protocol.ErrorCodeMCPAuthenticationFailed,
-				Message: fmt.Sprintf("Token validation failed: %v", err),
+				Code:    protocol.CodeMCPAuthenticationFailed,
+				Message: fmt.Sprintf("Error extracting claims from JWT: %v", err),
 			},
 		}
 	}

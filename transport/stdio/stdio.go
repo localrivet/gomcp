@@ -376,7 +376,7 @@ func (t *StdioTransport) sendParseError(ctx context.Context, message string) err
 		JSONRPC: "2.0",
 		ID:      nil, // No ID for parse errors before request ID is known
 		Error: &protocol.ErrorPayload{
-			Code:    protocol.ErrorCodeParseError,
+			Code:    protocol.CodeParseError,
 			Message: message,
 		},
 	}

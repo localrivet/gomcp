@@ -71,7 +71,7 @@ func NewAuthenticationHook(config AuthHookConfig) (hooks.BeforeHandleMessageHook
 			// If not initialization and no token, fail.
 			return rawMessage, &protocol.MCPError{
 				ErrorPayload: protocol.ErrorPayload{
-					Code:    protocol.ErrorCodeMCPAuthenticationFailed,
+					Code:    protocol.CodeMCPAuthenticationFailed,
 					Message: "Missing authentication token",
 				},
 			}
@@ -87,9 +87,8 @@ func NewAuthenticationHook(config AuthHookConfig) (hooks.BeforeHandleMessageHook
 			// Otherwise, wrap the generic error
 			return rawMessage, &protocol.MCPError{
 				ErrorPayload: protocol.ErrorPayload{
-					Code:    protocol.ErrorCodeMCPAuthenticationFailed,
-					Message: fmt.Sprintf("Token validation failed: %v", err),
-					Data:    err.Error(), // Include original error message in data
+					Code:    protocol.CodeMCPAuthenticationFailed,
+					Message: fmt.Sprintf("Failed to validate token: %v", err),
 				},
 			}
 		}

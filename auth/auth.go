@@ -67,9 +67,9 @@ func (c *AllowAllPermissionChecker) CheckPermission(ctx context.Context, princip
 	if principal == nil {
 		// This case shouldn't typically happen if the auth hook runs first,
 		// but handle defensively.
-		return &protocol.MCPError{ // Use MCPError which implements error
+		return &protocol.MCPError{
 			ErrorPayload: protocol.ErrorPayload{
-				Code:    protocol.ErrorCodeMCPAuthenticationFailed, // Use correct constant
+				Code:    protocol.CodeMCPAuthenticationFailed, // Use correct constant
 				Message: "No authenticated principal found in context",
 			},
 		}

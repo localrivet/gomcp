@@ -6,6 +6,7 @@ import (
 	"bytes" // Needed for byte buffer
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log" // Added import for default logger
@@ -116,103 +117,80 @@ func (t *TCPTransport) Receive(ctx context.Context) ([]byte, error) {
 	}
 	t.closeMutex.Unlock()
 
-	// Use a ByteReader if the underlying reader supports it, otherwise wrap
-	var byteReader io.ByteReader
-	if br, ok := t.reader.(io.ByteReader); ok {
-		byteReader = br
+	// Set read deadline based on context
+	deadline, hasDeadline := ctx.Deadline()
+	if hasDeadline {
+		if err := t.conn.SetReadDeadline(deadline); err != nil {
+			t.logger.Warn("TCPTransport: Failed to set read deadline from context: %v", err)
+			// If we can't set deadline, context cancellation might not work reliably via this mechanism
+		}
+		// Ensure deadline is reset when function returns
+		defer func() {
+			if err := t.conn.SetReadDeadline(time.Time{}); err != nil {
+				t.logger.Warn("TCPTransport: Failed to reset read deadline: %v", err)
+			}
+		}()
 	} else {
-		// Wrap in bufio.Reader ONLY for ByteReader interface, limited buffer
-		// This is less efficient for TCP but provides the ByteReader interface
-		byteReader = bufio.NewReaderSize(t.reader, 1)
+		// If no deadline from context, apply a very long default read deadline
+		// to prevent goroutine leaks if connection hangs without Close being called.
+		// Set a long deadline instead of infinite to prevent leaks.
+		longDeadline := time.Now().Add(24 * time.Hour)
+		if err := t.conn.SetReadDeadline(longDeadline); err != nil {
+			t.logger.Warn("TCPTransport: Failed to set long default read deadline: %v", err)
+		}
+		// Ensure deadline is reset when function returns
+		defer func() {
+			if err := t.conn.SetReadDeadline(time.Time{}); err != nil {
+				t.logger.Warn("TCPTransport: Failed to reset long default read deadline: %v", err)
+			}
+		}()
 	}
 
-	resultCh := make(chan struct {
-		data []byte
-		err  error
-	}, 1)
+	// Use a bufio.Reader on the connection for ReadBytes
+	// Create a new one each time to avoid state issues if Receive is called concurrently (though it shouldn't be)
+	reader := bufio.NewReader(t.conn)
 
-	// Goroutine for the blocking read loop
-	go func() {
-		var lineBuffer bytes.Buffer
-		var readErr error
-		startTime := time.Now()
-		readTimeout := 1 * time.Minute // Safety timeout for the read loop itself
+	t.logger.Debug("TCPTransport: Attempting reader.ReadBytes('\n')...")
+	lineBytes, err := reader.ReadBytes('\n')
 
-		t.logger.Debug("TCPTransport: Goroutine: Starting ReadByte loop...")
-		for {
-			// Check for internal timeout
-			if time.Since(startTime) > readTimeout {
-				readErr = fmt.Errorf("internal ReadByte loop timeout after %v", readTimeout)
-				break
+	if err != nil {
+		// Check if the error is due to context deadline/timeout
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			// Check if the timeout corresponds to our context deadline (if set)
+			if hasDeadline && time.Now().After(deadline.Add(-time.Millisecond*100)) { // Allow grace period
+				t.logger.Warn("TCPTransport: Read timed out due to context deadline.")
+				return nil, context.DeadlineExceeded // Return context error
+			} else if hasDeadline {
+				t.logger.Warn("TCPTransport: Read timed out, but doesn't match context deadline exactly.")
+				// Fall through to return the netErr
+			} else {
+				// Likely hit the long default deadline
+				t.logger.Error("TCPTransport: Read hit long default timeout (24h): %v", err)
+				// Fall through
 			}
-			// Read one byte
-			b, err := byteReader.ReadByte()
-			if err != nil {
-				readErr = err // Store the error (e.g., EOF)
-				if readErr == io.EOF && lineBuffer.Len() > 0 {
-					t.logger.Warn("TCPTransport: ReadByte loop: Reached EOF with partial line data.")
-					readErr = nil // Treat as success for the partial line
-				} else if readErr == io.EOF {
-					t.logger.Info("TCPTransport: ReadByte loop: Received EOF.")
-				} else {
-					t.logger.Error("TCPTransport: ReadByte loop: Error reading byte: %v", err)
-				}
-				break // Exit loop on any error or EOF
-			}
-
-			lineBuffer.WriteByte(b)
-
-			if b == '\n' {
-				break // Exit loop once newline is found
-			}
+		} else if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+			t.logger.Info("TCPTransport: Connection closed while reading: %v", err)
+		} else {
+			t.logger.Error("TCPTransport: Error reading message line: %v", err)
 		}
-		t.logger.Debug("TCPTransport: Goroutine: ReadByte loop finished.")
-
-		if readErr != nil && readErr != io.EOF {
-			resultCh <- struct {
-				data []byte
-				err  error
-			}{nil, fmt.Errorf("failed to read message line: %w", readErr)}
-			return
-		}
-
-		lineBytes := lineBuffer.Bytes()
-		if len(lineBytes) == 0 && readErr == io.EOF {
-			resultCh <- struct {
-				data []byte
-				err  error
-			}{nil, io.EOF}
-			return
-		}
-
-		t.logger.Debug("TCPTransport Received raw line: %s", string(lineBytes))
-
-		if !json.Valid(lineBytes) {
-			t.logger.Error("TCPTransport: Received invalid JSON: %s", string(lineBytes))
-			// Pass background context to internal error reporting
-			_ = t.sendParseError(context.Background(), "Received invalid JSON")
-			resultCh <- struct {
-				data []byte
-				err  error
-			}{nil, fmt.Errorf("received invalid JSON")}
-			return
-		}
-
-		resultCh <- struct {
-			data []byte
-			err  error
-		}{lineBytes, nil}
-	}()
-
-	// Wait for result or context cancellation
-	select {
-	case result := <-resultCh:
-		return result.data, result.err
-	case <-ctx.Done():
-		t.logger.Warn("TCPTransport: Receive operation canceled: %v", ctx.Err())
-		_ = t.Close() // Close connection to attempt to unblock reader goroutine
-		return nil, ctx.Err()
+		_ = t.Close()                                                  // Ensure closed state is set on any read error
+		return nil, fmt.Errorf("failed to read message line: %w", err) // Return the original error
 	}
+
+	// Trim trailing newline if present (ReadBytes includes the delimiter)
+	trimmedBytes := bytes.TrimSuffix(lineBytes, []byte("\n"))
+	trimmedBytes = bytes.TrimSuffix(trimmedBytes, []byte("\r")) // Also trim CR just in case
+
+	t.logger.Debug("TCPTransport Received raw line (trimmed): %s", string(trimmedBytes))
+
+	if !json.Valid(trimmedBytes) {
+		t.logger.Error("TCPTransport: Received invalid JSON: %s", string(trimmedBytes))
+		// Send parse error notification (use background context for internal error reporting)
+		_ = t.sendParseError(context.Background(), "Received invalid JSON")
+		return nil, fmt.Errorf("received invalid JSON")
+	}
+
+	return trimmedBytes, nil
 }
 
 // Close closes the underlying TCP connection.
@@ -255,7 +233,7 @@ func (t *TCPTransport) LocalAddr() net.Addr {
 func (t *TCPTransport) sendParseError(ctx context.Context, message string) error {
 	errResp := protocol.JSONRPCResponse{
 		JSONRPC: "2.0", ID: nil,
-		Error: &protocol.ErrorPayload{Code: protocol.ErrorCodeParseError, Message: message},
+		Error: &protocol.ErrorPayload{Code: protocol.CodeParseError, Message: message},
 	}
 	jsonData, err := json.Marshal(errResp)
 	if err != nil {

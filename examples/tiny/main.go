@@ -2,22 +2,32 @@ package main
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/server" // Assuming helpers are in server package
-	// "github.com/localrivet/gomcp/util/schema" // Removed unused import
+	"github.com/localrivet/gomcp/server"
 )
 
 func main() {
 	mcp := server.NewServer("Demo 🚀")
-
-	// Option A
-	server.AddTool(mcp, "add", "Add two numbers", func(args struct {
+	mcp.Prompt("Add two numbers", "Add two numbers",
+		protocol.PromptMessage{
+			Role:    "system",
+			Content: []protocol.Content{protocol.TextContent{Type: "text", Text: "You are a helpful assistant that adds two numbers."}},
+		},
+		protocol.PromptMessage{
+			Role:    "user",
+			Content: []protocol.Content{protocol.TextContent{Type: "text", Text: "What is 2 + 2?"}},
+		},
+	)
+	mcp.Tool("add", "Add two numbers", func(ctx *server.Context, args struct {
 		A int `json:"a"`
 		B int `json:"b"`
-	}) (protocol.Content, error) {
-		return server.Text(fmt.Sprintf("%d", args.A+args.B)), nil
+	}) (protocol.TextContent, error) {
+		return protocol.TextContent{Type: "text", Text: fmt.Sprintf("%d", args.A+args.B)}, nil
 	})
 
-	server.ServeStdio(mcp)
+	if err := mcp.AsStdio().Run(); err != nil {
+		log.Fatal(err)
+	}
 }

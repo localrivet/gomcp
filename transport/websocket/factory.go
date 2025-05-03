@@ -9,6 +9,7 @@ import (
 	"net/url" // For client-side dial URL parsing
 
 	"github.com/gobwas/ws"
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/gomcp/types"
 )
 
@@ -24,7 +25,7 @@ var DefaultHTTPUpgrader = ws.HTTPUpgrader{}
 func Dial(ctx context.Context, urlString string, opts types.TransportOptions) (types.Transport, error) {
 	logger := opts.Logger
 	if logger == nil {
-		logger = &defaultLogger{}
+		logger = logx.NewLogger("[WebSocketTransport] ")
 	}
 
 	// Parse URL (optional, ws.Dial does this too)
@@ -88,7 +89,7 @@ func NewWebSocketTransportFactory(opts types.TransportOptions) *WebSocketTranspo
 func (f *WebSocketTransportFactory) Dial(ctx context.Context, urlString string) (types.Transport, error) {
 	logger := f.DefaultOptions.Logger
 	if logger == nil {
-		logger = &defaultLogger{}
+		logger = logx.NewLogger("[WebSocketTransport] ")
 	}
 	logger.Info("WebSocketTransportFactory: Dialing %s...", urlString)
 	conn, _, _, err := f.Dialer.Dial(ctx, urlString)
@@ -106,7 +107,7 @@ func (f *WebSocketTransportFactory) Dial(ctx context.Context, urlString string) 
 func (f *WebSocketTransportFactory) Upgrade(conn net.Conn) (types.Transport, error) {
 	logger := f.DefaultOptions.Logger
 	if logger == nil {
-		logger = &defaultLogger{}
+		logger = logx.NewLogger("[WebSocketTransport] ")
 	}
 	logger.Info("WebSocketTransportFactory: Upgrading connection from %s...", conn.RemoteAddr())
 	_, err := f.Upgrader.Upgrade(conn) // Perform handshake
