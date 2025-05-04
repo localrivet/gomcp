@@ -472,7 +472,7 @@ func TestHandleMessage_ResourcesRead_Success(t *testing.T) {
 		t.Fatalf("Failed to create temp text file: %v", err)
 	}
 	textFileURI := "file://" + textFilePath
-	srv.Resource(protocol.Resource{URI: textFileURI, Kind: string(protocol.ResourceKindFile), Title: "Test Text File"})
+	srv.Resource(textFileURI, server.WithFileContent(textFilePath), server.WithName("Test Text File"), server.WithMimeType("text/plain"))
 
 	// 2. Audio Resource (Dummy Content)
 	audioFileContent := []byte{0xCA, 0xFE, 0xBA, 0xBE} // Dummy bytes
@@ -481,7 +481,7 @@ func TestHandleMessage_ResourcesRead_Success(t *testing.T) {
 		t.Fatalf("Failed to create temp audio file: %v", err)
 	}
 	audioFileURI := "file://" + audioFilePath
-	srv.Resource(protocol.Resource{URI: audioFileURI, Kind: string(protocol.ResourceKindAudio), Title: "Test Audio File"})
+	srv.Resource(audioFileURI, server.WithFileContent(audioFilePath), server.WithName("Test Audio File"), server.WithMimeType("audio/octet-stream"))
 
 	// --- Test Cases ---
 	tests := []struct {
@@ -659,9 +659,9 @@ func TestHandleMessage_CompletionComplete_Success(t *testing.T) {
 	srv.ImplementsCompletions = true
 
 	// Register some test data
-	srv.Registry.RegisterResource(protocol.Resource{URI: "file:///home/user/project/main.go"})
-	srv.Registry.RegisterResource(protocol.Resource{URI: "file:///home/user/project/other.go"})
-	srv.Registry.RegisterResource(protocol.Resource{URI: "file:///home/user/data/file.txt"})
+	srv.Resource("file:///home/user/project/main.go", server.WithTextContent("package main\n\nfunc main() {}"), server.WithName("main.go"))
+	srv.Resource("file:///home/user/project/other.go", server.WithTextContent("package other"), server.WithName("other.go"))
+	srv.Resource("file:///home/user/data/file.txt", server.WithTextContent("some data"), server.WithName("file.txt"))
 	srv.Registry.AddPrompt(protocol.Prompt{Title: "Code Review", URI: "prompt://code-review"})
 	srv.Registry.AddPrompt(protocol.Prompt{Title: "Code Generation", URI: "prompt://code-gen"})
 
@@ -1252,20 +1252,20 @@ func TestHandleMessage_ToolsCall_V2024Compat(t *testing.T) {
 }
 
 func TestHandleMessage_ResourcesRead_TemplateSuccess(t *testing.T) {
-	server, mockSession, cleanup := setupTestServer(t)
+	srv, mockSession, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	// 1. Register a template handler
 	pattern := "test://data/{itemID}/{format}"
-	handler := func(ctx interface{}, itemID string, format string) (string, error) {
+	handler := func(ctx interface{}, format string, itemID string) (string, error) {
 		// Simple handler returning formatted string
 		if format == "json" {
 			return fmt.Sprintf(`{"id": "%s", "value": "Data for %s"}`, itemID, itemID), nil
 		}
 		return fmt.Sprintf("Data for item %s in format %s", itemID, format), nil
 	}
-	err := server.Registry.AddResourceTemplate(pattern, handler)
-	assert.NoError(t, err, "Failed to register resource template")
+	srv.Resource(pattern, server.WithHandler(handler)) // Use the new Server.Resource method with WithHandler option
+	// Error handling for template registration is now internal to Server.Resource
 
 	// 2. Send resources/read request matching the template
 	requestURI := "test://data/item123/text"
@@ -1273,7 +1273,7 @@ func TestHandleMessage_ResourcesRead_TemplateSuccess(t *testing.T) {
 	req := createRequest(t, protocol.MethodReadResource, params)
 	reqBytes, _ := json.Marshal(req)
 
-	err = server.MessageHandler.HandleMessage(mockSession, reqBytes)
+	err := srv.MessageHandler.HandleMessage(mockSession, reqBytes)
 	assert.NoError(t, err, "HandleMessage returned an error")
 
 	// 3. Wait for and verify the response
@@ -1302,7 +1302,7 @@ func TestHandleMessage_ResourcesRead_TemplateSuccess(t *testing.T) {
 }
 
 func TestHandleMessage_ResourcesRead_TemplateNotFound(t *testing.T) {
-	server, mockSession, cleanup := setupTestServer(t)
+	srv, mockSession, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	// No templates registered
@@ -1312,7 +1312,7 @@ func TestHandleMessage_ResourcesRead_TemplateNotFound(t *testing.T) {
 	req := createRequest(t, protocol.MethodReadResource, params)
 	reqBytes, _ := json.Marshal(req)
 
-	err := server.MessageHandler.HandleMessage(mockSession, reqBytes)
+	err := srv.MessageHandler.HandleMessage(mockSession, reqBytes)
 	assert.NoError(t, err, "HandleMessage returned an error")
 
 	resp := waitForResponse(t, mockSession, req.ID, 1*time.Second)

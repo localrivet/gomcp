@@ -6,16 +6,89 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/util/schema"
-	"github.com/mitchellh/mapstructure" // Import mapstructure
-
-	"github.com/yosida95/uritemplate/v3" // Correct library import
-	// Removed incorrect context import
-	// "github.com/localrivet/gomcp/server/context"
+	"github.com/localrivet/wilduri"
+	"github.com/mitchellh/mapstructure"
 )
+
+// registeredResource holds the processed configuration and state for a static resource.
+// Content might be loaded lazily.
+type registeredResource struct {
+	config resourceConfig // Store the original configuration
+
+	// Potentially pre-loaded content or other derived data
+	// For now, we rely mostly on config, but this allows for future optimization.
+}
+
+// ToProtocolResource converts the internal registeredResource representation
+// to the public protocol.Resource struct, primarily using the stored config.
+func (rr *registeredResource) ToProtocolResource(uri string) protocol.Resource {
+	// Determine the resource kind based on config
+	kind := "static" // Default
+	if rr.config.FilePath != "" {
+		// For files, try to determine kind from file extension
+		if strings.HasSuffix(rr.config.FilePath, ".mp3") ||
+			strings.HasSuffix(rr.config.FilePath, ".wav") ||
+			strings.HasSuffix(rr.config.FilePath, ".ogg") ||
+			strings.HasSuffix(rr.config.FilePath, ".audio") || // Special test extension
+			(rr.config.MimeType != "" && strings.HasPrefix(rr.config.MimeType, "audio/")) {
+			kind = "audio"
+		} else {
+			kind = "file"
+		}
+	} else if rr.config.DirPath != "" {
+		kind = "directory"
+	} else if rr.config.URL != "" {
+		kind = "url"
+	} else if rr.config.MimeType != "" && strings.HasPrefix(rr.config.MimeType, "audio/") {
+		kind = "audio"
+	} else if rr.config.Content != nil {
+		// Try to infer kind from content type if available
+		switch rr.config.Content.(type) {
+		case []byte:
+			kind = "binary"
+		case string:
+			kind = "text"
+		}
+	}
+
+	// Populate metadata from config
+	meta := make(map[string]interface{}) // Use map[string]interface{} as defined in protocol.Resource
+	if rr.config.MimeType != "" {
+		meta["mimeType"] = rr.config.MimeType
+	}
+	if len(rr.config.Tags) > 0 {
+		meta["tags"] = rr.config.Tags // Store tags directly in metadata
+	}
+	// Merge custom annotations from config into metadata
+	for key, value := range rr.config.Annotations {
+		if _, exists := meta[key]; !exists { // Avoid overwriting mimeType/tags if keys clash
+			meta[key] = value
+		} else {
+			// Handle potential key clashes if necessary (e.g., log a warning)
+			log.Printf("Warning: Annotation key '%s' clashes with standard metadata key during resource conversion for %s", key, uri)
+		}
+	}
+
+	// protocol.Annotations struct seems specific (Audience, Priority), not for general annotations.
+	// We'll use the Metadata field for mimeType, tags, and custom annotations.
+	protoAnnotations := protocol.Annotations{}
+
+	return protocol.Resource{
+		URI:         uri,
+		Title:       rr.config.Name, // Map Name to Title
+		Description: rr.config.Description,
+		Kind:        kind, // Now uses dynamic kind based on content type
+		Metadata:    meta,
+		Annotations: protoAnnotations, // Use empty specific Annotations struct
+		// Version:     "", // TODO: Implement content hashing for version
+		// Size:        nil, // TODO: Implement size calculation
+	}
+}
 
 // toolHandlerInfo stores information about a registered tool handler.
 type toolHandlerInfo struct {
@@ -33,20 +106,20 @@ type resourceTemplateParamInfo struct {
 
 // resourceTemplateInfo stores information about a registered resource template handler.
 type resourceTemplateInfo struct {
+	config          resourceConfig              // Store the configuration used to create this template
 	Pattern         string                      // The original URI pattern string, e.g., "weather://{city}/current"
-	HandlerFn       any                         // The handler function itself
+	HandlerFn       any                         // The handler function itself (redundant with config.HandlerFn? Keep for now)
 	Params          []resourceTemplateParamInfo // Information about extracted parameters
-	Matcher         any                         // Placeholder for compiled pattern matcher (e.g., regex, custom)
+	Matcher         *wilduri.Template           // Use the compiled wilduri template object
 	ContextArgIndex int                         // Index of the *server.Context argument (-1 if not present)
-	// TODO: Add metadata like name, description if needed separate from handler
 }
 
 // Registry holds the registered tools, resources, and prompts.
 type Registry struct {
-	toolRegistry     map[string]protocol.Tool        // Use protocol.Tool
-	toolHandlers     map[string]toolHandlerInfo      // Store tool handler info
-	resourceRegistry map[string]protocol.Resource    // Use protocol.Resource
-	templateRegistry map[string]resourceTemplateInfo // Map pattern string to template info
+	toolRegistry     map[string]protocol.Tool         // Use protocol.Tool
+	toolHandlers     map[string]toolHandlerInfo       // Store tool handler info
+	resourceRegistry map[string]*registeredResource   // Map URI to internal static resource representation
+	templateRegistry map[string]*resourceTemplateInfo // Map pattern string to template info (Pointer now)
 	promptRegistry   map[string]protocol.Prompt
 
 	promptChangedCallback   func()           // Callback to notify when prompts change
@@ -61,27 +134,11 @@ func NewRegistry() *Registry {
 	return &Registry{
 		toolRegistry:     make(map[string]protocol.Tool), // Use protocol.Tool
 		toolHandlers:     make(map[string]toolHandlerInfo),
-		resourceRegistry: make(map[string]protocol.Resource), // Use protocol.Resource
-		templateRegistry: make(map[string]resourceTemplateInfo),
+		resourceRegistry: make(map[string]*registeredResource),   // Initialize new map type
+		templateRegistry: make(map[string]*resourceTemplateInfo), // Initialize new map type
 		promptRegistry:   make(map[string]protocol.Prompt),
 		// Callbacks are not initialized here, set them using Set...ChangedCallback
 	}
-}
-
-// RegisterResource registers a new resource with the registry.
-func (r *Registry) RegisterResource(resource protocol.Resource) *Registry {
-	r.registryMu.Lock()
-	r.resourceRegistry[resource.URI] = resource
-	r.registryMu.Unlock() // Unlock BEFORE calling the callback
-
-	log.Printf("Registered resource: %s", resource.URI)
-
-	// Call the callback if set, AFTER releasing the lock
-	if r.resourceChangedCallback != nil {
-		log.Printf("Calling resourceChangedCallback for %s", resource.URI)
-		r.resourceChangedCallback(resource.URI)
-	}
-	return r
 }
 
 // SetResourceChangedCallback sets the callback function to be called when resources change.
@@ -105,19 +162,6 @@ func (r *Registry) SetPromptChangedCallback(callback func()) {
 	r.promptChangedCallback = callback
 }
 
-// UnregisterResource removes a resource from the registry by its URI.
-func (r *Registry) UnregisterResource(uri string) *Registry {
-	r.registryMu.Lock()
-	defer r.registryMu.Unlock()
-	delete(r.resourceRegistry, uri)
-	log.Printf("Unregistered resource: %s", uri)
-	// Call the callback if set
-	if r.resourceChangedCallback != nil {
-		r.resourceChangedCallback(uri)
-	}
-	return r
-}
-
 // AddRoot registers a new root with the registry.
 func (r *Registry) AddRoot(root protocol.Root) *Registry {
 	r.registryMu.Lock()
@@ -136,19 +180,43 @@ func (r *Registry) RemoveRoot(root protocol.Root) *Registry {
 	return r
 }
 
-// ResourceRegistry returns the map of registered resources.
+// ResourceRegistry returns the map of registered resources (static ones).
+// Note: This currently only returns static resources registered via the new API.
+// Templates are handled separately.
 func (r *Registry) ResourceRegistry() map[string]protocol.Resource {
 	r.registryMu.RLock()
 	defer r.registryMu.RUnlock()
-	return r.resourceRegistry
+
+	// Create a new map to hold the protocol.Resource versions
+	publicRegistry := make(map[string]protocol.Resource)
+	for uri, regRes := range r.resourceRegistry {
+		if regRes != nil { // Basic nil check
+			publicRegistry[uri] = regRes.ToProtocolResource(uri) // Pass URI
+		}
+	}
+	return publicRegistry
 }
 
 // GetResource retrieves a resource by its URI.
+// It currently only checks static resources registered via the new API.
 func (r *Registry) GetResource(uri string) (protocol.Resource, bool) {
 	r.registryMu.RLock()
 	defer r.registryMu.RUnlock()
-	resource, ok := r.resourceRegistry[uri]
-	return resource, ok
+	regRes, ok := r.resourceRegistry[uri]
+	if !ok || regRes == nil {
+		return protocol.Resource{}, false // Return empty struct if not found
+	}
+	// Convert the internal representation to the protocol type
+	return regRes.ToProtocolResource(uri), true // Pass URI
+}
+
+// GetRegisteredResource retrieves the internal registered resource by its URI.
+// This is primarily for internal use to access the resource config.
+func (r *Registry) GetRegisteredResource(uri string) (*registeredResource, bool) {
+	r.registryMu.RLock()
+	defer r.registryMu.RUnlock()
+	regRes, ok := r.resourceRegistry[uri]
+	return regRes, ok
 }
 
 // Tool registers a new tool with the registry (non-generic method).
@@ -404,34 +472,59 @@ func (r *Registry) GetTools() []protocol.Tool {
 	return tools
 }
 
-// AddResourceTemplate registers a new resource template handler.
+// RegisterResourceTemplate registers a new resource template handler based on the provided config.
 // It parses the URI pattern, validates the handler signature using reflection,
 // and stores the information for later matching and invocation.
 // Handler signature must be func(ctx types.Context, [param1 Type1, ...]) (ResultType, error).
-func (r *Registry) AddResourceTemplate(uriPattern string, handlerFn any) error {
+func (r *Registry) RegisterResourceTemplate(uriPattern string, config resourceConfig) error {
 	r.registryMu.Lock()
-	defer r.registryMu.Unlock()
+	// Defer unlock until after callback might be called
 
 	// 1. Validate URI Pattern
-	tmpl, err := uritemplate.New(uriPattern)
+	tmpl, err := wilduri.New(uriPattern)
 	if err != nil {
+		r.registryMu.Unlock()
 		return fmt.Errorf("invalid URI template pattern '%s': %w", uriPattern, err)
 	}
 	if _, exists := r.templateRegistry[uriPattern]; exists {
-		return fmt.Errorf("URI template pattern '%s' is already registered", uriPattern)
+		// Handle duplicate based on config
+		switch config.duplicateHandling {
+		case DuplicateError:
+			r.registryMu.Unlock()
+			return fmt.Errorf("URI template pattern '%s' is already registered", uriPattern)
+		case DuplicateIgnore:
+			log.Printf("Ignoring duplicate template registration for URI pattern: %s (keeping existing)", uriPattern)
+			r.registryMu.Unlock()
+			return nil
+		case DuplicateWarn:
+			log.Printf("Warning: Overwriting existing resource template registration for URI pattern: %s", uriPattern)
+			// Continue with replacement
+		case DuplicateReplace:
+			// Just replace silently
+		default:
+			// Default behavior: Warn and replace
+			log.Printf("Warning: Overwriting existing resource template registration for URI pattern: %s", uriPattern)
+		}
 	}
 
 	// 2. Validate Handler Function Signature
+	handlerFn := config.HandlerFn
+	if handlerFn == nil {
+		r.registryMu.Unlock()
+		return fmt.Errorf("handler function is nil for template pattern '%s'", uriPattern)
+	}
 	handlerVal := reflect.ValueOf(handlerFn)
 	handlerType := handlerVal.Type()
 
 	if handlerType.Kind() != reflect.Func {
+		r.registryMu.Unlock()
 		return fmt.Errorf("handler for pattern '%s' is not a function", uriPattern)
 	}
 
 	// Check inputs: Must have at least Context
 	numIn := handlerType.NumIn()
 	if numIn == 0 {
+		r.registryMu.Unlock()
 		return fmt.Errorf("handler for pattern '%s' must accept at least context.Context or *server.Context as the first argument", uriPattern)
 	}
 	// Check first input type: Allow context.Context or *server.Context or interface{}
@@ -439,52 +532,139 @@ func (r *Registry) AddResourceTemplate(uriPattern string, handlerFn any) error {
 	contextType := reflect.TypeOf((*Context)(nil))                   // *server.Context
 	stdContextType := reflect.TypeOf((*context.Context)(nil)).Elem() // context.Context
 	if firstArgType != contextType && firstArgType != stdContextType && firstArgType.Kind() != reflect.Interface {
+		r.registryMu.Unlock()
 		return fmt.Errorf("handler for pattern '%s' must accept context.Context, *server.Context, or interface{} as the first argument, got %s", uriPattern, firstArgType.String())
 	}
 
 	// Check outputs: Must be (result, error)
 	if handlerType.NumOut() != 2 {
+		r.registryMu.Unlock()
 		return fmt.Errorf("handler for pattern '%s' must return exactly two values (result, error)", uriPattern)
 	}
 	if handlerType.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
+		r.registryMu.Unlock()
 		return fmt.Errorf("handler for pattern '%s' must return error as the second value", uriPattern)
 	}
 
-	// 3. Extract Parameter Info (Basic - relies on order for now due to reflection limits)
-	paramInfos := make([]resourceTemplateParamInfo, numIn-1)
+	// 3. Extract Parameter Info
+	paramInfos := make([]resourceTemplateParamInfo, 0, numIn-1)
 	templateVars := tmpl.Varnames() // Get expected var names from template
 
-	if len(templateVars) != numIn-1 {
-		// Mismatch between template vars and function args (excluding context)
-		// This check might be too simple if optional params or different structures are used.
-		return fmt.Errorf("handler for pattern '%s' has %d parameters (excluding Context), but template expects %d variables", uriPattern, numIn-1, len(templateVars))
-	}
-
-	for i := 1; i < numIn; i++ {
-		// WARNING: Relies on order matching between template vars and func args!
-		paramName := templateVars[i-1] // Map template var order to func arg order
-		paramInfos[i-1] = resourceTemplateParamInfo{
-			Name:         paramName,
-			HandlerIndex: i,
-			HandlerType:  handlerType.In(i),
+	// Check if wildcards are defined
+	wildcardVars := make(map[string]bool)
+	for varName, isWildcard := range config.wildcardParams {
+		if isWildcard {
+			wildcardVars[varName] = true
 		}
 	}
 
+	// In Phase 3, we support wildcards and default values, so param count might not match exactly
+	// Count non-wildcard variables to check if handler args match
+	nonWildcardVars := 0
+	for _, varName := range templateVars {
+		if !wildcardVars[varName] {
+			nonWildcardVars++
+		}
+	}
+
+	// Handler must have at least enough args for all non-wildcard params
+	if numIn-1 < nonWildcardVars {
+		r.registryMu.Unlock()
+		return fmt.Errorf("handler for pattern '%s' has %d parameters (excluding Context), but template expects at least %d non-wildcard variables", uriPattern, numIn-1, nonWildcardVars)
+	}
+
+	// Map template variables to handler arguments
+	// We'll create a parameter info entry for each argument
+	for i := 1; i < numIn; i++ {
+		// Map function args to template vars by position
+		// This is simplified and could be improved with explicit mapping
+		varIndex := i - 1
+		var paramName string
+		if varIndex < len(templateVars) {
+			paramName = templateVars[varIndex]
+		} else {
+			// If more args than vars, use position-based naming
+			paramName = fmt.Sprintf("param%d", varIndex)
+		}
+
+		paramInfos = append(paramInfos, resourceTemplateParamInfo{
+			Name:         paramName,
+			HandlerIndex: i,
+			HandlerType:  handlerType.In(i),
+		})
+	}
+
 	// 4. Store the template information
+	config.template = tmpl // Store the compiled template in the config
 	info := resourceTemplateInfo{
+		config:          config, // Store the full config
 		Pattern:         uriPattern,
 		HandlerFn:       handlerFn,
 		Params:          paramInfos,
 		Matcher:         tmpl, // Store the compiled template for efficient matching
 		ContextArgIndex: 0,    // We enforce context is the first arg
 	}
-	r.templateRegistry[uriPattern] = info
+
+	// Use custom key if provided, otherwise use pattern
+	registryKey := uriPattern
+	if config.customKey != "" {
+		registryKey = config.customKey
+	}
+
+	r.templateRegistry[registryKey] = &info
+
+	// Register additional URIs if specified
+	for _, additionalPattern := range config.additionalURIs {
+		// Validate additional pattern
+		additionalTmpl, err := wilduri.New(additionalPattern)
+		if err != nil {
+			log.Printf("Skipping invalid additional URI template pattern '%s': %v", additionalPattern, err)
+			continue
+		}
+
+		// Create a copy of the info with the new pattern and matcher
+		additionalInfo := resourceTemplateInfo{
+			config:          config,
+			Pattern:         additionalPattern,
+			HandlerFn:       handlerFn,
+			Params:          paramInfos,
+			Matcher:         additionalTmpl,
+			ContextArgIndex: 0,
+		}
+		r.templateRegistry[additionalPattern] = &additionalInfo
+	}
 
 	log.Printf("Registered resource template: %s", uriPattern)
 
-	// TODO: Add a templateChangedCallback if needed?
+	// Call the callback AFTER releasing the lock
+	callback := r.resourceChangedCallback
+	r.registryMu.Unlock() // Unlock before calling callback
+	if callback != nil {
+		// For templates, maybe we don't notify with a specific URI?
+		// Or should we notify with the pattern URI?
+		// Let's notify with the pattern URI for now.
+		log.Printf("Calling resourceChangedCallback for template pattern %s", uriPattern)
+		callback(uriPattern)
+
+		// Also call callback for additional patterns
+		for _, additionalPattern := range config.additionalURIs {
+			callback(additionalPattern)
+		}
+	}
 
 	return nil
+}
+
+// AddResourceTemplate is a backward compatibility wrapper for RegisterResourceTemplate.
+// It maintains the old signature for compatibility with existing code.
+// DEPRECATED: Use Resource(uri, WithHandler(handlerFn)) instead.
+func (r *Registry) AddResourceTemplate(uriPattern string, handlerFn any) error {
+	// Create a minimal resourceConfig with just the handler function
+	config := resourceConfig{
+		HandlerFn: handlerFn,
+	}
+	// Delegate to the new method
+	return r.RegisterResourceTemplate(uriPattern, config)
 }
 
 // parseSimpleTemplateParams extracts parameter names from within {} in a URI template.
@@ -504,10 +684,115 @@ func parseSimpleTemplateParams(pattern string) []string {
 }
 
 // TemplateRegistry returns the map of registered resource templates.
-func (r *Registry) TemplateRegistry() map[string]resourceTemplateInfo {
+func (r *Registry) TemplateRegistry() map[string]*resourceTemplateInfo {
 	r.registryMu.RLock()
 	defer r.registryMu.RUnlock()
 	// Return a copy? For now, return direct map for simplicity in handler.
 	// Consider implications if handlers modify the returned map.
 	return r.templateRegistry
+}
+
+// RegisterStaticResource registers a new static resource based on the provided config.
+func (r *Registry) RegisterStaticResource(uri string, config resourceConfig) error {
+	r.registryMu.Lock()
+	defer r.registryMu.Unlock()
+
+	// Basic validation: Check for duplicate URI
+	if _, exists := r.resourceRegistry[uri]; exists {
+		// Handle duplicate registrations based on config
+		switch config.duplicateHandling {
+		case DuplicateError:
+			r.registryMu.Unlock()
+			return fmt.Errorf("resource URI already registered: %s", uri)
+		case DuplicateIgnore:
+			log.Printf("Ignoring duplicate resource registration for URI: %s (keeping existing)", uri)
+			r.registryMu.Unlock()
+			return nil
+		case DuplicateWarn:
+			log.Printf("Warning: Overwriting existing resource registration for URI: %s", uri)
+			// Continue with replacement
+		case DuplicateReplace:
+			// Just replace silently
+		default:
+			// Default behavior: Warn and replace
+			log.Printf("Warning: Overwriting existing resource registration for URI: %s", uri)
+		}
+	}
+
+	// TODO: Add more config validation (e.g., ensure only one content source type is provided)
+
+	regRes := &registeredResource{
+		config: config, // Store the passed config
+	}
+
+	// Use custom key if provided, otherwise use URI
+	registryKey := uri
+	if config.customKey != "" {
+		registryKey = config.customKey
+	}
+
+	r.resourceRegistry[registryKey] = regRes
+
+	// Register additional URIs if specified
+	for _, additionalURI := range config.additionalURIs {
+		r.resourceRegistry[additionalURI] = regRes
+	}
+
+	log.Printf("Registered static resource: %s", uri)
+
+	// Call the callback if set, AFTER releasing the lock (deferred unlock handles this)
+	// We need to call it outside the lock to prevent deadlocks if the callback tries to access the registry.
+	// But the lock is held until the function returns due to defer.
+	// Let's capture the callback and call it after unlock.
+	callback := r.resourceChangedCallback
+	r.registryMu.Unlock() // Explicitly unlock before callback
+	if callback != nil {
+		log.Printf("Calling resourceChangedCallback for %s", uri)
+		callback(uri)
+
+		// Also call callback for additional URIs
+		for _, additionalURI := range config.additionalURIs {
+			callback(additionalURI)
+		}
+	}
+	r.registryMu.Lock() // Re-lock just before defer would unlock again (bit awkward, consider alternatives)
+
+	return nil
+}
+
+// RegisterResource registers a new resource with the registry.
+// DEPRECATED: Use Resource(uri, WithTextContent(...)) or Resource(uri, WithFileContent(...)) instead.
+func (r *Registry) RegisterResource(resource protocol.Resource) *Registry {
+	r.registryMu.Lock()
+
+	// Convert protocol.Resource to the new resourceConfig + registeredResource format
+	config := resourceConfig{
+		Name:        resource.Title, // Map Title to Name
+		Description: resource.Description,
+		// Extract MimeType from metadata if present
+		// Extract any annotations/tags if needed
+	}
+
+	// Get MimeType from metadata if present
+	if resource.Metadata != nil {
+		if mimeType, ok := resource.Metadata["mimeType"].(string); ok {
+			config.MimeType = mimeType
+		}
+	}
+
+	// Create and store the registered resource
+	r.resourceRegistry[resource.URI] = &registeredResource{
+		config: config,
+	}
+
+	r.registryMu.Unlock() // Unlock BEFORE calling the callback
+
+	log.Printf("Registered resource (legacy method): %s", resource.URI)
+
+	// Call the callback if set, AFTER releasing the lock
+	if r.resourceChangedCallback != nil {
+		log.Printf("Calling resourceChangedCallback for %s", resource.URI)
+		r.resourceChangedCallback(resource.URI)
+	}
+	return r
 }

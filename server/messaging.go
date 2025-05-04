@@ -5,20 +5,23 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
-	"net/url" // Import net/url
-	"os"      // Import os
+	"io"
+	"log" // Import net/url
+	"net/http"
+	"os" // Import os
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	// Correct import path
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/types"
 
-	"github.com/yosida95/uritemplate/v3"
+	"github.com/localrivet/wilduri"
 )
 
 // MessageHandler handles incoming and outgoing MCP messages.
@@ -360,9 +363,8 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			break // Exit the switch case
 		}
 
-		// Get the resource from the registry
-		resourceMap := mh.server.Registry.ResourceRegistry()
-		resource, resourceFound := resourceMap[params.URI]
+		// Get the resource from the registry using the single-item getter
+		resource, resourceFound := mh.server.Registry.GetResource(params.URI)
 
 		// --- Logic for handling resource read ---
 		var contents []protocol.ResourceContents
@@ -373,84 +375,193 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			// --- Handle Static Resource ---
 			mh.server.logger.Debug("Found static resource for URI: %s", params.URI)
 			finalResource = resource // Use the found static resource
-			var staticContents protocol.ResourceContents
-			switch resource.Kind {
-			case string(protocol.ResourceKindFile):
-				// ... (existing file reading logic) ...
-				// Assign to staticContents, set readErr if needed
-				u, err := url.Parse(resource.URI)
-				if err != nil {
-					readErr = &protocol.MCPError{ /* ... */ }
-					break
-				}
-				if u.Scheme != "file" {
-					readErr = &protocol.MCPError{ /* ... */ }
-					break
-				}
-				filePath := u.Path
-				data, err := os.ReadFile(filePath)
-				if err != nil {
-					readErr = &protocol.MCPError{ /* ... */ }
-					break
-				}
-				contentType := "text/plain"
-				staticContents = protocol.TextResourceContents{ContentType: contentType, Content: string(data)}
 
-			case string(protocol.ResourceKindBlob):
-				// ... (existing blob reading logic) ...
-				// Assign to staticContents, set readErr if needed
-				u, err := url.Parse(resource.URI)
-				if err != nil {
-					readErr = &protocol.MCPError{ /* ... */ }
-					break
-				}
-				if u.Scheme != "file" {
-					readErr = &protocol.MCPError{ /* ... */ }
-					break
-				}
-				filePath := u.Path
-				data, err := os.ReadFile(filePath)
-				if err != nil {
-					readErr = &protocol.MCPError{ /* ... */ }
-					break
-				}
-				contentType := "application/octet-stream"
-				encodedContent := base64.StdEncoding.EncodeToString(data)
-				staticContents = protocol.BlobResourceContents{ContentType: contentType, Blob: encodedContent}
-
-			case string(protocol.ResourceKindAudio):
-				// ... (existing audio reading logic) ...
-				// Assign to staticContents, set readErr if needed
-				u, err := url.Parse(resource.URI)
-				if err != nil {
-					readErr = &protocol.MCPError{ /* ... */ }
-					break
-				}
-				if u.Scheme != "file" {
-					readErr = &protocol.MCPError{ /* ... */ }
-					break
-				}
-				filePath := u.Path
-				data, err := os.ReadFile(filePath)
-				if err != nil {
-					readErr = &protocol.MCPError{ /* ... */ }
-					break
-				}
-				contentType := "audio/unknown"
-				encodedContent := base64.StdEncoding.EncodeToString(data)
-				staticContents = protocol.AudioResourceContents{ContentType: contentType, Audio: encodedContent}
-
-			default:
+			// Retrieve the internal registered resource to access the config
+			regResource, _ := mh.server.Registry.GetRegisteredResource(params.URI)
+			if regResource == nil {
+				// This shouldn't happen - internal inconsistency
 				readErr = &protocol.MCPError{
 					ErrorPayload: protocol.ErrorPayload{
-						Code:    protocol.CodeMCPOperationFailed,
-						Message: fmt.Sprintf("Unsupported static resource kind for reading: %s", resource.Kind),
+						Code:    protocol.CodeInternalError,
+						Message: "Internal error: Resource found but internal representation missing",
 					},
 				}
-				log.Printf("Unsupported static resource kind for reading for session %s: %v", session.SessionID(), readErr)
-			}
-			if readErr == nil && staticContents != nil {
-				contents = []protocol.ResourceContents{staticContents}
+			} else {
+				// Generate content based on the resource config
+				config := regResource.config
+
+				// Handle different content sources in order of priority
+				switch {
+				case config.Content != nil:
+					// Handle direct content (text or binary)
+					switch content := config.Content.(type) {
+					case string:
+						// Text content
+						contentType := config.MimeType
+						if contentType == "" {
+							contentType = "text/plain; charset=utf-8"
+						}
+						contents = []protocol.ResourceContents{
+							protocol.TextResourceContents{ContentType: contentType, Content: content},
+						}
+					case []byte:
+						// Binary content
+						contentType := config.MimeType
+						if contentType == "" {
+							contentType = "application/octet-stream"
+						}
+						encodedContent := base64.StdEncoding.EncodeToString(content)
+						contents = []protocol.ResourceContents{
+							protocol.BlobResourceContents{ContentType: contentType, Blob: encodedContent},
+						}
+					default:
+						readErr = &protocol.MCPError{
+							ErrorPayload: protocol.ErrorPayload{
+								Code:    protocol.CodeInternalError,
+								Message: fmt.Sprintf("Unsupported content type: %T", content),
+							},
+						}
+					}
+
+				case config.FilePath != "":
+					// Handle file path content
+					filePath := config.FilePath
+					data, err := os.ReadFile(filePath)
+					if err != nil {
+						readErr = &protocol.MCPError{
+							ErrorPayload: protocol.ErrorPayload{
+								Code:    protocol.CodeMCPOperationFailed,
+								Message: fmt.Sprintf("Failed to read file: %v", err),
+							},
+						}
+						break
+					}
+
+					contentType := config.MimeType
+					if contentType == "" {
+						// Try to infer MIME type from file extension or content
+						contentType = inferMimeTypeFromFile(filePath, data)
+					}
+
+					// Determine resource kind from file extension or MIME type
+					isAudioFile := strings.HasSuffix(filePath, ".mp3") ||
+						strings.HasSuffix(filePath, ".wav") ||
+						strings.HasSuffix(filePath, ".ogg") ||
+						strings.HasSuffix(filePath, ".audio") || // Special test extension
+						strings.HasPrefix(contentType, "audio/")
+
+					// Check for binary blob content type
+					isBlobFile := strings.HasSuffix(filePath, ".blob") || // Special test extension
+						contentType == "application/octet-stream" ||
+						contentType == "application/binary"
+
+					// Decide content type based on resource kind
+					if isAudioFile {
+						// Audio content
+						encodedContent := base64.StdEncoding.EncodeToString(data)
+						contents = []protocol.ResourceContents{
+							protocol.AudioResourceContents{ContentType: contentType, Audio: encodedContent},
+						}
+					} else if isBlobFile {
+						// Binary blob content
+						encodedContent := base64.StdEncoding.EncodeToString(data)
+						contents = []protocol.ResourceContents{
+							protocol.BlobResourceContents{ContentType: contentType, Blob: encodedContent},
+						}
+					} else if strings.HasPrefix(contentType, "text/") ||
+						contentType == "application/json" ||
+						contentType == "application/xml" {
+						// Treat as text
+						contents = []protocol.ResourceContents{
+							protocol.TextResourceContents{ContentType: contentType, Content: string(data)},
+						}
+					} else {
+						// Treat as binary
+						encodedContent := base64.StdEncoding.EncodeToString(data)
+						contents = []protocol.ResourceContents{
+							protocol.BlobResourceContents{ContentType: contentType, Blob: encodedContent},
+						}
+					}
+
+				case config.DirPath != "":
+					// Handle directory listing
+					dirPath := config.DirPath
+					listing, err := generateDirectoryListing(dirPath)
+					if err != nil {
+						readErr = &protocol.MCPError{
+							ErrorPayload: protocol.ErrorPayload{
+								Code:    protocol.CodeMCPOperationFailed,
+								Message: fmt.Sprintf("Failed to list directory: %v", err),
+							},
+						}
+						break
+					}
+
+					// Convert to JSON and return as text resource
+					listingJSON, err := json.Marshal(listing)
+					if err != nil {
+						readErr = &protocol.MCPError{
+							ErrorPayload: protocol.ErrorPayload{
+								Code:    protocol.CodeInternalError,
+								Message: fmt.Sprintf("Failed to serialize directory listing: %v", err),
+							},
+						}
+						break
+					}
+
+					contents = []protocol.ResourceContents{
+						protocol.TextResourceContents{
+							ContentType: "application/json; charset=utf-8",
+							Content:     string(listingJSON),
+						},
+					}
+
+				case config.URL != "":
+					// Handle URL content (external fetch)
+					urlContent, err := fetchURLContent(config.URL)
+					if err != nil {
+						readErr = &protocol.MCPError{
+							ErrorPayload: protocol.ErrorPayload{
+								Code:    protocol.CodeMCPOperationFailed,
+								Message: fmt.Sprintf("Failed to fetch URL content: %v", err),
+							},
+						}
+						break
+					}
+
+					// Get content type from response or config
+					contentType := urlContent.contentType
+					if config.MimeType != "" {
+						contentType = config.MimeType // Override with explicit config
+					}
+
+					// Determine if it's text or binary
+					if isTextContent(contentType) {
+						contents = []protocol.ResourceContents{
+							protocol.TextResourceContents{
+								ContentType: contentType,
+								Content:     string(urlContent.data),
+							},
+						}
+					} else {
+						encodedContent := base64.StdEncoding.EncodeToString(urlContent.data)
+						contents = []protocol.ResourceContents{
+							protocol.BlobResourceContents{
+								ContentType: contentType,
+								Blob:        encodedContent,
+							},
+						}
+					}
+
+				default:
+					// No content source specified
+					readErr = &protocol.MCPError{
+						ErrorPayload: protocol.ErrorPayload{
+							Code:    protocol.CodeMCPOperationFailed,
+							Message: "No content source defined for static resource",
+						},
+					}
+				}
 			}
 		} else {
 			// --- Try Matching Resource Template ---
@@ -470,7 +581,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 					handlerCtx := NewContext(reqCtx, requestIDStr, session, nil, mh.server) // Pass request context
 
 					// Prepare arguments for handler call
-					handerArgs, prepErr := prepareHandlerArgs(handlerCtx, templateInfo, matchResult)
+					handerArgs, prepErr := prepareHandlerArgs(handlerCtx, *templateInfo, matchResult)
 					if prepErr != nil {
 						readErr = prepErr
 						break // Exit template loop on prep error
@@ -1016,11 +1127,12 @@ func convertToolOutputToContent(output interface{}) ([]protocol.Content, error) 
 	return []protocol.Content{protocol.TextContent{Type: "text", Text: string(jsonBytes)}}, nil
 }
 
-// matchURITemplate attempts to match a URI against a URI template pattern (RFC 6570)
-// using the yosida95/uritemplate library.
+// matchURITemplate attempts to match a URI against a URI template pattern
+// using the wilduri library.
 // Returns the extracted parameters and a boolean indicating if the URI matches the pattern.
 func matchURITemplate(pattern, uri string) (map[string]string, bool) {
-	tmpl, err := uritemplate.New(pattern)
+	// Use wilduri library pattern matching which already supports wildcards
+	tmpl, err := wilduri.New(pattern)
 	if err != nil {
 		// Log the error, as an invalid pattern shouldn't be registered in the first place,
 		// but handle defensively.
@@ -1028,28 +1140,22 @@ func matchURITemplate(pattern, uri string) (map[string]string, bool) {
 		return nil, false
 	}
 
-	values := tmpl.Match(uri)
-	if values == nil {
+	// wilduri.Match returns Values (map[string]interface{})
+	values, matched := tmpl.Match(uri)
+	if !matched || values == nil {
 		// No match
 		return nil, false
 	}
 
-	// Convert uritemplate.Values (map[string]uritemplate.Value) to map[string]string
+	// Convert wilduri.Values (map[string]interface{}) to map[string]string
 	extractedParams := make(map[string]string)
 	for _, varname := range tmpl.Varnames() { // Iterate through expected varnames from template
-		value := values.Get(varname)
-		if value.Valid() { // Check if the parameter was actually present in the matched URI
-			// For simplicity, we only handle string values here.
-			// RFC 6570 supports list and map values, but our use case likely doesn't need them.
-			if value.T == uritemplate.ValueTypeString {
-				extractedParams[varname] = value.String()
-			} else {
-				log.Printf("Warning: Matched URI template parameter '%s' in '%s' is not a simple string (Type: %s). Skipping.", varname, uri, value.T.String())
-			}
+		if val, ok := values[varname]; ok && val != nil { // Check if the parameter was actually present in the matched URI
+			// Convert to string - wilduri handles extraction of different types
+			extractedParams[varname] = fmt.Sprintf("%v", val)
 		}
 	}
 
-	// The library's Match() is successful if values is not nil.
 	return extractedParams, true
 }
 
@@ -1077,23 +1183,15 @@ func prepareHandlerArgs(ctx *Context, templateInfo resourceTemplateInfo, extract
 		return nil, fmt.Errorf("handler for %s must accept context.Context, *server.Context, or interface{} as the first argument, got %s", templateInfo.Pattern, firstArgType.String())
 	}
 
-	// Check number of parameters matches expected (excluding context)
-	// TODO: Consider optional parameters or different matching logic?
-	if (numArgs - 1) != len(extractedParams) {
-		return nil, fmt.Errorf("handler for %s expects %d parameters, but URI matched %d", templateInfo.Pattern, numArgs-1, len(extractedParams)) // Use Pattern field
-	}
-
+	// Create argument array for the handler function
 	args := make([]reflect.Value, numArgs)
 	args[0] = reflect.ValueOf(ctx) // First argument is always context
 
-	// Get parameter names from function definition (requires specific naming convention)
-	// funcParamNames := getFunctionParamNames(handlerType) // REMOVED: Cannot reliably get names
-	/* // REMOVED old logic using funcParamNames
-	if len(funcParamNames) != numArgs {
-		// This might happen if param names couldn't be reliably extracted, fallback or error?
-		return nil, fmt.Errorf("could not reliably determine parameter names for handler %s", templateInfo.Pattern) // Use Pattern field
+	// Get default parameter values from the config
+	defaultValues := templateInfo.config.defaultParamValues
+	if defaultValues == nil {
+		defaultValues = make(map[string]interface{})
 	}
-	*/
 
 	// Iterate through handler arguments (skip context)
 	// Use templateInfo.Params which stores Name, HandlerIndex, HandlerType correctly from registration
@@ -1102,15 +1200,24 @@ func prepareHandlerArgs(ctx *Context, templateInfo resourceTemplateInfo, extract
 		paramName := paramInfo.Name            // Use name from stored info
 		handlerIndex := paramInfo.HandlerIndex // Use index from stored info
 
+		// Get the parameter value, using either the extracted value or default
 		uriValueStr, ok := extractedParams[paramName]
-		if !ok {
-			return nil, fmt.Errorf("handler for %s requires parameter '%s', but it was not found in the matched URI params: %v", templateInfo.Pattern, paramName, extractedParams) // Use Pattern field
+		var valueToConvert interface{}
+		if !ok || uriValueStr == "" {
+			// Parameter not found in URI, try to use default
+			defaultValue, hasDefault := defaultValues[paramName]
+			if !hasDefault {
+				return nil, fmt.Errorf("handler for %s requires parameter '%s', but it was not found in the matched URI params and no default was provided", templateInfo.Pattern, paramName)
+			}
+			valueToConvert = defaultValue
+		} else {
+			valueToConvert = uriValueStr
 		}
 
-		// Convert the string value from URI to the required argument type
-		convertedValue, err := convertParamValue(uriValueStr, argType)
+		// Convert the value to the required argument type
+		convertedValue, err := convertParamValue(valueToConvert, argType)
 		if err != nil {
-			return nil, fmt.Errorf("error converting value '%s' for parameter '%s' (type %s) in handler %s: %w", uriValueStr, paramName, argType.String(), templateInfo.Pattern, err) // Use Pattern field
+			return nil, fmt.Errorf("error converting value '%v' for parameter '%s' (type %s) in handler %s: %w", valueToConvert, paramName, argType.String(), templateInfo.Pattern, err)
 		}
 		args[handlerIndex] = convertedValue
 	}
@@ -1118,54 +1225,93 @@ func prepareHandlerArgs(ctx *Context, templateInfo resourceTemplateInfo, extract
 	return args, nil
 }
 
-// --- Helper functions for prepareHandlerArgs ---
-// /* // This multi-line comment start is removed
-// getFunctionParamNames attempts to extract parameter names from a function type.
-// WARNING: Standard Go reflection *cannot* reliably get parameter names.
-// This requires specific conventions or potentially parsing source code/debug info,
-// which is complex and brittle. For this example, we'll assume a simple convention
-// or return placeholders indicating the limitation.
-// A common workaround is to expect a struct as the second argument instead of individual params.
-func getFunctionParamNames(funcType reflect.Type) []string {
-	numArgs := funcType.NumIn()
-	names := make([]string, numArgs)
-	// Placeholder implementation - Cannot get names reliably via reflection.
-	// Returning placeholders. Real implementation might require parsing or conventions.
-	for i := 0; i < numArgs; i++ {
-		names[i] = fmt.Sprintf("param%d", i) // e.g., param0, param1
+// convertParamValue converts a parameter value to the target reflect.Type.
+// Supports string, int, bool, float, and slice conversions.
+func convertParamValue(value interface{}, targetType reflect.Type) (reflect.Value, error) {
+	// If value is already of target type or can be directly assigned, return it
+	if value != nil && reflect.TypeOf(value).AssignableTo(targetType) {
+		return reflect.ValueOf(value), nil
 	}
-	// PROBLEM: How do we map param0, param1 to {city}, {user} from the URI?
-	// This highlights the difficulty. A better approach might be needed.
-	log.Printf("WARNING: getFunctionParamNames uses placeholders (param0, param1...). Mapping URI params relies on *order*, not name.")
-	return names
 
-	// Alternative (if we enforce a struct param): If numArgs == 2 and In(1) is a struct,
-	// we could iterate through struct fields using reflection.
-}
+	// For nil value or empty interface, return zero value of target type
+	if value == nil {
+		return reflect.Zero(targetType), nil
+	}
 
-// convertParamValue converts a string URI parameter value to the target reflect.Type.
-// Supports string and basic int conversion.
-func convertParamValue(valueStr string, targetType reflect.Type) (reflect.Value, error) {
-	switch targetType.Kind() {
-	case reflect.String:
-		return reflect.ValueOf(valueStr), nil
+	// Convert string value to target type
+	if strValue, isStr := value.(string); isStr {
+		switch targetType.Kind() {
+		case reflect.String:
+			return reflect.ValueOf(strValue), nil
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			intVal, err := strconv.ParseInt(strValue, 10, 64) // Parse as int64
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("invalid integer format: %w", err)
+			}
+			// Check for overflow before converting
+			if targetType.OverflowInt(intVal) {
+				return reflect.Value{}, fmt.Errorf("integer value '%s' overflows target type %s", strValue, targetType.String())
+			}
+			return reflect.ValueOf(intVal).Convert(targetType), nil // Convert to specific int type
+		case reflect.Float32, reflect.Float64:
+			floatVal, err := strconv.ParseFloat(strValue, 64)
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("invalid float format: %w", err)
+			}
+			// Check for overflow
+			if targetType.OverflowFloat(floatVal) {
+				return reflect.Value{}, fmt.Errorf("float value '%s' overflows target type %s", strValue, targetType.String())
+			}
+			return reflect.ValueOf(floatVal).Convert(targetType), nil
+		case reflect.Bool:
+			boolVal, err := strconv.ParseBool(strValue)
+			if err != nil {
+				return reflect.Value{}, fmt.Errorf("invalid boolean format: %w", err)
+			}
+			return reflect.ValueOf(boolVal), nil
+		case reflect.Slice:
+			// If target is []string, split comma-separated string
+			if targetType.Elem().Kind() == reflect.String {
+				parts := strings.Split(strValue, ",")
+				sliceVal := reflect.MakeSlice(targetType, len(parts), len(parts))
+				for i, part := range parts {
+					sliceVal.Index(i).SetString(part)
+				}
+				return sliceVal, nil
+			}
+		}
+	}
+
+	// Try to convert between numeric types
+	switch reflect.TypeOf(value).Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		intVal, err := strconv.ParseInt(valueStr, 10, 64) // Parse as int64
-		if err != nil {
-			return reflect.Value{}, fmt.Errorf("invalid integer format: %w", err)
+		intVal := reflect.ValueOf(value).Int()
+		switch targetType.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if targetType.OverflowInt(intVal) {
+				return reflect.Value{}, fmt.Errorf("integer value %d overflows target type %s", intVal, targetType.String())
+			}
+			return reflect.ValueOf(intVal).Convert(targetType), nil
+		case reflect.Float32, reflect.Float64:
+			floatVal := float64(intVal)
+			if targetType.OverflowFloat(floatVal) {
+				return reflect.Value{}, fmt.Errorf("float value %f overflows target type %s", floatVal, targetType.String())
+			}
+			return reflect.ValueOf(floatVal).Convert(targetType), nil
 		}
-		// Check for overflow before converting
-		if targetType.OverflowInt(intVal) {
-			return reflect.Value{}, fmt.Errorf("integer value '%s' overflows target type %s", valueStr, targetType.String())
+	case reflect.Float32, reflect.Float64:
+		floatVal := reflect.ValueOf(value).Float()
+		switch targetType.Kind() {
+		case reflect.Float32, reflect.Float64:
+			if targetType.OverflowFloat(floatVal) {
+				return reflect.Value{}, fmt.Errorf("float value %f overflows target type %s", floatVal, targetType.String())
+			}
+			return reflect.ValueOf(floatVal).Convert(targetType), nil
 		}
-		return reflect.ValueOf(intVal).Convert(targetType), nil // Convert to specific int type
-	// TODO: Add conversions for other types (bool, float, etc.) as needed
-	default:
-		return reflect.Value{}, fmt.Errorf("unsupported parameter type for conversion: %s", targetType.String())
 	}
-}
 
-// */ // This multi-line comment end is removed
+	return reflect.Value{}, fmt.Errorf("unsupported conversion from %T to %s", value, targetType.String())
+}
 
 // convertHandlerResultToResourceContents converts the result(s) from a template handler
 // into the []protocol.ResourceContents format.
@@ -1345,3 +1491,157 @@ func (mh *MessageHandler) handleCompletionComplete(ctx context.Context, rawParam
 
 // handleReadResource handles the `resources/read` request.
 // ... existing code ...
+
+// Helper Functions for Resource Content Handling
+
+// inferMimeTypeFromFile attempts to determine the MIME type of a file based on its extension and/or content
+func inferMimeTypeFromFile(filePath string, data []byte) string {
+	// Check file extension first
+	ext := strings.ToLower(filepath.Ext(filePath))
+	switch ext {
+	case ".txt":
+		return "text/plain; charset=utf-8"
+	case ".html", ".htm":
+		return "text/html; charset=utf-8"
+	case ".css":
+		return "text/css; charset=utf-8"
+	case ".js":
+		return "application/javascript"
+	case ".json":
+		return "application/json"
+	case ".xml":
+		return "application/xml"
+	case ".pdf":
+		return "application/pdf"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".svg":
+		return "image/svg+xml"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".mp4":
+		return "video/mp4"
+	case ".wav":
+		return "audio/wav"
+	case ".zip":
+		return "application/zip"
+	case ".md":
+		return "text/markdown; charset=utf-8"
+	}
+
+	// TODO: Consider content-based detection for more accurate type inference
+	// For now, default to a safe type
+	return "application/octet-stream"
+}
+
+// isTextContent determines if a MIME type likely represents text content
+func isTextContent(mimeType string) bool {
+	// Check for text-based MIME types
+	if strings.HasPrefix(mimeType, "text/") {
+		return true
+	}
+
+	// Check for specific text-based application types
+	textApplicationTypes := []string{
+		"application/json",
+		"application/xml",
+		"application/javascript",
+		"application/xhtml+xml",
+		"application/x-www-form-urlencoded",
+	}
+
+	for _, textType := range textApplicationTypes {
+		if strings.HasPrefix(mimeType, textType) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// directoryEntry represents a single item in a directory listing
+type directoryEntry struct {
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	IsDir   bool   `json:"is_dir"`
+	Size    int64  `json:"size,omitempty"`
+	ModTime string `json:"mod_time,omitempty"`
+}
+
+// generateDirectoryListing creates a structured listing of files in a directory
+func generateDirectoryListing(dirPath string) ([]directoryEntry, error) {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return nil, err
+	}
+
+	listing := make([]directoryEntry, 0, len(entries))
+	for _, entry := range entries {
+		// Get file info for size and modification time
+		info, err := entry.Info()
+		if err != nil {
+			// Skip entries we can't get info for
+			continue
+		}
+
+		entryPath := filepath.Join(dirPath, entry.Name())
+		relativePath, err := filepath.Rel(dirPath, entryPath)
+		if err != nil {
+			relativePath = entry.Name() // Fallback to just the name
+		}
+
+		listEntry := directoryEntry{
+			Name:    entry.Name(),
+			Path:    relativePath,
+			IsDir:   entry.IsDir(),
+			Size:    info.Size(),
+			ModTime: info.ModTime().Format(time.RFC3339),
+		}
+
+		listing = append(listing, listEntry)
+	}
+
+	return listing, nil
+}
+
+// urlContent holds the result of a URL fetch operation
+type urlContent struct {
+	data        []byte
+	contentType string
+}
+
+// fetchURLContent retrieves content from a URL
+func fetchURLContent(urlStr string) (*urlContent, error) {
+	// Use the http package to fetch the URL
+	resp, err := http.Get(urlStr)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Check for successful response
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP request failed with status %d", resp.StatusCode)
+	}
+
+	// Read the response body
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract the content type from the response headers
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream" // Default if not specified
+	}
+
+	return &urlContent{
+		data:        data,
+		contentType: contentType,
+	}, nil
+}

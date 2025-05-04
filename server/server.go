@@ -2,6 +2,7 @@ package server
 
 import (
 	"log"
+	"strings"
 	"sync"
 
 	// "github.com/localrivet/gomcp/logx" // No longer needed here
@@ -237,27 +238,68 @@ func (s *Server) AsSSE(addr string, basePath string) *Server {
 	return s
 }
 
-// Resource registers a new resource with the server's registry.
-func (s *Server) Resource(resource protocol.Resource) *Server {
-	s.Registry.RegisterResource(resource) // Delegate to embedded Registry
+// Resource registers a new static resource or dynamic resource template with the server's registry.
+// It uses a flexible options pattern for configuration.
+//
+// Example:
+//
+//	server.Resource("/static/data.txt", WithTextContent("Hello"), WithMimeType("text/plain"))
+//	server.Resource("/api/users/{id}", WithHandler(getUserHandler), WithDescription("Fetches user data"))
+func (s *Server) Resource(uri string, options ...ResourceOption) *Server {
+	// Create a default config
+	config := newResourceConfig()
+
+	// Apply all provided options
+	for _, opt := range options {
+		opt(&config)
+	}
+
+	// --- Phase 2 Implementation ---
+	// TODO: Add more validation for the config (e.g., ensure only one content source is set)
+
+	// Determine if URI is a template (basic check for now)
+	isTemplate := strings.Contains(uri, "{") && strings.Contains(uri, "}")
+
+	if isTemplate {
+		// Ensure a handler is provided for templates
+		if config.HandlerFn == nil {
+			s.logger.Error("Registration error for template URI '%s': WithHandler must be provided for resource templates.", uri)
+			// Decide on error handling: log and ignore, return error from Resource?, panic?
+			// For now, log and ignore.
+		} else {
+			err := s.Registry.RegisterResourceTemplate(uri, config)
+			if err != nil {
+				// Handle registration error - log it for now
+				s.logger.Error("Failed to register resource template '%s': %v", uri, err)
+				// Depending on desired server behavior, could panic or return the error
+			}
+		}
+	} else { // Static resource
+		// Ensure no handler is provided for static resources (or handle appropriately)
+		if config.HandlerFn != nil {
+			s.logger.Warn("Registration warning for static URI '%s': WithHandler was provided but URI is not a template. Handler will be ignored.", uri)
+			// config.HandlerFn = nil // Optionally clear the handler
+		}
+		// Ensure some content source is provided for static resources
+		if config.Content == nil && config.FilePath == "" && config.DirPath == "" && config.URL == "" {
+			s.logger.Error("Registration error for static URI '%s': No content source (WithTextContent, WithFileContent, etc.) provided.", uri)
+			// Log and ignore for now
+		} else {
+			err := s.Registry.RegisterStaticResource(uri, config)
+			if err != nil {
+				// Handle registration error - log it for now
+				s.logger.Error("Failed to register static resource '%s': %v", uri, err)
+				// Depending on desired server behavior, could panic or return the error
+			}
+		}
+	}
+
 	return s
 }
 
 // Root registers a new root with the server's registry.
 func (s *Server) Root(root protocol.Root) *Server {
 	s.Registry.AddRoot(root) // Delegate to embedded Registry
-	return s
-}
-
-// ResourceTemplate registers a resource handler with a URI pattern.
-// The handler function should accept arguments corresponding to the parameters in the URI,
-// optionally with *server.Context as the first argument. It should return (any, error).
-func (s *Server) ResourceTemplate(uriPattern string, handlerFunc any) *Server {
-	if err := s.Registry.AddResourceTemplate(uriPattern, handlerFunc); err != nil {
-		// Handle registration error - log it for now
-		s.logger.Error("Failed to register resource template %s: %v", uriPattern, err)
-		// Depending on desired server behavior, could panic or return the error
-	}
 	return s
 }
 
