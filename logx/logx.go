@@ -71,3 +71,52 @@ func levelToSeverity(level protocol.LoggingLevel) int {
 	// Implementation of levelToSeverity function
 	return 0 // Placeholder return, actual implementation needed
 }
+
+// StandardLoggerAdapter adapts a standard log.Logger to implement the Logger interface
+type StandardLoggerAdapter struct {
+	logger *log.Logger
+	level  protocol.LoggingLevel
+	mu     sync.Mutex
+}
+
+// NewStandardLoggerAdapter creates a Logger that wraps a standard Go log.Logger
+func NewStandardLoggerAdapter(logger *log.Logger) Logger {
+	if logger == nil {
+		logger = log.New(os.Stderr, "[GoMCP] ", log.LstdFlags)
+	}
+	return &StandardLoggerAdapter{
+		logger: logger,
+		level:  protocol.LogLevelInfo,
+	}
+}
+
+// Debug logs a debug message
+func (a *StandardLoggerAdapter) Debug(format string, v ...interface{}) {
+	a.logger.Printf("DEBUG: "+format, v...)
+}
+
+// Info logs an info message
+func (a *StandardLoggerAdapter) Info(format string, v ...interface{}) {
+	a.logger.Printf("INFO: "+format, v...)
+}
+
+// Warn logs a warning message
+func (a *StandardLoggerAdapter) Warn(format string, v ...interface{}) {
+	a.logger.Printf("WARN: "+format, v...)
+}
+
+// Error logs an error message
+func (a *StandardLoggerAdapter) Error(format string, v ...interface{}) {
+	a.logger.Printf("ERROR: "+format, v...)
+}
+
+// SetLevel sets the logging level
+func (a *StandardLoggerAdapter) SetLevel(level protocol.LoggingLevel) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.level = level
+	a.logger.Printf("[LogX] Log level set to: %s", level)
+}
+
+// Ensure StandardLoggerAdapter implements Logger
+var _ Logger = (*StandardLoggerAdapter)(nil)

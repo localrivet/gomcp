@@ -37,6 +37,9 @@ type resourceConfig struct {
 	inferContentType   bool
 	async              bool
 	progressTemplate   string
+
+	// Note: Resources will use the server's logger automatically.
+	// Having a separate logger field is unnecessary.
 }
 
 // WithHandler specifies the handler function for a dynamic resource or resource template.
@@ -213,6 +216,9 @@ func WithAsync(progressTemplate string) ResourceOption {
 		cfg.progressTemplate = progressTemplate
 	}
 }
+
+// Note: Resources automatically use the server's logger.
+// No need for a separate WithLogger resource option.
 
 // newResourceConfig creates a default resourceConfig.
 func newResourceConfig() resourceConfig {
