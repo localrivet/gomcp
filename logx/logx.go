@@ -49,64 +49,88 @@ func NewLogger(logType string) Logger {
 	return logger
 }
 
+// Debug logs a message at DEBUG level
 func (l *DefaultLogger) Debug(msg string, args ...interface{}) {
+	if !l.IsLevelEnabled(protocol.LogLevelDebug) {
+		return // Skip logging if debug level is not enabled
+	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if isLevelEnabled(l.level, protocol.LogLevelDebug) {
-		l.logger.Printf("DEBUG: "+msg, args...)
-	}
+	l.logger.Printf("DEBUG: "+msg, args...)
 }
 
+// Info logs a message at INFO level
 func (l *DefaultLogger) Info(msg string, args ...interface{}) {
+	if !l.IsLevelEnabled(protocol.LogLevelInfo) {
+		return // Skip logging if info level is not enabled
+	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if isLevelEnabled(l.level, protocol.LogLevelInfo) {
-		l.logger.Printf("INFO: "+msg, args...)
-	}
+	l.logger.Printf("INFO: "+msg, args...)
 }
 
+// Warn logs a message at WARN level
 func (l *DefaultLogger) Warn(msg string, args ...interface{}) {
+	if !l.IsLevelEnabled(protocol.LogLevelWarn) {
+		return // Skip logging if warn level is not enabled
+	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if isLevelEnabled(l.level, protocol.LogLevelWarn) {
-		l.logger.Printf("WARN: "+msg, args...)
-	}
+	l.logger.Printf("WARN: "+msg, args...)
 }
 
+// Error logs a message at ERROR level
 func (l *DefaultLogger) Error(msg string, args ...interface{}) {
+	// We always log errors regardless of level
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	// Always log errors regardless of level
 	l.logger.Printf("ERROR: "+msg, args...)
 }
 
 // Helper function to determine if logging should occur at a given level
 func isLevelEnabled(configuredLevel, msgLevel protocol.LoggingLevel) bool {
-	// Order of levels from least to most severe:
-	// debug, info, notice, warning, error, critical, alert, emergency
+	// The client code uses this comparison:
+	// if a.level >= protocol.LogLevelDebug { ... }
 
-	switch configuredLevel {
+	// Convert string levels to numeric severity for comparison
+	configuredSeverity := levelToSeverity(configuredLevel)
+	msgSeverity := levelToSeverity(msgLevel)
+
+	// Lower severity number = less restrictive = more messages
+	// Higher severity number = more restrictive = fewer messages
+	//
+	// We should log the message if the configured level's
+	// severity is less than or equal to the message level's severity
+	return configuredSeverity <= msgSeverity
+}
+
+// Helper to map protocol level to an internal severity
+// IMPORTANT: In client code "debug" is considered MORE permissive than "error"
+// The comparison used in client is: if a.level >= protocol.LogLevelDebug { log... }
+// So debug must be numerically higher than error for this to work
+func levelToSeverity(level protocol.LoggingLevel) int {
+	switch level {
 	case protocol.LogLevelDebug:
-		// If configured for debug, log everything
-		return true
+		return 100 // Most permissive (logs everything)
 	case protocol.LogLevelInfo:
-		// If configured for info, don't log debug
-		return msgLevel != protocol.LogLevelDebug
+		return 80
+	case protocol.LogLevelNotice:
+		return 70
 	case protocol.LogLevelWarn:
-		// If configured for warning, only log warning and more severe
-		return msgLevel != protocol.LogLevelDebug &&
-			msgLevel != protocol.LogLevelInfo &&
-			msgLevel != protocol.LogLevelNotice
-	case protocol.LogLevelError, protocol.LogLevelCritical,
-		protocol.LogLevelAlert, protocol.LogLevelEmergency:
-		// If configured for error or more severe, only log that level and above
-		return msgLevel == protocol.LogLevelError ||
-			msgLevel == protocol.LogLevelCritical ||
-			msgLevel == protocol.LogLevelAlert ||
-			msgLevel == protocol.LogLevelEmergency
+		return 50
+	case protocol.LogLevelError:
+		return 40
+	case protocol.LogLevelCritical:
+		return 30
+	case protocol.LogLevelAlert:
+		return 20
+	case protocol.LogLevelEmergency:
+		return 10 // Least permissive (logs almost nothing)
 	default:
-		// Default to info level behavior for unknown levels
-		return msgLevel != protocol.LogLevelDebug
+		return 80 // Default to INFO level
 	}
 }
 
@@ -120,6 +144,7 @@ type Logger interface {
 	Warn(format string, v ...interface{})
 	Error(format string, v ...interface{})
 	SetLevel(level protocol.LoggingLevel)
+	IsLevelEnabled(level protocol.LoggingLevel) bool
 }
 
 // SetLevel updates the logging level for the DefaultLogger.
@@ -162,12 +187,6 @@ func SetLogLevelFromString(logger Logger, levelStr string) {
 	logger.SetLevel(level)
 }
 
-// Helper to map protocol level to an internal severity
-func levelToSeverity(level protocol.LoggingLevel) int {
-	// Implementation of levelToSeverity function
-	return 0 // Placeholder return, actual implementation needed
-}
-
 // StandardLoggerAdapter adapts a standard log.Logger to implement the Logger interface
 type StandardLoggerAdapter struct {
 	logger *log.Logger
@@ -188,36 +207,42 @@ func NewStandardLoggerAdapter(logger *log.Logger) Logger {
 
 // Debug logs a debug message
 func (a *StandardLoggerAdapter) Debug(format string, v ...interface{}) {
+	if !a.IsLevelEnabled(protocol.LogLevelDebug) {
+		return // Skip logging if debug level is not enabled
+	}
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if isLevelEnabled(a.level, protocol.LogLevelDebug) {
-		a.logger.Printf("DEBUG: "+format, v...)
-	}
+	a.logger.Printf("DEBUG: "+format, v...)
 }
 
 // Info logs an info message
 func (a *StandardLoggerAdapter) Info(format string, v ...interface{}) {
+	if !a.IsLevelEnabled(protocol.LogLevelInfo) {
+		return // Skip logging if info level is not enabled
+	}
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if isLevelEnabled(a.level, protocol.LogLevelInfo) {
-		a.logger.Printf("INFO: "+format, v...)
-	}
+	a.logger.Printf("INFO: "+format, v...)
 }
 
 // Warn logs a warning message
 func (a *StandardLoggerAdapter) Warn(format string, v ...interface{}) {
+	if !a.IsLevelEnabled(protocol.LogLevelWarn) {
+		return // Skip logging if warn level is not enabled
+	}
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if isLevelEnabled(a.level, protocol.LogLevelWarn) {
-		a.logger.Printf("WARN: "+format, v...)
-	}
+	a.logger.Printf("WARN: "+format, v...)
 }
 
 // Error logs an error message
 func (a *StandardLoggerAdapter) Error(format string, v ...interface{}) {
+	// We always log errors regardless of level
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	// Always log errors regardless of level
 	a.logger.Printf("ERROR: "+format, v...)
 }
 
@@ -231,3 +256,35 @@ func (a *StandardLoggerAdapter) SetLevel(level protocol.LoggingLevel) {
 
 // Ensure StandardLoggerAdapter implements Logger
 var _ Logger = (*StandardLoggerAdapter)(nil)
+
+// Implementation of IsLevelEnabled for DefaultLogger
+func (l *DefaultLogger) IsLevelEnabled(level protocol.LoggingLevel) bool {
+	configuredSeverity := levelToSeverity(l.level)
+	msgSeverity := levelToSeverity(level)
+	return configuredSeverity <= msgSeverity
+}
+
+// Implementation of IsLevelEnabled for StandardLoggerAdapter
+func (a *StandardLoggerAdapter) IsLevelEnabled(level protocol.LoggingLevel) bool {
+	configuredSeverity := levelToSeverity(a.level)
+	msgSeverity := levelToSeverity(level)
+	return configuredSeverity <= msgSeverity
+}
+
+// PrintLevelDebugInfo logs information about how log level severities work
+// This is a helper for debugging purposes
+func PrintLevelDebugInfo(logger *log.Logger) {
+	if logger == nil {
+		logger = log.New(os.Stderr, "[LogX Debug] ", log.LstdFlags)
+	}
+
+	logger.Printf("Log Level Severity Values (higher = more permissive):")
+	logger.Printf("  DEBUG: %d", levelToSeverity(protocol.LogLevelDebug))
+	logger.Printf("  INFO: %d", levelToSeverity(protocol.LogLevelInfo))
+	logger.Printf("  NOTICE: %d", levelToSeverity(protocol.LogLevelNotice))
+	logger.Printf("  WARN: %d", levelToSeverity(protocol.LogLevelWarn))
+	logger.Printf("  ERROR: %d", levelToSeverity(protocol.LogLevelError))
+	logger.Printf("  CRITICAL: %d", levelToSeverity(protocol.LogLevelCritical))
+	logger.Printf("  ALERT: %d", levelToSeverity(protocol.LogLevelAlert))
+	logger.Printf("  EMERGENCY: %d", levelToSeverity(protocol.LogLevelEmergency))
+}

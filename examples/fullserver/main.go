@@ -11,18 +11,160 @@ import (
 	"path/filepath" // Added for tool/template handler reflection
 	"sort"
 	"strings" // Added for concurrency in handlers
+	"sync"
 	"time"
 
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
+	// For logger interface
 	// Added for ClientSession type
 	// Added for URI template handling
 	// Added for tool argument unmarshalling
 )
 
+// LogAdapter wraps a standard logger to implement the types.Logger interface
+type LogAdapter struct {
+	logger *log.Logger
+	level  protocol.LoggingLevel
+	mu     sync.Mutex
+}
+
+// Debug implements types.Logger Debug method
+func (a *LogAdapter) Debug(msg string, args ...interface{}) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.IsLevelEnabled(protocol.LogLevelDebug) {
+		a.logger.Printf("DEBUG: "+msg, args...)
+	}
+}
+
+// Info implements types.Logger Info method
+func (a *LogAdapter) Info(msg string, args ...interface{}) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.IsLevelEnabled(protocol.LogLevelInfo) {
+		a.logger.Printf("INFO: "+msg, args...)
+	}
+}
+
+// Warn implements types.Logger Warn method
+func (a *LogAdapter) Warn(msg string, args ...interface{}) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.IsLevelEnabled(protocol.LogLevelWarn) {
+		a.logger.Printf("WARN: "+msg, args...)
+	}
+}
+
+// Error implements types.Logger Error method
+func (a *LogAdapter) Error(msg string, args ...interface{}) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.IsLevelEnabled(protocol.LogLevelError) {
+		a.logger.Printf("ERROR: "+msg, args...)
+	}
+}
+
+// SetLevel implements types.Logger SetLevel method
+func (a *LogAdapter) SetLevel(level protocol.LoggingLevel) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.level = level
+}
+
+// IsLevelEnabled checks if a particular log level is enabled
+func (a *LogAdapter) IsLevelEnabled(level protocol.LoggingLevel) bool {
+	return levelToSeverity(a.level) <= levelToSeverity(level)
+}
+
+// Helper to map protocol level to an internal severity for comparison
+// Higher numbers mean less restrictive (DEBUG > INFO > WARN > ERROR)
+func levelToSeverity(level protocol.LoggingLevel) int {
+	switch level {
+	case protocol.LogLevelDebug:
+		return 100 // Most permissive
+	case protocol.LogLevelInfo:
+		return 80
+	case protocol.LogLevelNotice:
+		return 70
+	case protocol.LogLevelWarn:
+		return 50
+	case protocol.LogLevelError:
+		return 40
+	case protocol.LogLevelCritical:
+		return 30
+	case protocol.LogLevelAlert:
+		return 20
+	case protocol.LogLevelEmergency:
+		return 10 // Least permissive
+	default:
+		return 80 // Default to INFO level
+	}
+}
+
+// NewLogAdapter creates a new LogAdapter with the specified log level
+func NewLogAdapter(logger *log.Logger, level string) *LogAdapter {
+	var logLevel protocol.LoggingLevel
+	switch level {
+	case "debug":
+		logLevel = protocol.LogLevelDebug
+	case "info":
+		logLevel = protocol.LogLevelInfo
+	case "warning", "warn":
+		logLevel = protocol.LogLevelWarn
+	case "error":
+		logLevel = protocol.LogLevelError
+	default:
+		logLevel = protocol.LogLevelInfo // Default to INFO
+	}
+
+	return &LogAdapter{
+		logger: logger,
+		level:  logLevel,
+	}
+}
+
 func main() {
+	// Configure logging - must be done first
+	logDir := "./logs"
+
+	// Create the logs directory if it doesn't exist
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		log.Fatalf("Failed to create logs directory: %v", err)
+	}
+
+	// Create log file with timestamp
+	timestamp := time.Now().Format("2006-01-02-15-04-05")
+	logFileName := fmt.Sprintf("mcp-server-%s.log", timestamp)
+	logPath := filepath.Join(logDir, logFileName)
+
+	// Open the log file
+	logFile, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Failed to open log file: %v", err)
+	}
+	defer logFile.Close() // Ensure the file is closed when the program exits
+
+	// When using stdio transport, we can ONLY write logs to the file
+	// Writing to stdout would corrupt the JSON-RPC communication
+	serverLogger := log.New(logFile, "", log.LstdFlags|log.Lshortfile)
+
+	// Redirect standard Go logger to file to capture all logs
+	log.SetOutput(logFile)
+
+	// Write to the file that we've started up (can't use stdout)
+	serverLogger.Println("Starting Full Featured Server with file logging enabled...")
+	serverLogger.Printf("Log file created at: %s", logPath)
+
+	// Set the log level for MCP server - use ERROR to reduce logging
+	logLevel := "error" // Use least verbose level for production
+
 	// Create a new MCP server instance
 	srv := server.NewServer("FullFeaturedServer")
+
+	// Configure the server with our logger IMMEDIATELY
+	logAdapter := NewLogAdapter(serverLogger, logLevel)
+	srv.WithLogger(logAdapter)
 
 	// --- Register Resources ---
 
@@ -174,9 +316,9 @@ func main() {
 	srv.AsStdio()
 
 	// Run the server
-	log.Println("Starting Full Featured Server...")
 	if runErr := srv.Run(); runErr != nil {
-		log.Fatalf("Server failed to run: %v", runErr)
+		// Log to file only
+		serverLogger.Fatalf("Server failed to run: %v", runErr)
 	}
 }
 
