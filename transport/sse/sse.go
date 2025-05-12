@@ -6,6 +6,7 @@ import (
 	"context" // Needed for MCPServerLogic interface
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	// "log" // Remove unused import
@@ -22,7 +23,7 @@ import (
 // MCPServerLogic defines the interface SSEServer needs from the core server logic,
 // using the ClientSession interface defined in the types package.
 type MCPServerLogic interface {
-	HandleMessage(ctx context.Context, sessionID string, rawMessage json.RawMessage) []*protocol.JSONRPCResponse
+	HandleMessage(ctx context.Context, session types.ClientSession, rawMessage json.RawMessage) []*protocol.JSONRPCResponse
 	RegisterSession(session types.ClientSession) error // Use types.ClientSession
 	UnregisterSession(sessionID string)
 }
@@ -125,11 +126,21 @@ func (s *sseSession) Initialized() bool {
 }
 
 func (s *sseSession) SetNegotiatedVersion(version string) {
-	s.negotiatedVersion = version
-	s.logger.Debug("Session %s: Negotiated protocol version set to %s", s.sessionID, version)
+	// Ensure we're setting a valid version
+	if version != "" {
+		s.negotiatedVersion = version
+		s.logger.Debug("Session %s: Negotiated protocol version set to %s", s.sessionID, version)
+	} else {
+		s.logger.Warn("Session %s: Attempted to set empty negotiated protocol version", s.sessionID)
+	}
 }
 
 func (s *sseSession) GetNegotiatedVersion() string {
+	if s.negotiatedVersion == "" {
+		s.logger.Warn("Session %s: GetNegotiatedVersion called but no version was set", s.sessionID)
+		// Default to current protocol version if not explicitly set
+		return protocol.CurrentProtocolVersion
+	}
 	return s.negotiatedVersion
 }
 
@@ -140,6 +151,21 @@ func (s *sseSession) StoreClientCapabilities(caps protocol.ClientCapabilities) {
 
 func (s *sseSession) GetClientCapabilities() protocol.ClientCapabilities {
 	return s.clientCapabilities
+}
+
+// SendRequest returns an error because sending requests from server-to-client
+// is not supported by the SSE transport implementation.
+func (s *sseSession) SendRequest(request protocol.JSONRPCRequest) error {
+	s.logger.Error("SendRequest called on sseSession, which is not supported.")
+	return fmt.Errorf("sending requests from server to client is not supported over SSE transport")
+}
+
+// GetWriter returns nil for SSE sessions as direct writing to the underlying
+// connection bypasses SSE formatting and is not the intended use case.
+// The SendNotification/SendResponse methods should be used.
+func (s *sseSession) GetWriter() io.Writer {
+	s.logger.Warn("Session %s: GetWriter() called on sseSession, returning nil (direct write not supported).", s.sessionID)
+	return nil
 }
 
 // --- SSEServer ---
@@ -214,6 +240,14 @@ func NewSSEServer(mcpServer MCPServerLogic, opts SSEServerOptions) *SSEServer {
 }
 
 // ServeHTTP implements http.Handler, routing to SSE or Message handlers.
+// It handles the following routing logic:
+// 1. For requests to the exact base path (with or without trailing slash):
+//   - GET requests are redirected to the SSE endpoint
+//   - POST requests are treated as message endpoint requests
+//
+// 2. For requests to the SSE endpoint, HandleSSE is called
+// 3. For requests to the message endpoint, HandleMessage is called
+// 4. All other paths return 404 Not Found
 func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	ssePath := s.basePath + s.sseEndpoint
@@ -228,6 +262,23 @@ func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
+	}
+
+	// Check if the request is to the exact base path (with or without trailing slash)
+	// or to the root path when base path is "/"
+	if path == s.basePath || path == s.basePath+"/" || (path == "/" && s.basePath == "/") {
+		// For GET requests to the base path, redirect to the SSE endpoint
+		if r.Method == http.MethodGet {
+			s.logger.Info("Redirecting GET request from base path %s to SSE endpoint %s", path, ssePath)
+			http.Redirect(w, r, ssePath, http.StatusFound)
+			return
+		}
+		// For POST requests to the base path, treat as a message endpoint request
+		if r.Method == http.MethodPost {
+			s.logger.Info("Handling POST request to base path %s as message endpoint", path)
+			s.HandleMessage(w, r)
+			return
+		}
 	}
 
 	if path == ssePath {
@@ -307,26 +358,26 @@ func (s *SSEServer) HandleSSE(w http.ResponseWriter, r *http.Request) {
 // HandleMessage processes incoming JSON-RPC messages via HTTP POST.
 func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		s.writeJSONRPCError(w, nil, protocol.ErrorCodeInvalidRequest, "Method not allowed, use POST")
+		s.writeJSONRPCError(w, nil, protocol.CodeInvalidRequest, "Method not allowed, use POST")
 		return
 	}
 	sessionID := r.URL.Query().Get("sessionId")
 	if sessionID == "" {
 		sessionID = r.Header.Get("X-Session-Id")
 		if sessionID == "" {
-			s.writeJSONRPCError(w, nil, protocol.ErrorCodeInvalidParams, "Missing sessionId query parameter or X-Session-Id header")
+			s.writeJSONRPCError(w, nil, protocol.CodeInvalidParams, "Missing sessionId query parameter or X-Session-Id header")
 			return
 		}
 	}
 	sessionValue, ok := s.sessions.Load(sessionID)
 	if !ok {
-		s.writeJSONRPCError(w, nil, protocol.ErrorCodeInvalidParams, fmt.Sprintf("Invalid or expired session ID: %s", sessionID))
+		s.writeJSONRPCError(w, nil, protocol.CodeInvalidParams, fmt.Sprintf("Invalid or expired session ID: %s", sessionID))
 		return
 	}
 	session, ok := sessionValue.(types.ClientSession) // Assert against interface
 	if !ok {
 		s.logger.Error("Session %s stored value is not a types.ClientSession (%T).", sessionID, sessionValue)
-		s.writeJSONRPCError(w, nil, protocol.ErrorCodeInternalError, "Internal server error: invalid session type")
+		s.writeJSONRPCError(w, nil, protocol.CodeInternalError, "Internal server error: invalid session type")
 		return
 	}
 
@@ -348,11 +399,11 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 
 	var rawMessage json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&rawMessage); err != nil {
-		s.writeJSONRPCError(w, nil, protocol.ErrorCodeParseError, fmt.Sprintf("Parse error: %v", err))
+		s.writeJSONRPCError(w, nil, protocol.CodeParseError, fmt.Sprintf("Parse error: %v", err))
 		return
 	}
 
-	responses := s.mcpServer.HandleMessage(ctx, sessionID, rawMessage)
+	responses := s.mcpServer.HandleMessage(ctx, session, rawMessage)
 
 	if responses != nil && len(responses) > 0 {
 		for _, response := range responses {
@@ -369,11 +420,11 @@ func (s *SSEServer) HandleMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeJSONRPCError writes a JSON-RPC error response.
-func (s *SSEServer) writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message string) {
+func (s *SSEServer) writeJSONRPCError(w http.ResponseWriter, id interface{}, code protocol.ErrorCode, message string) {
 	response := protocol.JSONRPCResponse{JSONRPC: "2.0", ID: id, Error: &protocol.ErrorPayload{Code: code, Message: message}}
 	w.Header().Set("Content-Type", "application/json")
 	httpStatus := http.StatusBadRequest // Default
-	if code == protocol.ErrorCodeInternalError {
+	if code == protocol.CodeInternalError {
 		httpStatus = http.StatusInternalServerError
 	}
 	w.WriteHeader(httpStatus)
@@ -384,6 +435,8 @@ func (s *SSEServer) writeJSONRPCError(w http.ResponseWriter, id interface{}, cod
 
 // getMessageEndpointURL constructs the relative path.
 func (s *SSEServer) getMessageEndpointURL(sessionID string) string {
+	// Format compatible with both 2024-11-05 and 2025-03-26 protocol versions
+	// The 2024-11-05 client expects the sessionId in the query parameter format
 	return fmt.Sprintf("%s%s?sessionId=%s", s.basePath, s.messageEndpoint, sessionID)
 }
 

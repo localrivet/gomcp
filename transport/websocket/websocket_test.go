@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gobwas/ws"
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/gomcp/types"
 )
 
@@ -39,7 +40,7 @@ func TestWebSocketTransportSendReceive(t *testing.T) {
 		t.Logf("Server upgraded connection from %s", conn.RemoteAddr())
 		defer conn.Close()
 
-		opts := types.TransportOptions{Logger: NewNilLogger()} // Use local NilLogger
+		opts := types.TransportOptions{Logger: logx.NewDefaultLogger()} // Use logx logger
 		serverTransport = NewWebSocketTransport(conn, ws.StateServerSide, opts)
 
 		// Server Receive
@@ -59,10 +60,9 @@ func TestWebSocketTransportSendReceive(t *testing.T) {
 		// Verify received message (sent by client below)
 		testMsg := map[string]interface{}{"jsonrpc": "2.0", "id": "client-to-server", "method": "test"}
 		testMsgBytes, _ := json.Marshal(testMsg)
-		testMsgBytesWithNL := append(testMsgBytes, '\n')     // Add newline for comparison if needed by framing
-		if !bytes.Equal(receivedBytes, testMsgBytesWithNL) { // Compare with newline if framing includes it
+		if !bytes.Equal(receivedBytes, testMsgBytes) { // Compare raw JSON bytes
 			serverErr = err
-			t.Errorf("Server received wrong message.\nExpected: %s\nGot:      %s", string(testMsgBytesWithNL), string(receivedBytes))
+			t.Errorf("Server received wrong message.\nExpected: %s\nGot:      %s", string(testMsgBytes), string(receivedBytes))
 			return
 		}
 		t.Log("Server received message correctly.")
@@ -70,12 +70,11 @@ func TestWebSocketTransportSendReceive(t *testing.T) {
 		// Server Send
 		testMsgServer := map[string]interface{}{"jsonrpc": "2.0", "id": "server-to-client", "method": "test"}
 		testMsgServerBytes, _ := json.Marshal(testMsgServer)
-		testMsgBytesWithNL = append(testMsgServerBytes, '\n') // Add newline for framing
 		t.Log("Server sending message...")
 		// Send message from server to client, passing context
 		ctxSend, cancelSend := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancelSend()
-		if err := serverTransport.Send(ctxSend, testMsgBytesWithNL); err != nil { // Send with newline
+		if err := serverTransport.Send(ctxSend, testMsgServerBytes); err != nil { // Send raw JSON bytes
 			serverErr = err
 			t.Errorf("Server failed to send message: %v", err)
 			return // Exit goroutine on send error
@@ -102,18 +101,17 @@ func TestWebSocketTransportSendReceive(t *testing.T) {
 		}
 		defer conn.Close()
 		t.Logf("Client connected to %s", wsURL)
-		opts := types.TransportOptions{Logger: NewNilLogger()} // Use local NilLogger
+		opts := types.TransportOptions{Logger: logx.NewDefaultLogger()} // Use logx logger
 		clientTransport = NewWebSocketTransport(conn, ws.StateClientSide, opts)
 
 		// Client Send
 		testMsgClient := map[string]interface{}{"jsonrpc": "2.0", "id": "client-to-server", "method": "test"}
 		testMsgClientBytes, _ := json.Marshal(testMsgClient)
-		testMsgBytesWithNL := append(testMsgClientBytes, '\n') // Add newline for framing
 		t.Log("Client sending message...")
 		// Send message from client to server, passing context
 		ctxSend, cancelSend := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancelSend()
-		if err := clientTransport.Send(ctxSend, testMsgBytesWithNL); err != nil { // Send with newline
+		if err := clientTransport.Send(ctxSend, testMsgClientBytes); err != nil { // Send raw JSON bytes
 			clientErr = err
 			t.Errorf("Client failed to send message: %v", err)
 			return // Exit goroutine on send error
@@ -137,10 +135,9 @@ func TestWebSocketTransportSendReceive(t *testing.T) {
 		// Verify received message (sent by server above)
 		testMsg := map[string]interface{}{"jsonrpc": "2.0", "id": "server-to-client", "method": "test"}
 		testMsgBytes, _ := json.Marshal(testMsg)
-		testMsgBytesWithNL = append(testMsgBytes, '\n')      // Add newline for comparison
-		if !bytes.Equal(receivedBytes, testMsgBytesWithNL) { // Compare with newline
-			clientErr = err
-			t.Errorf("Client received wrong message.\nExpected: %s\nGot:      %s", string(testMsgBytesWithNL), string(receivedBytes))
+		if !bytes.Equal(receivedBytes, testMsgBytes) { // Compare raw JSON bytes
+			clientErr = err // Assign error before reporting
+			t.Errorf("Client received wrong message.\nExpected: %s\nGot:      %s", string(testMsgBytes), string(receivedBytes))
 			return
 		}
 		t.Log("Client received message correctly.")

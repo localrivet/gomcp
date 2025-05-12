@@ -3,74 +3,31 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>http://localhost:1313/</loc>
+    <lastmod>2025-05-05T00:00:00+00:00</lastmod>
   </url><url>
-    <loc>http://localhost:1313/examples/basic/</loc>
+    <loc>http://localhost:1313/get-started/installation/</loc>
   </url><url>
-    <loc>http://localhost:1313/docs/getting-started/</loc>
+    <loc>http://localhost:1313/get-started/</loc>
   </url><url>
-    <loc>http://localhost:1313/examples/http/nethttp/</loc>
+    <loc>http://localhost:1313/servers/</loc>
   </url><url>
-    <loc>http://localhost:1313/docs/protocols/protocol_messages/</loc>
+    <loc>http://localhost:1313/servers/defining-tools/</loc>
   </url><url>
-    <loc>http://localhost:1313/docs/</loc>
+    <loc>http://localhost:1313/clients/transports/</loc>
   </url><url>
-    <loc>http://localhost:1313/examples/http/gin/</loc>
+    <loc>http://localhost:1313/clients/</loc>
   </url><url>
-    <loc>http://localhost:1313/docs/installation/</loc>
+    <loc>http://localhost:1313/get-started/quickstart/</loc>
   </url><url>
-    <loc>http://localhost:1313/docs/protocols/protocol_tools/</loc>
+    <loc>http://localhost:1313/servers/resources/</loc>
   </url><url>
-    <loc>http://localhost:1313/examples/http/chi/</loc>
+    <loc>http://localhost:1313/servers/prompts/</loc>
   </url><url>
-    <loc>http://localhost:1313/examples/http/echo/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/http/fiber/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/http/gorillamux/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/http/httprouter/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/http/iris/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/http/beego/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/http/go-zero/</loc>
-  </url><url>
-    <loc>http://localhost:1313/docs/create-server/</loc>
-  </url><url>
-    <loc>http://localhost:1313/docs/protocols/protocol_resources/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/websocket/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/configuration/</loc>
-  </url><url>
-    <loc>http://localhost:1313/docs/create-client/</loc>
-  </url><url>
-    <loc>http://localhost:1313/docs/defining-tools/</loc>
-  </url><url>
-    <loc>http://localhost:1313/docs/protocols/protocol_prompts/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/auth/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/billing/</loc>
-  </url><url>
-    <loc>http://localhost:1313/docs/protocols/</loc>
-  </url><url>
-    <loc>http://localhost:1313/docs/calling-tools/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/cmd/</loc>
+    <loc>http://localhost:1313/servers/context/</loc>
   </url><url>
     <loc>http://localhost:1313/examples/</loc>
   </url><url>
-    <loc>http://localhost:1313/examples/kitchen-sink/</loc>
-  </url><url>
-    <loc>http://localhost:1313/docs/code-organization/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/rate-limit/</loc>
-  </url><url>
-    <loc>http://localhost:1313/license/</loc>
-  </url><url>
-    <loc>http://localhost:1313/examples/http/</loc>
+    <loc>http://localhost:1313/contributing/</loc>
   </url><url>
     <loc>http://localhost:1313/categories/</loc>
   </url><url>

@@ -2,12 +2,12 @@
 package protocol
 
 import (
-	"encoding/json" // Added for UnmarshalJSON
-	"fmt"           // Added for UnmarshalJSON
-	"log"           // Added for UnmarshalJSON
+	"encoding/json"
+	"fmt"
+	"time"
 )
 
-// --- Tooling Structures and Messages ---
+// --- Tooling Structures and Messages (Schema 2025-03-26) ---
 
 // ToolInputSchema defines the expected input structure for a tool (JSON Schema subset).
 type ToolInputSchema struct {
@@ -52,80 +52,70 @@ type ListToolsResult struct {
 	NextCursor string `json:"nextCursor,omitempty"`
 }
 
-// CallToolParams defines the parameters for a 'tools/call' request.
-type CallToolParams struct {
-	Name      string                 `json:"name"`
-	Arguments map[string]interface{} `json:"arguments,omitempty"`
-	Meta      *RequestMeta           `json:"_meta,omitempty"` // Defined in messages.go
+// ToolCall defines the structure for a tool call request (mirrors types.ToolCall).
+type ToolCall struct {
+	ID       string          `json:"id"`
+	ToolName string          `json:"tool_name"`
+	Input    json.RawMessage `json:"input,omitempty"`
 }
 
-// CallToolResult defines the result payload for a successful 'tools/call' response.
-type CallToolResult struct {
-	Content []Content    `json:"content"` // Defined in messages.go
-	IsError *bool        `json:"isError,omitempty"`
-	Meta    *RequestMeta `json:"_meta,omitempty"` // Defined in messages.go
+// CallToolRequestParams defines the parameters for a 'tools/call' request.
+// Supports both schema versions:
+// - 2024-11-05: { "name": "...", "arguments": { ... } }
+// - 2025-03-26: { "tool_call": { "id": "...", "tool_name": "...", "input": { ... } } }
+type CallToolRequestParams struct {
+	// V2025 format
+	ToolCall *ToolCall    `json:"tool_call,omitempty"`
+	Meta     *RequestMeta `json:"_meta,omitempty"`
+
+	// V2024 format (for backward compatibility)
+	Name      string          `json:"name,omitempty"`
+	Arguments json.RawMessage `json:"arguments,omitempty"`
 }
 
-// UnmarshalJSON implements custom unmarshalling for CallToolResult to handle the Content interface slice.
-func (r *CallToolResult) UnmarshalJSON(data []byte) error {
-	// 1. Define an auxiliary type to prevent recursion
-	type Alias CallToolResult
-	aux := &struct {
-		Content []json.RawMessage `json:"content"` // Unmarshal Content into RawMessage first
-		*Alias
-	}{
-		Alias: (*Alias)(r),
+// UnmarshalJSON implements custom unmarshaling to handle both V2024 and V2025 formats
+func (p *CallToolRequestParams) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as a standard struct first
+	type Alias CallToolRequestParams
+	var standard Alias
+	if err := json.Unmarshal(data, &standard); err != nil {
+		return err
 	}
 
-	// 2. Unmarshal into the auxiliary type
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return fmt.Errorf("failed to unmarshal base CallToolResult: %w", err)
-	}
+	// Copy the standard fields
+	*p = CallToolRequestParams(standard)
 
-	// 3. Iterate over RawMessages and unmarshal into concrete types
-	r.Content = make([]Content, 0, len(aux.Content)) // Initialize the slice
-	for _, raw := range aux.Content {
-		var typeDetect struct {
-			Type string `json:"type"`
+	// Handle conversion between formats based on which fields were set
+	if p.ToolCall == nil && p.Name != "" {
+		// Convert from V2024 format to V2025 format
+		// Generate a random ID if none exists
+		id := "auto-" + fmt.Sprintf("%d", time.Now().UnixNano())
+		p.ToolCall = &ToolCall{
+			ID:       id,
+			ToolName: p.Name,
+			Input:    p.Arguments,
 		}
-		if err := json.Unmarshal(raw, &typeDetect); err != nil {
-			return fmt.Errorf("failed to detect content type: %w", err)
-		}
-
-		var actualContent Content
-		switch typeDetect.Type {
-		case "text":
-			var tc TextContent // Defined in messages.go
-			if err := json.Unmarshal(raw, &tc); err != nil {
-				return fmt.Errorf("failed to unmarshal TextContent: %w", err)
-			}
-			actualContent = tc
-		case "image":
-			var ic ImageContent // Defined in messages.go
-			if err := json.Unmarshal(raw, &ic); err != nil {
-				return fmt.Errorf("failed to unmarshal ImageContent: %w", err)
-			}
-			actualContent = ic
-		case "audio":
-			var ac AudioContent // Defined in messages.go
-			if err := json.Unmarshal(raw, &ac); err != nil {
-				return fmt.Errorf("failed to unmarshal AudioContent: %w", err)
-			}
-			actualContent = ac
-		case "resource":
-			var erc EmbeddedResourceContent // Defined in messages.go
-			if err := json.Unmarshal(raw, &erc); err != nil {
-				return fmt.Errorf("failed to unmarshal EmbeddedResourceContent: %w", err)
-			}
-			actualContent = erc
-		default:
-			// Handle unknown content types if necessary, maybe return an error or skip
-			log.Printf("Warning: Unknown content type '%s' encountered during unmarshalling", typeDetect.Type)
-			// Or return fmt.Errorf("unknown content type '%s'", typeDetect.Type)
-			continue // Skip unknown types for now
-		}
-		r.Content = append(r.Content, actualContent)
+	} else if p.ToolCall != nil && p.Name == "" {
+		// For completeness, we could fill the V2024 fields from V2025 format
+		// But this isn't strictly necessary since we'll use ToolCall going forward
+		p.Name = p.ToolCall.ToolName
+		p.Arguments = p.ToolCall.Input
 	}
 
 	return nil
+}
+
+// ToolError defines the structure for reporting errors during tool execution (Schema 2025-03-26).
+type ToolError struct {
+	Code    ErrorCode   `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// CallToolResult defines the result payload for a 'tools/call' response (Schema 2025-03-26).
+type CallToolResult struct {
+	ToolCallID string          `json:"tool_call_id"`
+	Output     json.RawMessage `json:"output,omitempty"`
+	Error      *ToolError      `json:"error,omitempty"`
+	Meta       *RequestMeta    `json:"_meta,omitempty"`
 }

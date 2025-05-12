@@ -32,7 +32,29 @@ SESSION_CONTEXT_SUMMARY.md
 *.db
 
 # Specific build output if needed (if built in root)
-/kitchen-sink-server
-/mcp-client
-/mcp-server
-/plans
+
+# Added by Claude Task Master
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+# Dependency directories
+node_modules/
+# Environment variables
+.env
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# OS specific
+.DS_Store
+# Task files
+tasks.json
+tasks/ 

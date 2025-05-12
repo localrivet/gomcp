@@ -10,8 +10,8 @@ import (
 func TestResourceSerialization(t *testing.T) {
 	// Case 1: Resource without optional Size field
 	resWithoutSize := Resource{
-		URI:   "test://resource/1",
-		Title: "Test Resource 1",
+		URI:  "test://resource/1",
+		Name: "Test Resource 1",
 	}
 	bytesWithoutSize, err := json.Marshal(resWithoutSize)
 	if err != nil {
@@ -29,9 +29,9 @@ func TestResourceSerialization(t *testing.T) {
 	// Case 2: Resource with optional Size field
 	sizeVal := int(512)
 	resWithSize := Resource{
-		URI:   "test://resource/2",
-		Title: "Test Resource 2",
-		Size:  &sizeVal,
+		URI:  "test://resource/2",
+		Name: "Test Resource 2",
+		Size: &sizeVal,
 	}
 	bytesWithSize, err := json.Marshal(resWithSize)
 	if err != nil {

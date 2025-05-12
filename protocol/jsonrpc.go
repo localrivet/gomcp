@@ -10,7 +10,7 @@ import (
 // ErrorPayload defines the structure for the 'error' object within a JSONRPCError response,
 // aligning with the JSON-RPC 2.0 specification used by MCP.
 type ErrorPayload struct {
-	Code    int         `json:"code"`           // Numeric error code (JSON-RPC standard or implementation-defined)
+	Code    ErrorCode   `json:"code"`           // Use ErrorCode type
 	Message string      `json:"message"`        // Short error description
 	Data    interface{} `json:"data,omitempty"` // Optional additional error details
 }
@@ -37,6 +37,15 @@ type JSONRPCNotification struct {
 	Method  string      `json:"method"`           // Method name (e.g., "initialized", "notifications/...")
 	Params  interface{} `json:"params,omitempty"` // Parameters (struct or array)
 	// Note: Notifications MUST NOT have an 'id' field.
+}
+
+// NewNotification creates a new JSON-RPC notification object.
+func NewNotification(method string, params interface{}) *JSONRPCNotification {
+	return &JSONRPCNotification{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+	}
 }
 
 // UnmarshalPayload is a helper function to unmarshal the payload field from a
@@ -73,7 +82,7 @@ func NewSuccessResponse(id interface{}, result interface{}) *JSONRPCResponse {
 }
 
 // NewErrorResponse creates a new JSON-RPC error response object.
-func NewErrorResponse(id interface{}, code int, message string, data interface{}) *JSONRPCResponse {
+func NewErrorResponse(id interface{}, code ErrorCode, message string, data interface{}) *JSONRPCResponse {
 	return &JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id, // Can be null if error occurred before ID parsing
