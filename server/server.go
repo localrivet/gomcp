@@ -16,7 +16,7 @@ const ServerVersion = "0.1.0" // Define server version constant
 type ResourceDetails struct {
 	URI         string
 	Kind        string
-	Title       string
+	Name        string
 	Description string
 }
 
@@ -24,7 +24,7 @@ type ResourceDetails struct {
 type RootDetails struct {
 	URI         string
 	Kind        string
-	Title       string
+	Name        string
 	Description string
 }
 
@@ -304,9 +304,10 @@ func (s *Server) Root(root protocol.Root) *Server {
 }
 
 // Prompt registers a new prompt with the server's registry.
-func (s *Server) Prompt(title, description string, messages ...protocol.PromptMessage) *Server {
+func (s *Server) Prompt(name, description string, messages ...protocol.PromptMessage) *Server {
 	s.Registry.AddPrompt(protocol.Prompt{
-		Title:       title,
+		URI:         name, // Set URI to the same as name for lookup consistency
+		Name:        name,
 		Description: description,
 		Messages:    messages,
 	})

@@ -406,7 +406,7 @@ func (sr *SamplingResult) UnmarshalJSON(data []byte) error {
 type Root struct {
 	URI         string                 `json:"uri"`
 	Kind        string                 `json:"kind,omitempty"`
-	Title       string                 `json:"title,omitempty"`
+	Name        string                 `json:"name"` // Human-readable name
 	Description string                 `json:"description,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }

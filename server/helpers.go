@@ -14,12 +14,25 @@ func Text(msg string) protocol.Content {
 }
 
 // Define helper functions for prompt messages
+// Note: "system" role is not valid according to MCP schemas - only "user" and "assistant" are allowed
 func System(msg string) protocol.PromptMessage {
-	// Assuming Text exists and works with protocol.Content
-	return protocol.PromptMessage{Role: "system", Content: []protocol.Content{Text(msg)}}
+	// Using "user" role instead of "system" to comply with schemas
+	return protocol.PromptMessage{
+		Role:    "user",
+		Content: Text(msg), // Single Content object, not an array
+	}
 }
 
 func User(msg string) protocol.PromptMessage {
-	// Assuming Text exists and works with protocol.Content
-	return protocol.PromptMessage{Role: "user", Content: []protocol.Content{Text(msg)}}
+	return protocol.PromptMessage{
+		Role:    "user",
+		Content: Text(msg), // Single Content object, not an array
+	}
+}
+
+func Assistant(msg string) protocol.PromptMessage {
+	return protocol.PromptMessage{
+		Role:    "assistant",
+		Content: Text(msg), // Single Content object, not an array
+	}
 }

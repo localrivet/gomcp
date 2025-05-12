@@ -126,11 +126,21 @@ func (s *sseSession) Initialized() bool {
 }
 
 func (s *sseSession) SetNegotiatedVersion(version string) {
-	s.negotiatedVersion = version
-	s.logger.Debug("Session %s: Negotiated protocol version set to %s", s.sessionID, version)
+	// Ensure we're setting a valid version
+	if version != "" {
+		s.negotiatedVersion = version
+		s.logger.Debug("Session %s: Negotiated protocol version set to %s", s.sessionID, version)
+	} else {
+		s.logger.Warn("Session %s: Attempted to set empty negotiated protocol version", s.sessionID)
+	}
 }
 
 func (s *sseSession) GetNegotiatedVersion() string {
+	if s.negotiatedVersion == "" {
+		s.logger.Warn("Session %s: GetNegotiatedVersion called but no version was set", s.sessionID)
+		// Default to current protocol version if not explicitly set
+		return protocol.CurrentProtocolVersion
+	}
 	return s.negotiatedVersion
 }
 
@@ -230,6 +240,14 @@ func NewSSEServer(mcpServer MCPServerLogic, opts SSEServerOptions) *SSEServer {
 }
 
 // ServeHTTP implements http.Handler, routing to SSE or Message handlers.
+// It handles the following routing logic:
+// 1. For requests to the exact base path (with or without trailing slash):
+//   - GET requests are redirected to the SSE endpoint
+//   - POST requests are treated as message endpoint requests
+//
+// 2. For requests to the SSE endpoint, HandleSSE is called
+// 3. For requests to the message endpoint, HandleMessage is called
+// 4. All other paths return 404 Not Found
 func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	ssePath := s.basePath + s.sseEndpoint
@@ -244,6 +262,23 @@ func (s *SSEServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
+	}
+
+	// Check if the request is to the exact base path (with or without trailing slash)
+	// or to the root path when base path is "/"
+	if path == s.basePath || path == s.basePath+"/" || (path == "/" && s.basePath == "/") {
+		// For GET requests to the base path, redirect to the SSE endpoint
+		if r.Method == http.MethodGet {
+			s.logger.Info("Redirecting GET request from base path %s to SSE endpoint %s", path, ssePath)
+			http.Redirect(w, r, ssePath, http.StatusFound)
+			return
+		}
+		// For POST requests to the base path, treat as a message endpoint request
+		if r.Method == http.MethodPost {
+			s.logger.Info("Handling POST request to base path %s as message endpoint", path)
+			s.HandleMessage(w, r)
+			return
+		}
 	}
 
 	if path == ssePath {
@@ -400,6 +435,8 @@ func (s *SSEServer) writeJSONRPCError(w http.ResponseWriter, id interface{}, cod
 
 // getMessageEndpointURL constructs the relative path.
 func (s *SSEServer) getMessageEndpointURL(sessionID string) string {
+	// Format compatible with both 2024-11-05 and 2025-03-26 protocol versions
+	// The 2024-11-05 client expects the sessionId in the query parameter format
 	return fmt.Sprintf("%s%s?sessionId=%s", s.basePath, s.messageEndpoint, sessionID)
 }
 

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoMCP ChatGPT Example</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+    <h1>GoMCP ChatGPT Example</h1>
+
+    <div class="chat-container">
+        <div class="message-container">
+            {{range .History}}
+            <div class="message {{.Role}}">
+                <div class="message-header">
+                    {{.Role}} - {{.Timestamp.Format "Jan 2, 15:04:05"}}
+                </div>
+                <div class="message-content">
+                    {{.Content}}
+                </div>
+            </div>
+            {{else}}
+            <p>No messages yet. Start a conversation!</p>
+            {{end}}
+        </div>
+    </div>
+
+    <form action="/chat" method="post" class="input-form">
+        <input type="text" name="message" placeholder="Type your message..." required>
+        <button type="submit">Send</button>
+    </form>
+</body>
+
+</html>

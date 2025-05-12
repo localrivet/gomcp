@@ -2,10 +2,9 @@
 package protocol
 
 import (
-	"encoding/json" // Added for UnmarshalJSON
-	// Added for UnmarshalJSON
-	// Added for UnmarshalJSON
-	// "github.com/localrivet/gomcp/types" // REMOVED to break import cycle
+	"encoding/json"
+	"fmt"
+	"time"
 )
 
 // --- Tooling Structures and Messages (Schema 2025-03-26) ---
@@ -60,10 +59,50 @@ type ToolCall struct {
 	Input    json.RawMessage `json:"input,omitempty"`
 }
 
-// CallToolRequestParams defines the parameters for a 'tools/call' request (Schema 2025-03-26).
+// CallToolRequestParams defines the parameters for a 'tools/call' request.
+// Supports both schema versions:
+// - 2024-11-05: { "name": "...", "arguments": { ... } }
+// - 2025-03-26: { "tool_call": { "id": "...", "tool_name": "...", "input": { ... } } }
 type CallToolRequestParams struct {
-	ToolCall *ToolCall    `json:"tool_call"` // Use protocol.ToolCall
+	// V2025 format
+	ToolCall *ToolCall    `json:"tool_call,omitempty"`
 	Meta     *RequestMeta `json:"_meta,omitempty"`
+
+	// V2024 format (for backward compatibility)
+	Name      string          `json:"name,omitempty"`
+	Arguments json.RawMessage `json:"arguments,omitempty"`
+}
+
+// UnmarshalJSON implements custom unmarshaling to handle both V2024 and V2025 formats
+func (p *CallToolRequestParams) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as a standard struct first
+	type Alias CallToolRequestParams
+	var standard Alias
+	if err := json.Unmarshal(data, &standard); err != nil {
+		return err
+	}
+
+	// Copy the standard fields
+	*p = CallToolRequestParams(standard)
+
+	// Handle conversion between formats based on which fields were set
+	if p.ToolCall == nil && p.Name != "" {
+		// Convert from V2024 format to V2025 format
+		// Generate a random ID if none exists
+		id := "auto-" + fmt.Sprintf("%d", time.Now().UnixNano())
+		p.ToolCall = &ToolCall{
+			ID:       id,
+			ToolName: p.Name,
+			Input:    p.Arguments,
+		}
+	} else if p.ToolCall != nil && p.Name == "" {
+		// For completeness, we could fill the V2024 fields from V2025 format
+		// But this isn't strictly necessary since we'll use ToolCall going forward
+		p.Name = p.ToolCall.ToolName
+		p.Arguments = p.ToolCall.Input
+	}
+
+	return nil
 }
 
 // ToolError defines the structure for reporting errors during tool execution (Schema 2025-03-26).

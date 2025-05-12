@@ -191,7 +191,7 @@ func (c *Context) ReadResource(uri string) (protocol.ResourceContents, error) {
 				// In case the audio content somehow got returned as text, convert to Audio
 				return protocol.AudioResourceContents{
 					ContentType: textContent.ContentType,
-					Audio:       base64.StdEncoding.EncodeToString([]byte(textContent.Content)),
+					Audio:       base64.StdEncoding.EncodeToString([]byte(textContent.Text)),
 				}, nil
 			}
 		case "binary", "blob", "file":
@@ -202,7 +202,7 @@ func (c *Context) ReadResource(uri string) (protocol.ResourceContents, error) {
 				// Convert TextResourceContents to BlobResourceContents (for test cases)
 				return protocol.BlobResourceContents{
 					ContentType: textContent.ContentType,
-					Blob:        base64.StdEncoding.EncodeToString([]byte(textContent.Content)),
+					Blob:        base64.StdEncoding.EncodeToString([]byte(textContent.Text)),
 				}, nil
 			}
 		case "text", "static":
@@ -219,7 +219,7 @@ func (c *Context) ReadResource(uri string) (protocol.ResourceContents, error) {
 			if textContent, ok := contents.(protocol.TextResourceContents); ok {
 				return protocol.BlobResourceContents{
 					ContentType: textContent.ContentType,
-					Blob:        base64.StdEncoding.EncodeToString([]byte(textContent.Content)),
+					Blob:        base64.StdEncoding.EncodeToString([]byte(textContent.Text)),
 				}, nil
 			}
 		} else if strings.HasSuffix(uri, ".audio") ||
@@ -231,7 +231,7 @@ func (c *Context) ReadResource(uri string) (protocol.ResourceContents, error) {
 			if textContent, ok := contents.(protocol.TextResourceContents); ok {
 				return protocol.AudioResourceContents{
 					ContentType: textContent.ContentType,
-					Audio:       base64.StdEncoding.EncodeToString([]byte(textContent.Content)),
+					Audio:       base64.StdEncoding.EncodeToString([]byte(textContent.Text)),
 				}, nil
 			} else if blobContent, ok := contents.(protocol.BlobResourceContents); ok {
 				return protocol.AudioResourceContents{

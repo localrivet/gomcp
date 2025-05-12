@@ -393,8 +393,8 @@ func TestHandleMessage_ResourcesListTemplates(t *testing.T) {
 	}
 
 	// For now, expect an empty list until templates are actually added/retrieved
-	if len(result.Templates) != 0 {
-		t.Errorf("Expected empty Templates list initially, got %d items", len(result.Templates))
+	if len(result.ResourceTemplates) != 0 {
+		t.Errorf("Expected empty ResourceTemplates list initially, got %d items", len(result.ResourceTemplates))
 	}
 
 	// TODO: Add tests later where templates *are* registered and expected in the result.
@@ -502,8 +502,8 @@ func TestHandleMessage_ResourcesRead_Success(t *testing.T) {
 				if !ok {
 					t.Fatalf("Expected TextResourceContents, got %T", contents[0])
 				}
-				if textContent.Content != textFileContent {
-					t.Errorf("Expected text content '%s', got '%s'", textFileContent, textContent.Content)
+				if textContent.Text != textFileContent {
+					t.Errorf("Expected text content '%s', got '%s'", textFileContent, textContent.Text)
 				}
 			},
 		},
@@ -662,8 +662,8 @@ func TestHandleMessage_CompletionComplete_Success(t *testing.T) {
 	srv.Resource("file:///home/user/project/main.go", server.WithTextContent("package main\n\nfunc main() {}"), server.WithName("main.go"))
 	srv.Resource("file:///home/user/project/other.go", server.WithTextContent("package other"), server.WithName("other.go"))
 	srv.Resource("file:///home/user/data/file.txt", server.WithTextContent("some data"), server.WithName("file.txt"))
-	srv.Registry.AddPrompt(protocol.Prompt{Title: "Code Review", URI: "prompt://code-review"})
-	srv.Registry.AddPrompt(protocol.Prompt{Title: "Code Generation", URI: "prompt://code-gen"})
+	srv.Registry.AddPrompt(protocol.Prompt{Name: "Code Review", URI: "prompt://code-review"})
+	srv.Registry.AddPrompt(protocol.Prompt{Name: "Code Generation", URI: "prompt://code-gen"})
 
 	tests := []struct {
 		name            string
@@ -1297,7 +1297,7 @@ func TestHandleMessage_ResourcesRead_TemplateSuccess(t *testing.T) {
 	textContent, ok := result.Contents[0].(protocol.TextResourceContents)
 	assert.True(t, ok, "Expected content to be TextResourceContents")
 	expectedContent := "Data for item item123 in format text"
-	assert.Equal(t, expectedContent, textContent.Content)
+	assert.Equal(t, expectedContent, textContent.Text)
 	assert.Equal(t, "text/plain", textContent.ContentType) // Default from conversion
 }
 

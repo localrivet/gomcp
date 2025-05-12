@@ -91,6 +91,9 @@ func (tm *TransportManager) runSseTransport(s *Server) error {
 		strings.TrimSuffix(basePath, "/"),
 		basePath, // Use the basePath which includes trailing slash here
 		basePath) // Use the basePath which includes trailing slash here
+	logger.Info("GET requests to base path (%s or %s) will be redirected to the SSE endpoint",
+		strings.TrimSuffix(basePath, "/"),
+		strings.TrimSuffix(basePath, "/")+"/")
 
 	// Configure and start the HTTP server explicitly to set timeouts
 	// SSE connections need longer timeouts, especially IdleTimeout.

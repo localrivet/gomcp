@@ -35,7 +35,59 @@ func TestRegistry_GetPrompt(t *testing.T) { t.Skip("Test not implemented") }
 func TestRegistry_GetPrompts(t *testing.T) { t.Skip("Test not implemented") }
 
 // TODO: Test AddTool (validation)
-func TestRegistry_Tool_Valid(t *testing.T)   { t.Skip("Test not implemented") }
+func TestRegistry_Tool_Valid(t *testing.T) {
+	r := server.NewRegistry()
+
+	// Set up a callback to verify it gets called
+	callbackCalled := false
+	r.SetToolChangedCallback(func() {
+		callbackCalled = true
+	})
+
+	// Define a valid tool handler function with a struct similar to the one in the example
+	handler := func(ctx *server.Context, args struct {
+		Topic string `json:"topic"`
+	}) (interface{}, error) {
+		return fmt.Sprintf("Fact about %s", args.Topic), nil
+	}
+
+	// Register the tool
+	toolName := "fact"
+	toolDesc := "Get a fact about a topic"
+	r.Tool(toolName, toolDesc, handler)
+
+	// Verify the tool was registered
+	tools := r.GetTools()
+	assert.Len(t, tools, 1, "Should have registered exactly one tool")
+
+	// Check the registered tool has correct properties
+	tool := tools[0]
+	assert.Equal(t, toolName, tool.Name)
+	assert.Equal(t, toolDesc, tool.Description)
+
+	// Check that properties are present in the schema
+	assert.Equal(t, "object", tool.InputSchema.Type, "Schema should have type 'object'")
+
+	// The key issue: verify properties are not empty
+	assert.NotEmpty(t, tool.InputSchema.Properties, "Schema properties should not be empty")
+
+	// Verify the specific property we expect
+	topicProp, exists := tool.InputSchema.Properties["topic"]
+	assert.True(t, exists, "Schema should have a 'topic' property")
+	assert.Equal(t, "string", topicProp.Type, "The topic property should be of type string")
+
+	// Verify the required field contains our property
+	assert.Contains(t, tool.InputSchema.Required, "topic", "The topic field should be required")
+
+	// Verify handler was stored and can be retrieved
+	handlerFn, exists := r.GetToolHandler(toolName)
+	assert.True(t, exists, "Handler should be registered")
+	assert.NotNil(t, handlerFn, "Handler function should not be nil")
+
+	// Verify callback was called
+	assert.True(t, callbackCalled, "Tool changed callback should have been called")
+}
+
 func TestRegistry_Tool_Invalid(t *testing.T) { t.Skip("Test not implemented") }
 
 // TODO: Test GetToolHandler

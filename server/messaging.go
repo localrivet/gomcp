@@ -184,14 +184,49 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 				},
 			}
 		} else {
-			// InitializeHandler returns result, caps, error. We only need result and error here.
-			result, _, err = mh.lifecycleHandler.InitializeHandler(params)
+			// InitializeHandler returns result, caps, error
+			var initResult protocol.InitializeResult
+			var clientCaps *protocol.ClientCapabilities
+
+			initResult, clientCaps, err = mh.lifecycleHandler.InitializeHandler(params)
+
+			if err == nil {
+				// Store the negotiated version in the session
+				mh.server.logger.Info("Setting negotiated protocol version for session %s: %s",
+					session.SessionID(), initResult.ProtocolVersion)
+				session.SetNegotiatedVersion(initResult.ProtocolVersion)
+				// Verify the version was set
+				mh.server.logger.Debug("Verified negotiated protocol version for session %s: %s",
+					session.SessionID(), session.GetNegotiatedVersion())
+
+				// Also store the client capabilities
+				if clientCaps != nil {
+					session.StoreClientCapabilities(*clientCaps)
+				}
+
+				// Mark the session as initialized
+				session.Initialize()
+			}
+
+			result = initResult
 		}
 
 	case protocol.MethodShutdown:
 		// Handle shutdown request
 		// No parameters expected for this request
 		err = mh.lifecycleHandler.ShutdownHandler()
+
+	case protocol.MethodListTools: // Use constant instead of hardcoded string
+		// Handle the 'tools/list' request. Client requests a list of available tools.
+		// Get the list of registered tools from the registry
+		tools := mh.server.Registry.GetTools()
+
+		// Format the result into a protocol.ListToolsResult
+		result = &protocol.ListToolsResult{
+			Tools: tools,
+			// NextCursor is optional, leaving empty for now
+		}
+		mh.server.logger.Debug("Responding with %d tools for %s request", len(tools), protocol.MethodListTools)
 
 	case protocol.MethodCallTool:
 		// Handle the 'tools/call' request. Client executes a registered server tool.
@@ -260,6 +295,8 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 
 			// --- Determine and Construct Final Result ---
 			negotiatedVersion := session.GetNegotiatedVersion()
+			mh.server.logger.Debug("Using negotiated protocol version for session %s: %s",
+				session.SessionID(), negotiatedVersion)
 
 			if toolErr != nil {
 				// Handle TOOL EXECUTION Error
@@ -402,7 +439,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 							contentType = "text/plain; charset=utf-8"
 						}
 						contents = []protocol.ResourceContents{
-							protocol.TextResourceContents{ContentType: contentType, Content: content},
+							protocol.TextResourceContents{ContentType: contentType, Text: content, URI: params.URI},
 						}
 					case []byte:
 						// Binary content
@@ -412,7 +449,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 						}
 						encodedContent := base64.StdEncoding.EncodeToString(content)
 						contents = []protocol.ResourceContents{
-							protocol.BlobResourceContents{ContentType: contentType, Blob: encodedContent},
+							protocol.BlobResourceContents{ContentType: contentType, Blob: encodedContent, URI: params.URI},
 						}
 					default:
 						readErr = &protocol.MCPError{
@@ -460,26 +497,26 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 						// Audio content
 						encodedContent := base64.StdEncoding.EncodeToString(data)
 						contents = []protocol.ResourceContents{
-							protocol.AudioResourceContents{ContentType: contentType, Audio: encodedContent},
+							protocol.AudioResourceContents{ContentType: contentType, Audio: encodedContent, URI: params.URI},
 						}
 					} else if isBlobFile {
 						// Binary blob content
 						encodedContent := base64.StdEncoding.EncodeToString(data)
 						contents = []protocol.ResourceContents{
-							protocol.BlobResourceContents{ContentType: contentType, Blob: encodedContent},
+							protocol.BlobResourceContents{ContentType: contentType, Blob: encodedContent, URI: params.URI},
 						}
 					} else if strings.HasPrefix(contentType, "text/") ||
 						contentType == "application/json" ||
 						contentType == "application/xml" {
 						// Treat as text
 						contents = []protocol.ResourceContents{
-							protocol.TextResourceContents{ContentType: contentType, Content: string(data)},
+							protocol.TextResourceContents{ContentType: contentType, Text: string(data), URI: params.URI},
 						}
 					} else {
 						// Treat as binary
 						encodedContent := base64.StdEncoding.EncodeToString(data)
 						contents = []protocol.ResourceContents{
-							protocol.BlobResourceContents{ContentType: contentType, Blob: encodedContent},
+							protocol.BlobResourceContents{ContentType: contentType, Blob: encodedContent, URI: params.URI},
 						}
 					}
 
@@ -512,7 +549,8 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 					contents = []protocol.ResourceContents{
 						protocol.TextResourceContents{
 							ContentType: "application/json; charset=utf-8",
-							Content:     string(listingJSON),
+							Text:        string(listingJSON),
+							URI:         params.URI,
 						},
 					}
 
@@ -540,7 +578,8 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 						contents = []protocol.ResourceContents{
 							protocol.TextResourceContents{
 								ContentType: contentType,
-								Content:     string(urlContent.data),
+								Text:        string(urlContent.data),
+								URI:         params.URI,
 							},
 						}
 					} else {
@@ -549,6 +588,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 							protocol.BlobResourceContents{
 								ContentType: contentType,
 								Blob:        encodedContent,
+								URI:         params.URI,
 							},
 						}
 					}
@@ -592,7 +632,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 					returnValues := handerVal.Call(handerArgs)
 
 					// Convert return values to protocol.Content
-					contents, readErr = convertHandlerResultToResourceContents(returnValues)
+					contents, readErr = convertHandlerResultToResourceContents(returnValues, params.URI)
 					if readErr != nil {
 						break // Exit template loop on conversion error
 					}
@@ -721,13 +761,13 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 		}
 
 	case protocol.MethodResourcesListTemplates:
-		// Handle resources/list_templates request
+		// Handle resources/templates/list request
 		// No parameters expected
-		log.Printf("Received resources/list_templates request from session %s", session.SessionID())
+		log.Printf("Received resources/templates/list request from session %s", session.SessionID())
 		// TODO: Implement actual template retrieval from registry when that's added
 		templates := make([]protocol.ResourceTemplate, 0) // Return empty list for now
 		result = protocol.ListResourceTemplatesResult{
-			Templates: templates,
+			ResourceTemplates: templates,
 		}
 		err = nil
 
@@ -744,20 +784,40 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			break
 		}
 
-		log.Printf("Received prompts/get request from session %s for URI: %s", session.SessionID(), params.URI)
-		prompt, ok := mh.server.Registry.GetPrompt(params.URI)
+		// Try to get by URI first
+		uri := params.URI
+
+		// If name is provided in params (from 2025 schema), use it as fallback
+		if uri == "" && params.Name != "" {
+			uri = params.Name
+		}
+
+		log.Printf("Received prompts/get request from session %s for URI: %s", session.SessionID(), uri)
+
+		// Debug log all registered prompts to help diagnose issues
+		prompts := mh.server.Registry.GetPrompts()
+		log.Printf("DEBUG: Currently registered prompts (%d total):", len(prompts))
+		for i, p := range prompts {
+			log.Printf("DEBUG: Prompt %d - URI: '%s', Name: '%s'", i, p.URI, p.Name)
+		}
+
+		prompt, ok := mh.server.Registry.GetPrompt(uri)
 		if !ok {
 			err = &protocol.MCPError{
 				ErrorPayload: protocol.ErrorPayload{
-					Code:    protocol.CodeInternalError,
-					Message: fmt.Sprintf("Prompt not found: %s", params.URI),
+					Code:    protocol.CodeMCPResourceNotFound,
+					Message: fmt.Sprintf("Prompt not found: %s", uri),
 				},
 			}
 			break
 		}
-		// TODO: Handle applying arguments from params.Arguments to the prompt messages if needed
+
+		log.Printf("Found prompt: URI='%s', Name='%s', MessageCount=%d", prompt.URI, prompt.Name, len(prompt.Messages))
+
+		// Format the result in schema-compliant format
 		result = protocol.GetPromptResult{
-			Prompt: prompt,
+			Messages:    prompt.Messages,
+			Description: prompt.Description,
 		}
 		err = nil
 
@@ -1316,7 +1376,7 @@ func convertParamValue(value interface{}, targetType reflect.Type) (reflect.Valu
 // convertHandlerResultToResourceContents converts the result(s) from a template handler
 // into the []protocol.ResourceContents format.
 // Assumes handler returns (result, error).
-func convertHandlerResultToResourceContents(returnValues []reflect.Value) ([]protocol.ResourceContents, error) {
+func convertHandlerResultToResourceContents(returnValues []reflect.Value, uri string) ([]protocol.ResourceContents, error) {
 	if len(returnValues) != 2 {
 		// This check might be too strict if handlers can omit the error return.
 		// Consider adjusting if handlers with only one return value are allowed.
@@ -1345,27 +1405,58 @@ func convertHandlerResultToResourceContents(returnValues []reflect.Value) ([]pro
 
 	// Handle if result is already []protocol.ResourceContents
 	if contents, ok := resultIf.([]protocol.ResourceContents); ok {
+		// If any content is missing URI, add it
+		for i, content := range contents {
+			if textContent, ok := content.(protocol.TextResourceContents); ok {
+				if textContent.URI == "" {
+					textContent.URI = uri
+					contents[i] = textContent
+				}
+			} else if blobContent, ok := content.(protocol.BlobResourceContents); ok {
+				if blobContent.URI == "" {
+					blobContent.URI = uri
+					contents[i] = blobContent
+				}
+			} else if audioContent, ok := content.(protocol.AudioResourceContents); ok {
+				if audioContent.URI == "" {
+					audioContent.URI = uri
+					contents[i] = audioContent
+				}
+			}
+		}
 		return contents, nil
 	}
 
 	// Handle string result -> TextResourceContents
 	if str, ok := resultIf.(string); ok {
 		// TODO: Determine ContentType more dynamically? Defaulting to text/plain.
-		return []protocol.ResourceContents{protocol.TextResourceContents{ContentType: "text/plain", Content: str}}, nil
+		return []protocol.ResourceContents{protocol.TextResourceContents{
+			ContentType: "text/plain",
+			Text:        str,
+			URI:         uri, // Use provided URI
+		}}, nil
 	}
 
 	// Handle []byte result -> BlobResourceContents (Base64 encoded)
 	if bytes, ok := resultIf.([]byte); ok {
 		encoded := base64.StdEncoding.EncodeToString(bytes)
 		// TODO: Determine ContentType more dynamically? Defaulting to application/octet-stream.
-		return []protocol.ResourceContents{protocol.BlobResourceContents{ContentType: "application/octet-stream", Blob: encoded}}, nil
+		return []protocol.ResourceContents{protocol.BlobResourceContents{
+			ContentType: "application/octet-stream",
+			Blob:        encoded,
+			URI:         uri, // Use provided URI
+		}}, nil
 	}
 
 	// Handle other types (structs, maps, slices etc.) -> JSON marshalled into TextResourceContents
-	jsonBytes, err := json.Marshal(resultIf)
+	jsonBytes, err := json.MarshalIndent(resultIf, "", "  ")
 	if err == nil {
 		// TODO: Should JSON be its own ResourceContent type or always text?
-		return []protocol.ResourceContents{protocol.TextResourceContents{ContentType: "application/json", Content: string(jsonBytes)}}, nil
+		return []protocol.ResourceContents{protocol.TextResourceContents{
+			ContentType: "application/json",
+			Text:        string(jsonBytes),
+			URI:         uri, // Use provided URI
+		}}, nil
 	}
 
 	// If no conversion worked, return an error
@@ -1393,13 +1484,13 @@ func (mh *MessageHandler) handleCompletionComplete(ctx context.Context, rawParam
 
 	switch params.Ref.Type {
 	case protocol.RefTypePrompt:
-		// Suggest matching prompt names/titles
+		// Suggest matching prompt names
 		allPrompts := mh.server.Registry.GetPrompts()
 		for _, p := range allPrompts {
-			// Match against title (or URI if title is empty?)
-			matchTarget := p.Title
+			// Match against name (or URI if name is empty)
+			matchTarget := p.Name
 			if matchTarget == "" {
-				matchTarget = p.URI // Fallback to URI if title empty
+				matchTarget = p.URI // Fallback to URI if name empty
 			}
 			if strings.HasPrefix(strings.ToLower(matchTarget), strings.ToLower(partialValue)) {
 				suggestions = append(suggestions, matchTarget)

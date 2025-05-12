@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/util/schema"
@@ -80,7 +81,7 @@ func (rr *registeredResource) ToProtocolResource(uri string) protocol.Resource {
 
 	return protocol.Resource{
 		URI:         uri,
-		Title:       rr.config.Name, // Map Name to Title
+		Name:        rr.config.Name,
 		Description: rr.config.Description,
 		Kind:        kind, // Now uses dynamic kind based on content type
 		Metadata:    meta,
@@ -268,7 +269,9 @@ func (r *Registry) Tool(
 			log.Printf("Error registering tool %s: handler function second input must be Context and either json.RawMessage or a struct/pointer-to-struct", name)
 			return r // Or return an error
 		}
-		inputSchema = schema.FromStruct(schemaArgsType) // Assign directly
+		// Create a new instance of the struct type to pass to FromStruct
+		structInstance := reflect.New(schemaArgsType).Elem().Interface()
+		inputSchema = schema.FromStruct(structInstance) // Pass struct instance, not type
 	} else {
 		log.Printf("Registering tool %s with json.RawMessage input type. Input schema will be null.", name)
 		// For raw message handlers, input schema is effectively null/any
@@ -289,7 +292,7 @@ func (r *Registry) Tool(
 		RetType:  retType,
 	}
 
-	log.Printf("Registered tool: %s - %s", name, desc) // Placeholder
+	log.Printf("Registered tool: %s - %s %+v", name, desc, inputSchema) // Placeholder
 
 	// Call the callback if set
 	if r.toolChangedCallback != nil {
@@ -318,27 +321,41 @@ func (r *Registry) RemoveTool(name string) *Registry {
 // AddPrompt registers a new prompt with the registry.
 func (r *Registry) AddPrompt(prompt protocol.Prompt) *Registry {
 	r.registryMu.Lock()
-	defer r.registryMu.Unlock()
-	r.promptRegistry[prompt.Title] = prompt // Assuming Title is the key for prompts
-	log.Printf("Registered prompt: %s", prompt.Title)
-	// Call the callback if set
-	if r.promptChangedCallback != nil {
-		log.Printf("DEBUG: Calling promptChangedCallback for prompt %s", prompt.Title)
-		r.promptChangedCallback()
+	// Use prompt.URI as key if not empty, otherwise use Name
+	promptKey := prompt.URI
+	if promptKey == "" {
+		promptKey = prompt.Name
 	}
+	r.promptRegistry[promptKey] = prompt // Using Name as the key
+	log.Printf("Registered prompt: %s", prompt.Name)
+
+	// Call the callback if set, AFTER releasing the lock
+	callback := r.promptChangedCallback
+	r.registryMu.Unlock() // Explicitly unlock before callback
+	if callback != nil {
+		log.Printf("DEBUG: Calling promptChangedCallback for prompt %s", prompt.Name)
+		callback()
+	}
+
 	return r
 }
 
-// RemovePrompt removes a prompt from the registry.
-func (r *Registry) RemovePrompt(title string) *Registry {
+// RemovePrompt removes a prompt from the registry by name.
+func (r *Registry) RemovePrompt(name string) *Registry {
 	r.registryMu.Lock()
-	defer r.registryMu.Unlock()
-	delete(r.promptRegistry, title)
-	log.Printf("Removed prompt: %s", title)
-	// Call the callback if set
+	defer r.registryMu.Unlock() // Will unlock after function returns
+
+	delete(r.promptRegistry, name)
+	log.Printf("Removed prompt: %s", name)
+
+	// Call the callback if set, but after releasing the lock
 	if r.promptChangedCallback != nil {
+		// Need to release the lock before calling the callback to avoid deadlocks
+		r.registryMu.Unlock()
 		r.promptChangedCallback()
+		r.registryMu.Lock() // Re-lock to maintain the deferred unlock pattern
 	}
+
 	return r
 }
 
@@ -358,12 +375,19 @@ func (r *Registry) GetPrompts() []protocol.Prompt {
 func (r *Registry) GetPrompt(uri string) (protocol.Prompt, bool) {
 	r.registryMu.RLock()
 	defer r.registryMu.RUnlock()
-	// Simple linear scan for now. Consider map if performance becomes an issue.
+
+	// First, try to look up directly in the map using the URI as the key
+	if prompt, exists := r.promptRegistry[uri]; exists {
+		return prompt, true
+	}
+
+	// If not found by direct lookup, try linear search checking both URI and Name fields
 	for _, p := range r.promptRegistry {
-		if p.URI == uri {
+		if p.URI == uri || p.Name == uri {
 			return p, true
 		}
 	}
+
 	return protocol.Prompt{}, false
 }
 
@@ -381,7 +405,6 @@ func (r *Registry) GetToolHandler(name string) (func(ctx *Context, rawArgs json.
 
 	originalFn := reflect.ValueOf(handlerInfo.Fn)
 	argsType := handlerInfo.ArgsType
-	// retType := handlerInfo.RetType // Keep this line for potential future use if needed elsewhere - REMOVED
 
 	// Create the wrapper function
 	wrapper := func(ctx *Context, rawArgs json.RawMessage) (interface{}, error) { // Return interface{} and error
@@ -398,31 +421,53 @@ func (r *Registry) GetToolHandler(name string) (func(ctx *Context, rawArgs json.
 			// Handler expects a struct, perform unmarshalling
 			argsPtrValue := reflect.New(argsType)
 			argsInterface := argsPtrValue.Interface()
-			var argsMap map[string]interface{}
+
 			if len(rawArgs) > 0 {
-				if err := json.Unmarshal(rawArgs, &argsMap); err != nil {
-					log.Printf("Error unmarshalling raw arguments for tool %s: %v", name, err)
-					callErr = fmt.Errorf("invalid arguments format: %w", err)
+				// Parse rawArgs into a map first
+				var argsMap map[string]interface{}
+				if mapErr := json.Unmarshal(rawArgs, &argsMap); mapErr != nil {
+					log.Printf("Error unmarshalling raw arguments for tool %s: %v", name, mapErr)
+					callErr = fmt.Errorf("invalid arguments format: %w", mapErr)
 				} else {
-					// Use mapstructure to decode the map into the struct
+					// Configure mapstructure for case-insensitive field matching
 					decoderConfig := &mapstructure.DecoderConfig{
-						Result:  argsInterface,
-						TagName: "json",
+						Result:           argsInterface,
+						TagName:          "json",
+						WeaklyTypedInput: true, // Allow type conversions (string to int, etc)
+						DecodeHook: mapstructure.ComposeDecodeHookFunc(
+							mapstructure.StringToTimeHookFunc(time.RFC3339),
+							mapstructure.StringToSliceHookFunc(","), // Handle comma-separated strings as slices
+						),
+						// Enable case-insensitive matching
+						MatchName: func(mapKey, fieldName string) bool {
+							// Check exact match first
+							if mapKey == fieldName {
+								return true
+							}
+							// Fall back to case-insensitive matching
+							return strings.EqualFold(mapKey, fieldName)
+						},
+						ZeroFields:  true,  // Set fields to zero value before decoding
+						ErrorUnused: false, // Don't error on unused fields (more forgiving)
+						Squash:      true,  // Squash embedded structs
 					}
+
+					// Try to decode with case-insensitive behavior
 					decoder, err := mapstructure.NewDecoder(decoderConfig)
 					if err != nil {
 						log.Printf("Internal error creating argument decoder for tool %s: %v", name, err)
 						callErr = fmt.Errorf("internal error creating decoder: %w", err)
-					} else {
-						if decodeErr := decoder.Decode(argsMap); decodeErr != nil {
-							log.Printf("Error decoding arguments for tool %s: %v", name, decodeErr)
+					} else if decodeErr := decoder.Decode(argsMap); decodeErr != nil {
+						log.Printf("Error decoding arguments for tool %s: %v", name, decodeErr)
+
+						// Fall back to direct JSON unmarshaling as a last resort
+						if jsonErr := json.Unmarshal(rawArgs, argsInterface); jsonErr != nil {
 							callErr = fmt.Errorf("invalid arguments: %w", decodeErr)
 						}
 					}
 				}
-			} else { // Handle case where rawArgs is empty or null for struct type
-				// Depending on the tool, this might be an error or might be okay if struct fields are optional/have defaults.
-				// For now, assume empty struct is okay if input is empty.
+			} else {
+				// Handle case where rawArgs is empty or null for struct type
 				log.Printf("Tool %s called with empty/null input for struct type %s", name, argsType.String())
 			}
 			inputs = []reflect.Value{reflect.ValueOf(ctx), argsPtrValue.Elem()} // Pass context and decoded/empty struct
@@ -767,7 +812,7 @@ func (r *Registry) RegisterResource(resource protocol.Resource) *Registry {
 
 	// Convert protocol.Resource to the new resourceConfig + registeredResource format
 	config := resourceConfig{
-		Name:        resource.Title, // Map Title to Name
+		Name:        resource.Name, // Now using Name directly
 		Description: resource.Description,
 		// Extract MimeType from metadata if present
 		// Extract any annotations/tags if needed

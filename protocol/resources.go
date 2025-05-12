@@ -13,7 +13,7 @@ import (
 type Resource struct {
 	URI         string                 `json:"uri"`                   // Unique identifier (e.g., "file:///path/to/file", "git://...?rev=...")
 	Kind        string                 `json:"kind,omitempty"`        // e.g., "file", "git_commit", "api_spec"
-	Title       string                 `json:"title,omitempty"`       // Human-readable title
+	Name        string                 `json:"name"`                  // Human-readable name (required by MCP spec)
 	Description string                 `json:"description,omitempty"` // Longer description
 	Version     string                 `json:"version,omitempty"`     // Opaque version string (changes when content changes)
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`    // Additional arbitrary metadata
@@ -24,9 +24,10 @@ type Resource struct {
 // ResourceTemplate describes a template for creating resources (Placeholder structure)
 type ResourceTemplate struct {
 	Kind        string                 `json:"kind"`                  // Kind of resource the template creates
-	Title       string                 `json:"title,omitempty"`       // Human-readable title
+	Name        string                 `json:"name"`                  // Human-readable name (required by MCP spec)
 	Description string                 `json:"description,omitempty"` // Longer description
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`    // Default metadata or parameters needed
+	URITemplate string                 `json:"uriTemplate"`           // URI template for constructing resource URLs
 }
 
 // ResourceContents defines the interface for different types of resource content.
@@ -36,23 +37,26 @@ type ResourceContents interface {
 
 // TextResourceContents holds text-based resource content.
 type TextResourceContents struct {
-	ContentType string `json:"contentType"` // e.g., "text/plain", "application/json"
-	Content     string `json:"content"`
+	ContentType string `json:"mimeType"` // e.g., "text/plain", "application/json"
+	Text        string `json:"text"`     // Changed from Content to Text with json tag "text"
+	URI         string `json:"uri"`      // Required by schema
 }
 
 func (trc TextResourceContents) GetContentType() string { return trc.ContentType }
 
 // BlobResourceContents holds binary resource content (base64 encoded).
 type BlobResourceContents struct {
-	ContentType string `json:"contentType"` // e.g., "image/png", "application/octet-stream"
-	Blob        string `json:"blob"`        // Base64 encoded string
+	ContentType string `json:"mimeType"` // e.g., "image/png", "application/octet-stream"
+	Blob        string `json:"blob"`     // Base64 encoded string
+	URI         string `json:"uri"`      // Required by schema
 }
 
 func (brc BlobResourceContents) GetContentType() string { return brc.ContentType }
 
 type AudioResourceContents struct {
-	ContentType string `json:"contentType"` // e.g., "audio/mpeg", "audio/wav"
-	Audio       string `json:"audio"`       // Base64 encoded string
+	ContentType string `json:"mimeType"` // e.g., "audio/mpeg", "audio/wav"
+	Audio       string `json:"audio"`    // Base64 encoded string
+	URI         string `json:"uri"`      // Required by schema
 }
 
 func (arc AudioResourceContents) GetContentType() string { return arc.ContentType }
@@ -72,9 +76,9 @@ type ListResourcesResult struct {
 // ListResourceTemplatesRequestParams defines parameters for 'resources/list_templates'. (Empty)
 type ListResourceTemplatesRequestParams struct{}
 
-// ListResourceTemplatesResult defines the result for 'resources/list_templates'.
+// ListResourceTemplatesResult defines the result for 'resources/templates/list'.
 type ListResourceTemplatesResult struct {
-	Templates []ResourceTemplate `json:"templates"`
+	ResourceTemplates []ResourceTemplate `json:"resourceTemplates"`
 }
 
 // ReadResourceRequestParams defines parameters for 'resources/read'.
@@ -114,19 +118,19 @@ func (r *ReadResourceResult) UnmarshalJSON(data []byte) error {
 		// Try unmarshalling as TextResourceContents
 		var tc TextResourceContents
 		unmarshalErr = json.Unmarshal(raw, &tc)
-		if unmarshalErr == nil && tc.Content != "" { // Check if Content field is present/non-empty
+		if unmarshalErr == nil && tc.Text != "" && tc.URI != "" { // Check if required fields are present
 			actualContent = tc
 		} else {
 			// Try unmarshalling as BlobResourceContents
 			var bc BlobResourceContents
 			unmarshalErr = json.Unmarshal(raw, &bc)
-			if unmarshalErr == nil && bc.Blob != "" { // Check if Blob field is present/non-empty
+			if unmarshalErr == nil && bc.Blob != "" && bc.URI != "" { // Check if required fields are present
 				actualContent = bc
 			} else {
 				// Try unmarshalling as AudioResourceContents
 				var ac AudioResourceContents
 				unmarshalErr = json.Unmarshal(raw, &ac)
-				if unmarshalErr == nil && ac.Audio != "" { // Check if Audio field is present/non-empty
+				if unmarshalErr == nil && ac.Audio != "" && ac.URI != "" { // Check if required fields are present
 					actualContent = ac
 				} else {
 					// None matched or all had errors
