@@ -1,0 +1,61 @@
+# Task ID: 11
+# Title: Implement Cancellation Support
+# Status: pending
+# Dependencies: 3, 4, 10
+# Priority: medium
+# Description: Add support for cancellation of long-running operations.
+# Details:
+Implement cancellation support for long-running operations:
+
+1. Use context.Context for cancellation propagation
+2. Create cancellation request and response types
+3. Implement cancellation handling in server-side tool execution
+4. Add cancellation methods to client implementations
+5. Support cancellation across all transport types
+
+Example implementation:
+```go
+// In protocol package
+type CancellationRequest struct {
+    OperationID string `json:"operation_id"`
+}
+
+type CancellationResponse struct {
+    OperationID string `json:"operation_id"`
+    Success     bool   `json:"success"`
+    Message     string `json:"message,omitempty"`
+}
+
+// In client package
+func (c *Client) CancelOperation(operationID string) error {
+    req := protocol.CancellationRequest{
+        OperationID: operationID,
+    }
+    
+    resp, err := c.transport.Send(req)
+    if err != nil {
+        return err
+    }
+    
+    cancResp, ok := resp.(*protocol.CancellationResponse)
+    if !ok || !cancResp.Success {
+        return fmt.Errorf("failed to cancel operation: %s", cancResp.Message)
+    }
+    
+    return nil
+}
+
+// In server package
+func (s *Server) handleCancellationRequest(req *protocol.CancellationRequest) (*protocol.CancellationResponse, error) {
+    // Implementation that cancels the operation
+    // ...
+    
+    return &protocol.CancellationResponse{
+        OperationID: req.OperationID,
+        Success:     true,
+    }, nil
+}
+```
+
+# Test Strategy:
+Create unit tests for cancellation mechanisms. Test cancellation with various transports. Verify cancellation works with concurrent operations. Test error handling during cancellation. Create integration tests with long-running operations to ensure they can be cancelled properly.

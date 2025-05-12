@@ -1,0 +1,45 @@
+# Task ID: 15
+# Title: Create Comprehensive Documentation
+# Status: pending
+# Dependencies: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
+# Priority: medium
+# Description: Develop comprehensive documentation including API docs, tutorials, and guides.
+# Details:
+Create comprehensive documentation for the library:
+
+1. Generate API documentation using godoc
+2. Create README with installation and quick start guide
+3. Develop tutorials for common use cases
+4. Write guides for advanced features
+5. Create documentation website with navigation
+
+Documentation structure:
+```
+docs/
+  README.md - Overview and installation
+  quickstart.md - Quick start guide
+  tutorials/
+    creating-a-server.md
+    connecting-to-a-server.md
+    registering-tools.md
+    accessing-resources.md
+  guides/
+    transports.md - Transport options and configuration
+    schema.md - Schema generation and validation
+    hooks.md - Using the hook system
+    progress.md - Progress reporting
+    cancellation.md - Operation cancellation
+  api/
+    protocol.md - Protocol package documentation
+    server.md - Server package documentation
+    client.md - Client package documentation
+    transport.md - Transport packages documentation
+    schema.md - Schema package documentation
+    util.md - Utility packages documentation
+  examples.md - Examples overview and explanation
+```
+
+Ensure documentation includes code snippets, diagrams, and clear explanations.
+
+# Test Strategy:
+Review documentation for accuracy and completeness. Verify all code snippets compile and run correctly. Test documentation with users unfamiliar with the library to ensure clarity. Check for broken links and references. Ensure documentation is up-to-date with the latest code changes.

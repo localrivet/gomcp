@@ -1,0 +1,42 @@
+# Task ID: 1
+# Title: Define Protocol Package Core Types
+# Status: pending
+# Dependencies: None
+# Priority: high
+# Description: Create the core protocol package with fundamental types and interfaces that define the MCP specification.
+# Details:
+Create a protocol package that defines all core types and interfaces for the MCP specification:
+
+1. Define version constants for both 2025-03-26 and 2024-11-05
+2. Create interfaces for MCP Client and Server
+3. Define request/response structures
+4. Create tool, resource, and prompt interfaces
+5. Implement version negotiation types
+
+Example structure:
+```go
+package protocol
+
+const (
+    VersionLatest = "2025-03-26"
+    VersionLegacy = "2024-11-05"
+)
+
+type MCPServer interface {
+    RegisterTool(name string, tool Tool) error
+    RegisterResource(name string, resource Resource) error
+    RegisterPrompt(name string, prompt Prompt) error
+    // Additional methods
+}
+
+type MCPClient interface {
+    ListTools() ([]ToolInfo, error)
+    CallTool(name string, args interface{}) (interface{}, error)
+    // Additional methods
+}
+
+// Additional types and interfaces
+```
+
+# Test Strategy:
+Create unit tests for each type and interface to ensure they match the MCP specification. Test version constants, interface method signatures, and basic type functionality. Use table-driven tests to verify protocol compatibility with both versions.

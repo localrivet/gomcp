@@ -1,0 +1,53 @@
+# Task ID: 10
+# Title: Implement Progress Reporting
+# Status: pending
+# Dependencies: 3, 4, 5
+# Priority: medium
+# Description: Add support for progress reporting in long-running operations.
+# Details:
+Implement progress reporting for long-running operations:
+
+1. Define progress report types and interfaces
+2. Create progress update channels and handlers
+3. Implement progress reporting in server-side tool execution
+4. Add progress handling in client implementations
+5. Support progress reporting across all transport types
+
+Example implementation:
+```go
+// In protocol package
+type ProgressReport struct {
+    OperationID string  `json:"operation_id"`
+    Progress    float64 `json:"progress"`    // 0.0 to 1.0
+    Status      string  `json:"status,omitempty"`
+    Message     string  `json:"message,omitempty"`
+}
+
+type ProgressReporter interface {
+    ReportProgress(report ProgressReport) error
+}
+
+// In server package
+func (s *Server) executeToolWithProgress(ctx context.Context, tool protocol.Tool, args interface{}, reporter protocol.ProgressReporter) (interface{}, error) {
+    // Implementation that calls tool and reports progress
+    // ...
+    
+    // Example progress reporting
+    reporter.ReportProgress(protocol.ProgressReport{
+        OperationID: "op123",
+        Progress:    0.5,
+        Status:      "processing",
+        Message:     "Processing data...",
+    })
+    
+    // Continue execution
+    // ...
+    
+    return result, nil
+}
+
+// Additional implementations for client-side handling
+```
+
+# Test Strategy:
+Create unit tests for progress reporting mechanisms. Test progress updates with various transports. Verify progress reporting works with concurrent operations. Test error handling during progress reporting. Create integration tests with long-running operations to ensure progress is reported correctly.

@@ -1,0 +1,67 @@
+# Task ID: 6
+# Title: Implement HTTP/SSE Transport
+# Status: pending
+# Dependencies: 1, 5
+# Priority: medium
+# Description: Create the HTTP/SSE transport implementation for network communication, supporting streaming responses.
+# Details:
+Implement HTTP/SSE transport for network communication:
+
+1. Create client and server implementations for HTTP/SSE transport
+2. Support POST requests for sending data
+3. Implement Server-Sent Events (SSE) for streaming responses
+4. Handle connection management and reconnection
+5. Support proper error propagation
+
+Example implementation:
+```go
+package httpsse
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http"
+    "github.com/your-org/gomcp/protocol"
+)
+
+type ClientTransport struct {
+    baseURL    string
+    httpClient *http.Client
+    // Additional fields
+}
+
+func NewClientTransport(baseURL string) *ClientTransport {
+    return &ClientTransport{
+        baseURL:    baseURL,
+        httpClient: &http.Client{},
+    }
+}
+
+func (t *ClientTransport) Connect() error {
+    // Implementation
+    return nil
+}
+
+func (t *ClientTransport) Send(message interface{}) error {
+    data, err := json.Marshal(message)
+    if err != nil {
+        return err
+    }
+    
+    resp, err := t.httpClient.Post(t.baseURL+"/request", "application/json", bytes.NewReader(data))
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+    
+    // Process response
+    // ...
+    
+    return nil
+}
+
+// Additional methods and server implementation
+```
+
+# Test Strategy:
+Create unit tests using httptest package to mock HTTP servers and clients. Test request/response cycle with various payload sizes. Verify SSE streaming works correctly for long-running operations. Test reconnection logic with simulated network failures. Ensure proper error handling for various HTTP status codes.

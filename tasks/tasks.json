@@ -1,0 +1,233 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Define Protocol Package Core Types",
+      "description": "Create the core protocol package with fundamental types and interfaces that define the MCP specification.",
+      "details": "Create a protocol package that defines all core types and interfaces for the MCP specification:\n\n1. Define version constants for both 2025-03-26 and 2024-11-05\n2. Create interfaces for MCP Client and Server\n3. Define request/response structures\n4. Create tool, resource, and prompt interfaces\n5. Implement version negotiation types\n\nExample structure:\n```go\npackage protocol\n\nconst (\n    VersionLatest = \"2025-03-26\"\n    VersionLegacy = \"2024-11-05\"\n)\n\ntype MCPServer interface {\n    RegisterTool(name string, tool Tool) error\n    RegisterResource(name string, resource Resource) error\n    RegisterPrompt(name string, prompt Prompt) error\n    // Additional methods\n}\n\ntype MCPClient interface {\n    ListTools() ([]ToolInfo, error)\n    CallTool(name string, args interface{}) (interface{}, error)\n    // Additional methods\n}\n\n// Additional types and interfaces\n```",
+      "testStrategy": "Create unit tests for each type and interface to ensure they match the MCP specification. Test version constants, interface method signatures, and basic type functionality. Use table-driven tests to verify protocol compatibility with both versions.",
+      "priority": "high",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 2,
+      "title": "Implement Schema Package",
+      "description": "Create a schema package that supports JSON Schema generation from Go structs and validation for both MCP specification versions.",
+      "details": "Implement a schema package that handles JSON Schema generation and validation:\n\n1. Create functions to generate JSON Schema from Go structs\n2. Support both 2025-03-26 and 2024-11-05 schema versions\n3. Implement validation functions for input/output validation\n4. Handle case sensitivity issues in field names\n5. Support structs without explicit JSON tags\n\nExample implementation:\n```go\npackage schema\n\nimport (\n    \"reflect\"\n    \"encoding/json\"\n    \"github.com/your-org/gomcp/protocol\"\n)\n\n// GenerateSchema creates a JSON schema from a Go struct\nfunc GenerateSchema(v interface{}, version string) (map[string]interface{}, error) {\n    // Implementation that handles different versions\n    t := reflect.TypeOf(v)\n    schema := make(map[string]interface{})\n    \n    // Add schema version based on MCP version\n    if version == protocol.VersionLatest {\n        schema[\"$schema\"] = \"http://json-schema.org/draft-07/schema#\"\n    } else {\n        schema[\"$schema\"] = \"http://json-schema.org/draft-04/schema#\"\n    }\n    \n    // Process struct fields and build schema\n    // ...\n    \n    return schema, nil\n}\n\n// ValidateAgainstSchema validates data against a JSON schema\nfunc ValidateAgainstSchema(data interface{}, schema map[string]interface{}) error {\n    // Implementation\n    // ...\n    return nil\n}\n```",
+      "testStrategy": "Create comprehensive tests with various Go struct types including nested structs, arrays, maps, and custom types. Test schema generation for both MCP versions. Verify validation works correctly with valid and invalid inputs. Test edge cases like case sensitivity and missing JSON tags.",
+      "priority": "high",
+      "dependencies": [
+        1
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 3,
+      "title": "Create Server Package Implementation",
+      "description": "Implement the server-side package that allows developers to create MCP-compliant servers with tool, resource, and prompt registration.",
+      "details": "Implement the server package that provides MCP server functionality:\n\n1. Create a Server struct that implements the MCPServer interface\n2. Implement methods for registering tools, resources, and prompts\n3. Add automatic schema generation for registered items\n4. Implement request handling and routing\n5. Support protocol version negotiation\n\nExample implementation:\n```go\npackage server\n\nimport (\n    \"github.com/your-org/gomcp/protocol\"\n    \"github.com/your-org/gomcp/schema\"\n)\n\ntype Server struct {\n    tools     map[string]protocol.Tool\n    resources map[string]protocol.Resource\n    prompts   map[string]protocol.Prompt\n    version   string\n}\n\nfunc NewServer(options ...Option) *Server {\n    s := &Server{\n        tools:     make(map[string]protocol.Tool),\n        resources: make(map[string]protocol.Resource),\n        prompts:   make(map[string]protocol.Prompt),\n        version:   protocol.VersionLatest,\n    }\n    \n    for _, opt := range options {\n        opt(s)\n    }\n    \n    return s\n}\n\nfunc (s *Server) RegisterTool(name string, tool protocol.Tool) error {\n    // Implementation with schema generation\n    // ...\n    return nil\n}\n\n// Additional methods\n```",
+      "testStrategy": "Create unit tests for server creation and configuration. Test tool, resource, and prompt registration with various types. Verify schema generation works correctly. Test request handling with mock requests. Ensure version negotiation works properly between different protocol versions.",
+      "priority": "high",
+      "dependencies": [
+        1,
+        2
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 4,
+      "title": "Implement Client Package",
+      "description": "Create the client-side package that allows applications to connect to MCP servers and utilize their tools, resources, and prompts.",
+      "details": "Implement the client package for connecting to MCP servers:\n\n1. Create a Client struct that implements the MCPClient interface\n2. Implement methods for discovering available tools, resources, and prompts\n3. Add methods for calling tools and accessing resources\n4. Implement error handling and response parsing\n5. Support protocol version negotiation\n\nExample implementation:\n```go\npackage client\n\nimport (\n    \"github.com/your-org/gomcp/protocol\"\n    \"github.com/your-org/gomcp/schema\"\n)\n\ntype Client struct {\n    transport protocol.Transport\n    version   string\n}\n\nfunc NewClient(transport protocol.Transport, options ...Option) *Client {\n    c := &Client{\n        transport: transport,\n        version:   protocol.VersionLatest,\n    }\n    \n    for _, opt := range options {\n        opt(c)\n    }\n    \n    return c\n}\n\nfunc (c *Client) ListTools() ([]protocol.ToolInfo, error) {\n    // Implementation\n    // ...\n    return nil, nil\n}\n\nfunc (c *Client) CallTool(name string, args interface{}) (interface{}, error) {\n    // Implementation with validation\n    // ...\n    return nil, nil\n}\n\n// Additional methods\n```",
+      "testStrategy": "Create unit tests for client creation and configuration. Test tool discovery and calling with mock responses. Verify error handling works correctly. Test with different protocol versions to ensure compatibility. Use mock transports to simulate various server responses and error conditions.",
+      "priority": "high",
+      "dependencies": [
+        1,
+        2
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 5,
+      "title": "Implement Transport Interface and Stdio Transport",
+      "description": "Create the transport interface and implement the stdio transport for local inter-process communication.",
+      "details": "Define a transport interface and implement stdio transport:\n\n1. Create a Transport interface in the protocol package\n2. Implement a stdio transport that uses standard input/output\n3. Support request/response communication\n4. Handle serialization/deserialization of messages\n5. Implement proper error handling\n\nExample implementation:\n```go\n// In protocol package\ntype Transport interface {\n    Connect() error\n    Disconnect() error\n    Send(message interface{}) error\n    Receive() (interface{}, error)\n    // Additional methods\n}\n\n// In transport/stdio package\npackage stdio\n\nimport (\n    \"bufio\"\n    \"encoding/json\"\n    \"io\"\n    \"os\"\n    \"github.com/your-org/gomcp/protocol\"\n)\n\ntype StdioTransport struct {\n    reader *bufio.Reader\n    writer *bufio.Writer\n}\n\nfunc NewStdioTransport() *StdioTransport {\n    return &StdioTransport{\n        reader: bufio.NewReader(os.Stdin),\n        writer: bufio.NewWriter(os.Stdout),\n    }\n}\n\nfunc (t *StdioTransport) Connect() error {\n    // Implementation\n    return nil\n}\n\n// Additional methods\n```",
+      "testStrategy": "Create unit tests for the stdio transport using io.Pipe to simulate stdin/stdout. Test sending and receiving various message types. Verify error handling for malformed messages. Test with large messages to ensure buffering works correctly. Create integration tests that spawn child processes to test real stdio communication.",
+      "priority": "medium",
+      "dependencies": [
+        1
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 6,
+      "title": "Implement HTTP/SSE Transport",
+      "description": "Create the HTTP/SSE transport implementation for network communication, supporting streaming responses.",
+      "details": "Implement HTTP/SSE transport for network communication:\n\n1. Create client and server implementations for HTTP/SSE transport\n2. Support POST requests for sending data\n3. Implement Server-Sent Events (SSE) for streaming responses\n4. Handle connection management and reconnection\n5. Support proper error propagation\n\nExample implementation:\n```go\npackage httpsse\n\nimport (\n    \"bytes\"\n    \"encoding/json\"\n    \"net/http\"\n    \"github.com/your-org/gomcp/protocol\"\n)\n\ntype ClientTransport struct {\n    baseURL    string\n    httpClient *http.Client\n    // Additional fields\n}\n\nfunc NewClientTransport(baseURL string) *ClientTransport {\n    return &ClientTransport{\n        baseURL:    baseURL,\n        httpClient: &http.Client{},\n    }\n}\n\nfunc (t *ClientTransport) Connect() error {\n    // Implementation\n    return nil\n}\n\nfunc (t *ClientTransport) Send(message interface{}) error {\n    data, err := json.Marshal(message)\n    if err != nil {\n        return err\n    }\n    \n    resp, err := t.httpClient.Post(t.baseURL+\"/request\", \"application/json\", bytes.NewReader(data))\n    if err != nil {\n        return err\n    }\n    defer resp.Body.Close()\n    \n    // Process response\n    // ...\n    \n    return nil\n}\n\n// Additional methods and server implementation\n```",
+      "testStrategy": "Create unit tests using httptest package to mock HTTP servers and clients. Test request/response cycle with various payload sizes. Verify SSE streaming works correctly for long-running operations. Test reconnection logic with simulated network failures. Ensure proper error handling for various HTTP status codes.",
+      "priority": "medium",
+      "dependencies": [
+        1,
+        5
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 7,
+      "title": "Implement WebSocket Transport",
+      "description": "Create the WebSocket transport implementation for persistent, bidirectional communication.",
+      "details": "Implement WebSocket transport for bidirectional communication:\n\n1. Create client and server implementations for WebSocket transport\n2. Support message framing and serialization\n3. Implement connection management and heartbeats\n4. Handle reconnection and error recovery\n5. Support concurrent requests and responses\n\nExample implementation:\n```go\npackage websocket\n\nimport (\n    \"encoding/json\"\n    \"github.com/gorilla/websocket\"\n    \"github.com/your-org/gomcp/protocol\"\n)\n\ntype ClientTransport struct {\n    url      string\n    conn     *websocket.Conn\n    msgChan  chan []byte\n    errChan  chan error\n    // Additional fields\n}\n\nfunc NewClientTransport(url string) *ClientTransport {\n    return &ClientTransport{\n        url:     url,\n        msgChan: make(chan []byte),\n        errChan: make(chan error),\n    }\n}\n\nfunc (t *ClientTransport) Connect() error {\n    conn, _, err := websocket.DefaultDialer.Dial(t.url, nil)\n    if err != nil {\n        return err\n    }\n    \n    t.conn = conn\n    \n    // Start reader goroutine\n    go t.readPump()\n    \n    return nil\n}\n\nfunc (t *ClientTransport) readPump() {\n    defer t.conn.Close()\n    \n    for {\n        _, message, err := t.conn.ReadMessage()\n        if err != nil {\n            t.errChan <- err\n            return\n        }\n        \n        t.msgChan <- message\n    }\n}\n\n// Additional methods and server implementation\n```",
+      "testStrategy": "Create unit tests using a mock WebSocket server. Test connection establishment and message exchange. Verify concurrent requests work correctly. Test reconnection logic with simulated disconnections. Ensure proper error handling for various WebSocket error conditions. Test with large messages to verify framing works correctly.",
+      "priority": "medium",
+      "dependencies": [
+        1,
+        5
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 8,
+      "title": "Implement TCP Transport",
+      "description": "Create the TCP transport implementation for raw socket communication.",
+      "details": "Implement TCP transport for raw socket communication:\n\n1. Create client and server implementations for TCP transport\n2. Implement message framing and length-prefixing\n3. Support connection management and pooling\n4. Handle reconnection and error recovery\n5. Implement efficient I/O with buffering\n\nExample implementation:\n```go\npackage tcp\n\nimport (\n    \"bufio\"\n    \"encoding/binary\"\n    \"encoding/json\"\n    \"net\"\n    \"github.com/your-org/gomcp/protocol\"\n)\n\ntype ClientTransport struct {\n    addr     string\n    conn     net.Conn\n    reader   *bufio.Reader\n    writer   *bufio.Writer\n    // Additional fields\n}\n\nfunc NewClientTransport(addr string) *ClientTransport {\n    return &ClientTransport{\n        addr: addr,\n    }\n}\n\nfunc (t *ClientTransport) Connect() error {\n    conn, err := net.Dial(\"tcp\", t.addr)\n    if err != nil {\n        return err\n    }\n    \n    t.conn = conn\n    t.reader = bufio.NewReader(conn)\n    t.writer = bufio.NewWriter(conn)\n    \n    return nil\n}\n\nfunc (t *ClientTransport) Send(message interface{}) error {\n    data, err := json.Marshal(message)\n    if err != nil {\n        return err\n    }\n    \n    // Write length prefix\n    lenBuf := make([]byte, 4)\n    binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))\n    \n    if _, err := t.writer.Write(lenBuf); err != nil {\n        return err\n    }\n    \n    // Write message\n    if _, err := t.writer.Write(data); err != nil {\n        return err\n    }\n    \n    return t.writer.Flush()\n}\n\n// Additional methods and server implementation\n```",
+      "testStrategy": "Create unit tests using net.Pipe to simulate TCP connections. Test message framing with various message sizes. Verify connection management works correctly. Test reconnection logic with simulated disconnections. Ensure proper error handling for various network error conditions. Test concurrent connections to verify server implementation can handle multiple clients.",
+      "priority": "low",
+      "dependencies": [
+        1,
+        5
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 9,
+      "title": "Implement Hook System",
+      "description": "Create an extensible hook system for customizing server and client behavior.",
+      "details": "Implement a hook system for customization and extension:\n\n1. Define hook interfaces and types\n2. Create hook registration and execution mechanisms\n3. Implement common hooks (pre/post request, error handling, etc.)\n4. Add hook points in server and client implementations\n5. Create utilities for hook chaining and composition\n\nExample implementation:\n```go\npackage hooks\n\nimport (\n    \"context\"\n    \"github.com/your-org/gomcp/protocol\"\n)\n\ntype RequestHook func(ctx context.Context, req *protocol.Request) (*protocol.Request, error)\ntype ResponseHook func(ctx context.Context, resp *protocol.Response) (*protocol.Response, error)\ntype ErrorHook func(ctx context.Context, err error) error\n\ntype HookManager struct {\n    preRequestHooks  []RequestHook\n    postRequestHooks []RequestHook\n    preResponseHooks []ResponseHook\n    postResponseHooks []ResponseHook\n    errorHooks       []ErrorHook\n}\n\nfunc NewHookManager() *HookManager {\n    return &HookManager{}\n}\n\nfunc (m *HookManager) AddPreRequestHook(hook RequestHook) {\n    m.preRequestHooks = append(m.preRequestHooks, hook)\n}\n\nfunc (m *HookManager) ExecutePreRequestHooks(ctx context.Context, req *protocol.Request) (*protocol.Request, error) {\n    var err error\n    for _, hook := range m.preRequestHooks {\n        req, err = hook(ctx, req)\n        if err != nil {\n            return req, err\n        }\n    }\n    return req, nil\n}\n\n// Additional methods\n```",
+      "testStrategy": "Create unit tests for hook registration and execution. Test hook chaining with multiple hooks. Verify hook execution order is preserved. Test error handling in hooks. Create integration tests with server and client to ensure hooks are called at the right points in the request/response cycle.",
+      "priority": "medium",
+      "dependencies": [
+        3,
+        4
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 10,
+      "title": "Implement Progress Reporting",
+      "description": "Add support for progress reporting in long-running operations.",
+      "details": "Implement progress reporting for long-running operations:\n\n1. Define progress report types and interfaces\n2. Create progress update channels and handlers\n3. Implement progress reporting in server-side tool execution\n4. Add progress handling in client implementations\n5. Support progress reporting across all transport types\n\nExample implementation:\n```go\n// In protocol package\ntype ProgressReport struct {\n    OperationID string  `json:\"operation_id\"`\n    Progress    float64 `json:\"progress\"`    // 0.0 to 1.0\n    Status      string  `json:\"status,omitempty\"`\n    Message     string  `json:\"message,omitempty\"`\n}\n\ntype ProgressReporter interface {\n    ReportProgress(report ProgressReport) error\n}\n\n// In server package\nfunc (s *Server) executeToolWithProgress(ctx context.Context, tool protocol.Tool, args interface{}, reporter protocol.ProgressReporter) (interface{}, error) {\n    // Implementation that calls tool and reports progress\n    // ...\n    \n    // Example progress reporting\n    reporter.ReportProgress(protocol.ProgressReport{\n        OperationID: \"op123\",\n        Progress:    0.5,\n        Status:      \"processing\",\n        Message:     \"Processing data...\",\n    })\n    \n    // Continue execution\n    // ...\n    \n    return result, nil\n}\n\n// Additional implementations for client-side handling\n```",
+      "testStrategy": "Create unit tests for progress reporting mechanisms. Test progress updates with various transports. Verify progress reporting works with concurrent operations. Test error handling during progress reporting. Create integration tests with long-running operations to ensure progress is reported correctly.",
+      "priority": "medium",
+      "dependencies": [
+        3,
+        4,
+        5
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 11,
+      "title": "Implement Cancellation Support",
+      "description": "Add support for cancellation of long-running operations.",
+      "details": "Implement cancellation support for long-running operations:\n\n1. Use context.Context for cancellation propagation\n2. Create cancellation request and response types\n3. Implement cancellation handling in server-side tool execution\n4. Add cancellation methods to client implementations\n5. Support cancellation across all transport types\n\nExample implementation:\n```go\n// In protocol package\ntype CancellationRequest struct {\n    OperationID string `json:\"operation_id\"`\n}\n\ntype CancellationResponse struct {\n    OperationID string `json:\"operation_id\"`\n    Success     bool   `json:\"success\"`\n    Message     string `json:\"message,omitempty\"`\n}\n\n// In client package\nfunc (c *Client) CancelOperation(operationID string) error {\n    req := protocol.CancellationRequest{\n        OperationID: operationID,\n    }\n    \n    resp, err := c.transport.Send(req)\n    if err != nil {\n        return err\n    }\n    \n    cancResp, ok := resp.(*protocol.CancellationResponse)\n    if !ok || !cancResp.Success {\n        return fmt.Errorf(\"failed to cancel operation: %s\", cancResp.Message)\n    }\n    \n    return nil\n}\n\n// In server package\nfunc (s *Server) handleCancellationRequest(req *protocol.CancellationRequest) (*protocol.CancellationResponse, error) {\n    // Implementation that cancels the operation\n    // ...\n    \n    return &protocol.CancellationResponse{\n        OperationID: req.OperationID,\n        Success:     true,\n    }, nil\n}\n```",
+      "testStrategy": "Create unit tests for cancellation mechanisms. Test cancellation with various transports. Verify cancellation works with concurrent operations. Test error handling during cancellation. Create integration tests with long-running operations to ensure they can be cancelled properly.",
+      "priority": "medium",
+      "dependencies": [
+        3,
+        4,
+        10
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 12,
+      "title": "Implement Argument Parsing and Response Creation Utilities",
+      "description": "Create utilities for parsing arguments and creating standardized responses.",
+      "details": "Implement utilities for argument parsing and response creation:\n\n1. Create functions for parsing and validating arguments\n2. Implement utilities for creating standardized responses\n3. Add helpers for error wrapping and context propagation\n4. Create utilities for type conversion and coercion\n5. Implement helpers for handling common argument patterns\n\nExample implementation:\n```go\npackage util\n\nimport (\n    \"encoding/json\"\n    \"fmt\"\n    \"github.com/your-org/gomcp/protocol\"\n    \"github.com/your-org/gomcp/schema\"\n)\n\n// ParseAndValidateArgs parses and validates arguments against a schema\nfunc ParseAndValidateArgs(rawArgs interface{}, target interface{}, schemaVersion string) error {\n    // Convert raw args to JSON\n    jsonData, err := json.Marshal(rawArgs)\n    if err != nil {\n        return fmt.Errorf(\"failed to marshal arguments: %w\", err)\n    }\n    \n    // Unmarshal into target\n    if err := json.Unmarshal(jsonData, target); err != nil {\n        return fmt.Errorf(\"failed to unmarshal arguments: %w\", err)\n    }\n    \n    // Generate schema and validate\n    s, err := schema.GenerateSchema(target, schemaVersion)\n    if err != nil {\n        return fmt.Errorf(\"failed to generate schema: %w\", err)\n    }\n    \n    if err := schema.ValidateAgainstSchema(target, s); err != nil {\n        return fmt.Errorf(\"validation failed: %w\", err)\n    }\n    \n    return nil\n}\n\n// CreateSuccessResponse creates a standardized success response\nfunc CreateSuccessResponse(data interface{}) *protocol.Response {\n    return &protocol.Response{\n        Status: \"success\",\n        Data:   data,\n    }\n}\n\n// CreateErrorResponse creates a standardized error response\nfunc CreateErrorResponse(err error) *protocol.Response {\n    return &protocol.Response{\n        Status:  \"error\",\n        Message: err.Error(),\n    }\n}\n\n// Additional utility functions\n```",
+      "testStrategy": "Create unit tests for argument parsing with various input types. Test validation with valid and invalid inputs. Verify response creation works correctly. Test error handling and propagation. Create integration tests with server and client to ensure utilities work in real scenarios.",
+      "priority": "medium",
+      "dependencies": [
+        1,
+        2
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 13,
+      "title": "Implement Version Negotiation",
+      "description": "Create a robust version negotiation system to ensure compatibility between different MCP versions.",
+      "details": "Implement version negotiation for protocol compatibility:\n\n1. Define version negotiation request and response types\n2. Create version compatibility checking functions\n3. Implement server-side version handling\n4. Add client-side version negotiation during connection\n5. Support graceful fallbacks for incompatible features\n\nExample implementation:\n```go\n// In protocol package\ntype VersionInfo struct {\n    Version string   `json:\"version\"`\n    Supported []string `json:\"supported,omitempty\"`\n}\n\ntype VersionNegotiationRequest struct {\n    ClientVersion VersionInfo `json:\"client_version\"`\n}\n\ntype VersionNegotiationResponse struct {\n    ServerVersion VersionInfo `json:\"server_version\"`\n    Compatible    bool        `json:\"compatible\"`\n    SelectedVersion string    `json:\"selected_version\"`\n}\n\n// In server package\nfunc (s *Server) handleVersionNegotiation(req *protocol.VersionNegotiationRequest) (*protocol.VersionNegotiationResponse, error) {\n    serverVersions := []string{protocol.VersionLatest}\n    if s.supportLegacy {\n        serverVersions = append(serverVersions, protocol.VersionLegacy)\n    }\n    \n    // Find highest compatible version\n    selectedVersion := \"\"\n    for _, sv := range serverVersions {\n        for _, cv := range req.ClientVersion.Supported {\n            if sv == cv {\n                if selectedVersion == \"\" || versionGreaterThan(sv, selectedVersion) {\n                    selectedVersion = sv\n                }\n            }\n        }\n    }\n    \n    return &protocol.VersionNegotiationResponse{\n        ServerVersion: protocol.VersionInfo{\n            Version:   protocol.VersionLatest,\n            Supported: serverVersions,\n        },\n        Compatible:     selectedVersion != \"\",\n        SelectedVersion: selectedVersion,\n    }, nil\n}\n\n// Helper function to compare versions\nfunc versionGreaterThan(v1, v2 string) bool {\n    // Implementation\n    // ...\n    return false\n}\n```",
+      "testStrategy": "Create unit tests for version negotiation with various version combinations. Test compatibility checking with compatible and incompatible versions. Verify fallback behavior works correctly. Test error handling for incompatible versions. Create integration tests with clients and servers using different versions to ensure negotiation works properly.",
+      "priority": "high",
+      "dependencies": [
+        1,
+        3,
+        4
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 14,
+      "title": "Create Comprehensive Examples",
+      "description": "Develop a set of comprehensive examples demonstrating various use cases of the library.",
+      "details": "Create comprehensive examples for various use cases:\n\n1. Basic server and client examples\n2. Examples for each transport type\n3. Tool, resource, and prompt registration examples\n4. Progress reporting and cancellation examples\n5. Advanced usage with hooks and customization\n\nExample structure:\n```\nexamples/\n  basic/\n    server.go - Basic server implementation\n    client.go - Basic client implementation\n  transports/\n    stdio/\n      server.go - Stdio server example\n      client.go - Stdio client example\n    http/\n      server.go - HTTP server example\n      client.go - HTTP client example\n    websocket/\n      server.go - WebSocket server example\n      client.go - WebSocket client example\n    tcp/\n      server.go - TCP server example\n      client.go - TCP client example\n  tools/\n    calculator.go - Example calculator tool\n    weather.go - Example weather API tool\n  resources/\n    document.go - Example document resource\n  prompts/\n    chatbot.go - Example chatbot prompt\n  advanced/\n    progress.go - Progress reporting example\n    cancellation.go - Cancellation example\n    hooks.go - Hook system example\n```\n\nEach example should include detailed comments explaining the code and usage patterns.",
+      "testStrategy": "Ensure all examples compile and run correctly. Create automated tests that run the examples and verify their output. Test examples with different Go versions to ensure compatibility. Create documentation that references and explains the examples. Verify examples cover all major features of the library.",
+      "priority": "low",
+      "dependencies": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 15,
+      "title": "Create Comprehensive Documentation",
+      "description": "Develop comprehensive documentation including API docs, tutorials, and guides.",
+      "details": "Create comprehensive documentation for the library:\n\n1. Generate API documentation using godoc\n2. Create README with installation and quick start guide\n3. Develop tutorials for common use cases\n4. Write guides for advanced features\n5. Create documentation website with navigation\n\nDocumentation structure:\n```\ndocs/\n  README.md - Overview and installation\n  quickstart.md - Quick start guide\n  tutorials/\n    creating-a-server.md\n    connecting-to-a-server.md\n    registering-tools.md\n    accessing-resources.md\n  guides/\n    transports.md - Transport options and configuration\n    schema.md - Schema generation and validation\n    hooks.md - Using the hook system\n    progress.md - Progress reporting\n    cancellation.md - Operation cancellation\n  api/\n    protocol.md - Protocol package documentation\n    server.md - Server package documentation\n    client.md - Client package documentation\n    transport.md - Transport packages documentation\n    schema.md - Schema package documentation\n    util.md - Utility packages documentation\n  examples.md - Examples overview and explanation\n```\n\nEnsure documentation includes code snippets, diagrams, and clear explanations.",
+      "testStrategy": "Review documentation for accuracy and completeness. Verify all code snippets compile and run correctly. Test documentation with users unfamiliar with the library to ensure clarity. Check for broken links and references. Ensure documentation is up-to-date with the latest code changes.",
+      "priority": "medium",
+      "dependencies": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "status": "pending",
+      "subtasks": []
+    }
+  ]
+}

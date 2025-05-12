@@ -1,0 +1,73 @@
+# Task ID: 12
+# Title: Implement Argument Parsing and Response Creation Utilities
+# Status: pending
+# Dependencies: 1, 2
+# Priority: medium
+# Description: Create utilities for parsing arguments and creating standardized responses.
+# Details:
+Implement utilities for argument parsing and response creation:
+
+1. Create functions for parsing and validating arguments
+2. Implement utilities for creating standardized responses
+3. Add helpers for error wrapping and context propagation
+4. Create utilities for type conversion and coercion
+5. Implement helpers for handling common argument patterns
+
+Example implementation:
+```go
+package util
+
+import (
+    "encoding/json"
+    "fmt"
+    "github.com/your-org/gomcp/protocol"
+    "github.com/your-org/gomcp/schema"
+)
+
+// ParseAndValidateArgs parses and validates arguments against a schema
+func ParseAndValidateArgs(rawArgs interface{}, target interface{}, schemaVersion string) error {
+    // Convert raw args to JSON
+    jsonData, err := json.Marshal(rawArgs)
+    if err != nil {
+        return fmt.Errorf("failed to marshal arguments: %w", err)
+    }
+    
+    // Unmarshal into target
+    if err := json.Unmarshal(jsonData, target); err != nil {
+        return fmt.Errorf("failed to unmarshal arguments: %w", err)
+    }
+    
+    // Generate schema and validate
+    s, err := schema.GenerateSchema(target, schemaVersion)
+    if err != nil {
+        return fmt.Errorf("failed to generate schema: %w", err)
+    }
+    
+    if err := schema.ValidateAgainstSchema(target, s); err != nil {
+        return fmt.Errorf("validation failed: %w", err)
+    }
+    
+    return nil
+}
+
+// CreateSuccessResponse creates a standardized success response
+func CreateSuccessResponse(data interface{}) *protocol.Response {
+    return &protocol.Response{
+        Status: "success",
+        Data:   data,
+    }
+}
+
+// CreateErrorResponse creates a standardized error response
+func CreateErrorResponse(err error) *protocol.Response {
+    return &protocol.Response{
+        Status:  "error",
+        Message: err.Error(),
+    }
+}
+
+// Additional utility functions
+```
+
+# Test Strategy:
+Create unit tests for argument parsing with various input types. Test validation with valid and invalid inputs. Verify response creation works correctly. Test error handling and propagation. Create integration tests with server and client to ensure utilities work in real scenarios.

@@ -1,0 +1,74 @@
+# Task ID: 7
+# Title: Implement WebSocket Transport
+# Status: pending
+# Dependencies: 1, 5
+# Priority: medium
+# Description: Create the WebSocket transport implementation for persistent, bidirectional communication.
+# Details:
+Implement WebSocket transport for bidirectional communication:
+
+1. Create client and server implementations for WebSocket transport
+2. Support message framing and serialization
+3. Implement connection management and heartbeats
+4. Handle reconnection and error recovery
+5. Support concurrent requests and responses
+
+Example implementation:
+```go
+package websocket
+
+import (
+    "encoding/json"
+    "github.com/gorilla/websocket"
+    "github.com/your-org/gomcp/protocol"
+)
+
+type ClientTransport struct {
+    url      string
+    conn     *websocket.Conn
+    msgChan  chan []byte
+    errChan  chan error
+    // Additional fields
+}
+
+func NewClientTransport(url string) *ClientTransport {
+    return &ClientTransport{
+        url:     url,
+        msgChan: make(chan []byte),
+        errChan: make(chan error),
+    }
+}
+
+func (t *ClientTransport) Connect() error {
+    conn, _, err := websocket.DefaultDialer.Dial(t.url, nil)
+    if err != nil {
+        return err
+    }
+    
+    t.conn = conn
+    
+    // Start reader goroutine
+    go t.readPump()
+    
+    return nil
+}
+
+func (t *ClientTransport) readPump() {
+    defer t.conn.Close()
+    
+    for {
+        _, message, err := t.conn.ReadMessage()
+        if err != nil {
+            t.errChan <- err
+            return
+        }
+        
+        t.msgChan <- message
+    }
+}
+
+// Additional methods and server implementation
+```
+
+# Test Strategy:
+Create unit tests using a mock WebSocket server. Test connection establishment and message exchange. Verify concurrent requests work correctly. Test reconnection logic with simulated disconnections. Ensure proper error handling for various WebSocket error conditions. Test with large messages to verify framing works correctly.

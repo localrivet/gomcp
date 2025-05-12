@@ -1,0 +1,72 @@
+# Task ID: 13
+# Title: Implement Version Negotiation
+# Status: pending
+# Dependencies: 1, 3, 4
+# Priority: high
+# Description: Create a robust version negotiation system to ensure compatibility between different MCP versions.
+# Details:
+Implement version negotiation for protocol compatibility:
+
+1. Define version negotiation request and response types
+2. Create version compatibility checking functions
+3. Implement server-side version handling
+4. Add client-side version negotiation during connection
+5. Support graceful fallbacks for incompatible features
+
+Example implementation:
+```go
+// In protocol package
+type VersionInfo struct {
+    Version string   `json:"version"`
+    Supported []string `json:"supported,omitempty"`
+}
+
+type VersionNegotiationRequest struct {
+    ClientVersion VersionInfo `json:"client_version"`
+}
+
+type VersionNegotiationResponse struct {
+    ServerVersion VersionInfo `json:"server_version"`
+    Compatible    bool        `json:"compatible"`
+    SelectedVersion string    `json:"selected_version"`
+}
+
+// In server package
+func (s *Server) handleVersionNegotiation(req *protocol.VersionNegotiationRequest) (*protocol.VersionNegotiationResponse, error) {
+    serverVersions := []string{protocol.VersionLatest}
+    if s.supportLegacy {
+        serverVersions = append(serverVersions, protocol.VersionLegacy)
+    }
+    
+    // Find highest compatible version
+    selectedVersion := ""
+    for _, sv := range serverVersions {
+        for _, cv := range req.ClientVersion.Supported {
+            if sv == cv {
+                if selectedVersion == "" || versionGreaterThan(sv, selectedVersion) {
+                    selectedVersion = sv
+                }
+            }
+        }
+    }
+    
+    return &protocol.VersionNegotiationResponse{
+        ServerVersion: protocol.VersionInfo{
+            Version:   protocol.VersionLatest,
+            Supported: serverVersions,
+        },
+        Compatible:     selectedVersion != "",
+        SelectedVersion: selectedVersion,
+    }, nil
+}
+
+// Helper function to compare versions
+func versionGreaterThan(v1, v2 string) bool {
+    // Implementation
+    // ...
+    return false
+}
+```
+
+# Test Strategy:
+Create unit tests for version negotiation with various version combinations. Test compatibility checking with compatible and incompatible versions. Verify fallback behavior works correctly. Test error handling for incompatible versions. Create integration tests with clients and servers using different versions to ensure negotiation works properly.

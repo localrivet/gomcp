@@ -1,0 +1,57 @@
+# Task ID: 3
+# Title: Create Server Package Implementation
+# Status: pending
+# Dependencies: 1, 2
+# Priority: high
+# Description: Implement the server-side package that allows developers to create MCP-compliant servers with tool, resource, and prompt registration.
+# Details:
+Implement the server package that provides MCP server functionality:
+
+1. Create a Server struct that implements the MCPServer interface
+2. Implement methods for registering tools, resources, and prompts
+3. Add automatic schema generation for registered items
+4. Implement request handling and routing
+5. Support protocol version negotiation
+
+Example implementation:
+```go
+package server
+
+import (
+    "github.com/your-org/gomcp/protocol"
+    "github.com/your-org/gomcp/schema"
+)
+
+type Server struct {
+    tools     map[string]protocol.Tool
+    resources map[string]protocol.Resource
+    prompts   map[string]protocol.Prompt
+    version   string
+}
+
+func NewServer(options ...Option) *Server {
+    s := &Server{
+        tools:     make(map[string]protocol.Tool),
+        resources: make(map[string]protocol.Resource),
+        prompts:   make(map[string]protocol.Prompt),
+        version:   protocol.VersionLatest,
+    }
+    
+    for _, opt := range options {
+        opt(s)
+    }
+    
+    return s
+}
+
+func (s *Server) RegisterTool(name string, tool protocol.Tool) error {
+    // Implementation with schema generation
+    // ...
+    return nil
+}
+
+// Additional methods
+```
+
+# Test Strategy:
+Create unit tests for server creation and configuration. Test tool, resource, and prompt registration with various types. Verify schema generation works correctly. Test request handling with mock requests. Ensure version negotiation works properly between different protocol versions.
