@@ -1,96 +1,38 @@
 package server
 
 import (
-	"context"
-	"fmt"
-
 	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/util/schema"
 )
 
-// --- Helper Functions ---
-
-// Basic function types
-type ToolFunc[T any] func(T) (protocol.Content, error)
-type PromptFunc[T any] func(T) (protocol.PromptMessage, error)
-type ResourceFunc func() (protocol.ResourceContents, error)
-
-// Middleware types
-type ToolMiddleware[T any] func(ToolFunc[T]) ToolFunc[T]
-
-// Response helpers to hide protocol details
-func Text(s string) protocol.Content {
-	return protocol.TextContent{Type: "text", Text: s}
+// Text creates a protocol.Content of type text.
+func Text(msg string) protocol.Content {
+	// Create a TextContent struct and return it as a Content interface
+	return protocol.TextContent{
+		Type: "text",
+		Text: msg,
+	}
 }
 
-func Message(role string, content string) protocol.PromptMessage {
+// Define helper functions for prompt messages
+// Note: "system" role is not valid according to MCP schemas - only "user" and "assistant" are allowed
+func System(msg string) protocol.PromptMessage {
+	// Using "user" role instead of "system" to comply with schemas
 	return protocol.PromptMessage{
-		Role:    role,
-		Content: []protocol.Content{Text(content)},
+		Role:    "user",
+		Content: Text(msg), // Single Content object, not an array
 	}
 }
 
-// AddTool provides a simpler API for adding tools
-func AddTool[T any](
-	srv *Server,
-	name string,
-	description string,
-	handler ToolFunc[T],
-) error {
-	wrappedHandler := func(ctx context.Context, _ interface{}, arguments any) ([]protocol.Content, bool) {
-		args, errContent, isErr := schema.HandleArgs[T](arguments)
-		if isErr {
-			return errContent, true
-		}
-
-		if args == nil {
-			return []protocol.Content{Text("Error: nil arguments")}, true
-		}
-
-		content, err := handler(*args)
-		if err != nil {
-			return []protocol.Content{Text(fmt.Sprintf("Error: %v", err))}, true
-		}
-
-		return []protocol.Content{content}, false
+func User(msg string) protocol.PromptMessage {
+	return protocol.PromptMessage{
+		Role:    "user",
+		Content: Text(msg), // Single Content object, not an array
 	}
-
-	return srv.RegisterTool(protocol.Tool{
-		Name:        name,
-		Description: description,
-		InputSchema: schema.FromStruct(*new(T)),
-	}, wrappedHandler)
 }
 
-// AddPrompt provides a simpler API for adding prompts
-func AddPrompt[T any](
-	srv *Server,
-	name string,
-	description string,
-	handler PromptFunc[T],
-) error {
-	return srv.RegisterPrompt(protocol.Prompt{
-		URI:         fmt.Sprintf("prompt://%s", name),
-		Title:       name,
-		Description: description,
-		Messages:    []protocol.PromptMessage{},
-	})
-}
-
-// AddResource provides a simpler API for adding resources
-func AddResource(
-	srv *Server,
-	uri string,
-	kind string,
-	description string,
-	version string,
-	handler ResourceFunc,
-) error {
-	return srv.RegisterResource(protocol.Resource{
-		URI:         uri,
-		Kind:        kind,
-		Title:       kind,
-		Description: description,
-		Version:     version,
-	})
+func Assistant(msg string) protocol.PromptMessage {
+	return protocol.PromptMessage{
+		Role:    "assistant",
+		Content: Text(msg), // Single Content object, not an array
+	}
 }

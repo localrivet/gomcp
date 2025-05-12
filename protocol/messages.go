@@ -7,6 +7,12 @@ import (
 	"log"
 )
 
+// Annotations provides optional annotations for the client (2025-03-26).
+type Annotations struct {
+	Audience []string `json:"audience,omitempty"` // Describes who the intended customer is
+	Priority *float64 `json:"priority,omitempty"` // Importance of the data (0-1)
+}
+
 // --- Initialization Sequence Structures ---
 
 // Implementation describes the name and version of an MCP implementation (client or server).
@@ -18,7 +24,18 @@ type Implementation struct {
 // ClientCapabilities describes features the client supports.
 type ClientCapabilities struct {
 	Experimental map[string]interface{} `json:"experimental,omitempty"`
-	Roots        *struct {
+	Logging      *struct{}              `json:"logging,omitempty"` // Added based on ServerCapabilities
+	Prompts      *struct {
+		ListChanged bool `json:"listChanged,omitempty"`
+	} `json:"prompts,omitempty"` // Added based on ServerCapabilities
+	Resources *struct {
+		Subscribe   bool `json:"subscribe,omitempty"`
+		ListChanged bool `json:"listChanged,omitempty"`
+	} `json:"resources,omitempty"` // Added based on ServerCapabilities
+	Tools *struct {
+		ListChanged bool `json:"listChanged,omitempty"`
+	} `json:"tools,omitempty"` // Added based on ServerCapabilities
+	Roots *struct {
 		ListChanged bool `json:"listChanged,omitempty"`
 	} `json:"roots,omitempty"`
 	Sampling      *SamplingCapability `json:"sampling,omitempty"` // Corrected type
@@ -316,13 +333,80 @@ type SamplingResult struct {
 	Meta       *RequestMeta `json:"_meta,omitempty"` // Allow progress reporting
 }
 
+// UnmarshalJSON implements custom unmarshalling for SamplingResult to handle the Content interface slice.
+func (sr *SamplingResult) UnmarshalJSON(data []byte) error {
+	// Define an alias with Content as RawMessage to parse base fields first
+	type Alias SamplingResult
+	aux := &struct {
+		Content []json.RawMessage `json:"content"`
+		*Alias
+	}{
+		Alias: (*Alias)(sr),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return fmt.Errorf("failed to unmarshal base SamplingResult: %w", err)
+	}
+
+	sr.Content = make([]Content, 0, len(aux.Content))
+	for _, raw := range aux.Content {
+		// Detect the type first
+		var typeDetect struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &typeDetect); err != nil {
+			// Handle case where content might just be a string (implicitly text)
+			var text string
+			if errStr := json.Unmarshal(raw, &text); errStr == nil {
+				sr.Content = append(sr.Content, TextContent{Type: "text", Text: text})
+				continue
+			}
+			return fmt.Errorf("failed to detect content type in sampling result: %w, raw: %s", err, string(raw))
+		}
+
+		var actualContent Content
+		switch typeDetect.Type {
+		case "text":
+			var tc TextContent
+			if err := json.Unmarshal(raw, &tc); err != nil {
+				return fmt.Errorf("failed to unmarshal TextContent in sampling result: %w", err)
+			}
+			actualContent = tc
+		case "image":
+			var ic ImageContent
+			if err := json.Unmarshal(raw, &ic); err != nil {
+				return fmt.Errorf("failed to unmarshal ImageContent in sampling result: %w", err)
+			}
+			actualContent = ic
+		case "audio":
+			var ac AudioContent
+			if err := json.Unmarshal(raw, &ac); err != nil {
+				return fmt.Errorf("failed to unmarshal AudioContent in sampling result: %w", err)
+			}
+			actualContent = ac
+		case "resource":
+			var erc EmbeddedResourceContent
+			if err := json.Unmarshal(raw, &erc); err != nil {
+				return fmt.Errorf("failed to unmarshal EmbeddedResourceContent in sampling result: %w", err)
+			}
+			actualContent = erc
+		default:
+			log.Printf("Warning: Unknown content type '%s' encountered in sampling result", typeDetect.Type)
+			// Optionally store as raw data or skip
+			continue
+		}
+		sr.Content = append(sr.Content, actualContent)
+	}
+
+	return nil
+}
+
 // --- Roots Structures ---
 
 // Root represents a root context or workspace available on the client.
 type Root struct {
 	URI         string                 `json:"uri"`
 	Kind        string                 `json:"kind,omitempty"`
-	Title       string                 `json:"title,omitempty"`
+	Name        string                 `json:"name"` // Human-readable name
 	Description string                 `json:"description,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
@@ -373,3 +457,18 @@ type PromptsListChangedParams struct{}
 
 // RootsListChangedParams defines parameters for 'notifications/roots/list_changed'.
 type RootsListChangedParams struct{}
+
+// BoolPtr is a helper function to return a pointer to a boolean value.
+func BoolPtr(b bool) *bool {
+	return &b
+}
+
+// StringPtr is a helper function to return a pointer to a string value.
+func StringPtr(s string) *string {
+	return &s
+}
+
+// IntPtr is a helper function to return a pointer to an int value.
+func IntPtr(i int) *int {
+	return &i
+}

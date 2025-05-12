@@ -105,6 +105,24 @@ func registerToolsManually(srv *server.Server) {
 }
 ```
 
+### `tools/list` Request
+
+Clients can request a list of all registered tools.
+
+- **Method:** `"tools/list"`
+- **Parameters:** (None)
+- **Result:** `protocol.ListToolsResult`
+
+```go
+type ListToolsResult struct {
+	Tools []protocol.Tool `json:"tools"` // List of registered tools
+}
+```
+
+This request allows clients to discover the tools available on the server, including their names, descriptions, and input schemas.
+
+### `notifications/tools/list_changed` Notification
+
 Servers can send the `notifications/tools/list_changed` notification to inform clients that the list of available tools has changed and they should re-list if they need the updated list.
 
 - **Method:** `"notifications/tools/list_changed"`

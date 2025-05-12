@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+        "openai": {
+            "command": "go",
+            "args": [
+                "run",
+                "examples/openai/server/main.go"
+            ]
+        }
+    }
+}

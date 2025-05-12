@@ -43,6 +43,26 @@ func registerPrompts(srv *server.Server) error {
 }
 ```
 
+### `prompts/list` Request
+
+Clients can request a list of all registered prompts.
+
+- **Method:** `"prompts/list"`
+- **Parameters:** (None)
+- **Result:** `protocol.ListPromptsResult`
+
+```go
+type ListPromptsResult struct {
+	Prompts []protocol.Prompt `json:"prompts"` // List of registered prompts
+}
+```
+
+This request allows clients to discover the prompts available on the server, including their titles, descriptions, and message templates.
+
+### `notifications/prompts/list_changed` Notification
+
+Clients can be notified when the list of available prompts changes.
+
 - **Method:** `"notifications/prompts/list_changed"`
 - **Parameters:** `protocol.PromptsListChangedParams` (currently empty)
 

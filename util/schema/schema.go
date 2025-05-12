@@ -42,21 +42,38 @@ func FromStruct(v interface{}) protocol.ToolInputSchema {
 		t = t.Elem()
 	}
 	props := map[string]protocol.PropertyDetail{}
-	requiredFields := []string{} // Initialize slice for required fields
+	requiredFields := []string{}         // Initialize slice for required fields
+	trackFields := make(map[string]bool) // Track fields to prevent duplicates in requiredFields
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		descTag := field.Tag.Get("description")
-		jsonTag := field.Tag.Get("json")
-		if jsonTag == "" || jsonTag == "-" {
+
+		// Skip unexported fields
+		if field.PkgPath != "" {
 			continue
 		}
-		name := strings.Split(jsonTag, ",")[0]
+
+		descTag := field.Tag.Get("description")
+		jsonTag := field.Tag.Get("json")
+		var name string
+
+		if jsonTag == "-" {
+			// Skip fields explicitly marked as ignored
+			continue
+		} else if jsonTag != "" {
+			// Use JSON tag if present
+			name = strings.Split(jsonTag, ",")[0]
+		} else {
+			// For exported fields without JSON tags, use lowercase field name for schema
+			// This creates more natural looking JSON while still allowing case-insensitive matching
+			name = strings.ToLower(field.Name)
+		}
 
 		// Determine if field is required (convention: non-pointer types are required)
 		isPtr := field.Type.Kind() == reflect.Ptr
-		if !isPtr {
+		if !isPtr && !trackFields[name] {
 			requiredFields = append(requiredFields, name)
+			trackFields[name] = true
 		}
 
 		// Determine the schema type (handle pointers correctly for type mapping)
@@ -78,25 +95,32 @@ func FromStruct(v interface{}) protocol.ToolInputSchema {
 			}
 		}
 
-		props[name] = protocol.PropertyDetail{
+		// Add description from original field name if not explicitly set
+		if descTag == "" && jsonTag == "" {
+			descTag = fmt.Sprintf("Field for %s", field.Name)
+		}
+
+		// Create property definition
+		propDetail := protocol.PropertyDetail{
 			Type:        schemaType,
 			Description: descTag,
 			Enum:        enumValues, // Add enum values if tag was present
-			// TODO: Potentially add support for Format from tags later
 		}
-	}
 
-	// Sort requiredFields for consistent output? Optional.
-	// sort.Strings(requiredFields)
+		// Add to properties map
+		props[name] = propDetail
+	}
 
 	schema := protocol.ToolInputSchema{
 		Type:       "object",
 		Properties: props,
 	}
+
 	// Only add Required field if there are any required fields
 	if len(requiredFields) > 0 {
 		schema.Required = requiredFields
 	}
+
 	return schema
 }
 

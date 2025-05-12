@@ -90,6 +90,28 @@ type UnsubscribeResourceResult struct{} // Currently empty
 
 Clients provide a list of resource URIs they no longer wish to receive updates for.
 
+### `resources/read` Request
+
+Clients can request the content of a specific resource.
+
+- **Method:** `"resources/read"`
+- **Parameters:** `protocol.ReadResourceRequestParams`
+- **Result:** `protocol.ReadResourceResult`
+
+```go
+type ReadResourceRequestParams struct {
+	URI     string `json:"uri"`
+	Version string `json:"version,omitempty"` // Optional version to request a specific version
+}
+
+type ReadResourceResult struct {
+	Resource protocol.Resource         `json:"resource"` // The resource metadata (should match the request URI/version)
+	Contents protocol.ResourceContents `json:"contents"` // The actual content (Text, Blob, or Audio)
+}
+```
+
+Clients specify the `uri` of the resource they want to read. Optionally, they can provide a `version` to request a specific version of the resource. The server responds with the resource's metadata and its content, which can be text, binary (blob), or audio, represented by the `ResourceContents` interface and its concrete types (`TextResourceContents`, `BlobResourceContents`, `AudioResourceContents`).
+
 ### `notifications/resources/updated` Notification
 
 Servers send the `notifications/resources/updated` notification to inform subscribed clients that a specific resource has been updated.

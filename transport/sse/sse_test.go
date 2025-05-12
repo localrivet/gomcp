@@ -3,6 +3,7 @@ package sse
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect" // Added for DeepEqual
@@ -27,13 +28,13 @@ var _ types.Logger = (*NilLogger)(nil)
 
 // --- Mock MCPServerLogic ---
 type mockMCPServer struct {
-	handleMessageFunc func(ctx context.Context, sessionID string, rawMessage json.RawMessage) []*protocol.JSONRPCResponse
+	handleMessageFunc func(ctx context.Context, session types.ClientSession, rawMessage json.RawMessage) []*protocol.JSONRPCResponse
 	sessions          sync.Map // Store mock sessions if needed for Register/Unregister testing
 }
 
-func (m *mockMCPServer) HandleMessage(ctx context.Context, sessionID string, rawMessage json.RawMessage) []*protocol.JSONRPCResponse {
+func (m *mockMCPServer) HandleMessage(ctx context.Context, session types.ClientSession, rawMessage json.RawMessage) []*protocol.JSONRPCResponse {
 	if m.handleMessageFunc != nil {
-		return m.handleMessageFunc(ctx, sessionID, rawMessage)
+		return m.handleMessageFunc(ctx, session, rawMessage)
 	}
 	return nil // Default behavior
 }
@@ -88,6 +89,17 @@ func (m *mockTestSession) GetNegotiatedVersion() string                         
 func (m *mockTestSession) StoreClientCapabilities(caps protocol.ClientCapabilities) {}
 func (m *mockTestSession) GetClientCapabilities() protocol.ClientCapabilities {
 	return protocol.ClientCapabilities{}
+}
+
+// SendRequest is required by the ClientSession interface but not used in this specific test.
+func (m *mockTestSession) SendRequest(request protocol.JSONRPCRequest) error {
+	// Minimal implementation to satisfy the interface
+	return nil
+}
+
+// GetWriter returns nil for the mock session, as it's not needed for testing response capture.
+func (m *mockTestSession) GetWriter() io.Writer {
+	return nil
 }
 
 // Ensure mockTestSession implements the types.ClientSession interface
@@ -151,7 +163,7 @@ func TestSSEServerHandleMessageResponse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup Mock Server Logic
 			mockServerLogic := &mockMCPServer{
-				handleMessageFunc: func(ctx context.Context, sessionID string, rawMessage json.RawMessage) []*protocol.JSONRPCResponse {
+				handleMessageFunc: func(ctx context.Context, session types.ClientSession, rawMessage json.RawMessage) []*protocol.JSONRPCResponse {
 					return tc.mockResponsesToReturn
 				},
 			}
