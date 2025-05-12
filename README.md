@@ -59,6 +59,7 @@ GoMCP aims to be:
 ## Key Features
 
 - **Full MCP Compliance:** Supports all core features of the `2025-03-26` and `2024-11-05` specifications.
+- **Fluent Interface:** Build servers with a clean, chainable API for improved readability and developer experience.
 - **Protocol Version Negotiation:** Automatically negotiates the highest compatible protocol version during the handshake.
 - **Transport Agnostic Core:** Server (`server/`) and Client (`client/`) logic is decoupled from the underlying transport.
 - **Multiple Transports:** Includes implementations for common communication methods:
@@ -91,7 +92,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
 )
 
@@ -107,31 +107,22 @@ func main() {
 	log.SetPrefix("[CalcServer] ")
 	log.Println("Starting Calculator MCP Server (Stdio)...")
 
-	// Create the MCP server instance
-	srv := server.NewServer("calculator-stdio")
+	// Create the MCP server instance with fluent interface
+	srv := server.NewServer("calculator-stdio").
+		// Add the 'add' tool using the fluent Tool method
+		// This method infers the schema from the handler's argument type (AddArgs)
+		Tool("add", "Add two numbers.",
+			// Handler function using the args struct
+			func(ctx *server.Context, args AddArgs) (string, error) {
+				result := args.A + args.B
+				ctx.Info("[add tool] %f + %f -> %f", args.A, args.B, result)
+				// Return result as a string
+				return strconv.FormatFloat(result, 'f', -1, 64), nil
+			})
 
-	// Add the 'add' tool using the server.AddTool helper
-	// The helper infers the schema from the handler's argument type (AddArgs)
-	err := server.AddTool(
-		srv,
-		"add",
-		"Add two numbers.",
-		// Handler function using the args struct
-		func(args AddArgs) (protocol.Content, error) {
-			result := args.A + args.B
-			log.Printf("[add tool] %f + %f -> %f", args.A, args.B, result)
-			// Use server.Text helper for simple text responses
-			return server.Text(strconv.FormatFloat(result, 'f', -1, 64)), nil
-		},
-	)
-	if err != nil {
-		log.Fatalf("Failed to add 'add' tool: %v", err)
-	}
-
-	// Start the server using the built-in stdio handler.
-	// This blocks until the server exits (e.g., stdin is closed).
-	log.Println("Server setup complete. Listening on stdio...")
-	if err := server.ServeStdio(srv); err != nil {
+	// Start the server using the fluent AsStdio and Run methods
+	log.Println("Server setup complete. Starting stdio server...")
+	if err := srv.AsStdio().Run(); err != nil {
 		log.Fatalf("Server exited with error: %v", err)
 	}
 	log.Println("Server shutdown complete.")
@@ -236,8 +227,12 @@ These are the building blocks for creating MCP servers and clients with GoMCP.
 - `client.Client`: Represents a connection to an MCP server, allowing you to interact with its capabilities.
 
 ```go
-// Server Initialization
-srv := server.NewServer("my-awesome-server")
+// Server Initialization with fluent interface
+srv := server.NewServer("my-awesome-server").
+    Tool("greet", "Greet a user", handleGreeting).
+    Resource("app://info/version", server.WithTextContent("1.0.0")).
+    AsWebsocket(":9090", "/mcp").
+    Run()
 
 // Client Initialization (Stdio example)
 clt, err := client.NewStdioClient("my-cool-client", client.ClientOptions{})
@@ -246,217 +241,286 @@ if err != nil { /* handle error */ }
 
 ### Tools
 
-Tools allow clients (like LLMs) to perform actions by executing functions on your server. Use `server.AddTool` for easy registration with automatic schema generation based on a Go struct for arguments.
+Tools allow clients (like LLMs) to perform actions by executing functions on your server. GoMCP provides a fluent interface for registering tools with automatic schema generation.
 
 ```go
 package main
 
 import (
-	"github.com/localrivet/gomcp/protocol"
+	"fmt"
 	"github.com/localrivet/gomcp/server"
-	// ... other imports
 )
 
-// Define the arguments struct for your tool
-type ReverseArgs struct {
-	Input string `json:"input" description:"The string to reverse" required:"true"`
-}
+func main() {
+	// Create a server with fluent interface
+	srv := server.NewServer("tool-demo").
+		// Register a simple tool that reverses a string
+		Tool("reverse_string", "Reverses the input string",
+			func(ctx *server.Context, args struct {
+				Input string `json:"input" description:"The string to reverse" required:"true"`
+			}) (string, error) {
+				// Get the input from args and reverse it
+				runes := []rune(args.Input)
+				for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+					runes[i], runes[j] = runes[j], runes[i]
+				}
+				return string(runes), nil
+			})
 
-// Your tool handler function
-func reverseStringHandler(args ReverseArgs) (protocol.Content, error) {
-	runes := []rune(args.Input)
-	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-		runes[i], runes[j] = runes[j], runes[i]
-	}
-	reversed := string(runes)
-	return server.Text(reversed), nil // Helper for simple text responses
-}
-
-func registerTools(srv *server.Server) error {
-	// Register the tool using the helper
-	err := server.AddTool(
-		srv,
-		"reverse_string",
-		"Reverses the input string.",
-		reverseStringHandler, // Pass the handler function
-	)
-	return err
+	// Start the server
+	srv.AsStdio().Run()
 }
 ```
 
-Alternatively, you can provide a `protocol.ToolDefinition` manually for more control.
-
-#### Alternative: Using `RegisterTool` and `schema.FromStruct`
-
-For more direct control over the tool definition and handler signature, you can use `srv.RegisterTool` and explicitly generate the schema using `schema.FromStruct` from the `util/schema` package.
-
-This approach requires you to manually handle argument parsing within your handler function, which receives the raw `protocol.ToolCall`.
+You can also use pre-defined struct types for more complex arguments:
 
 ```go
-package main
-
-import (
-	"encoding/json"
-	"fmt"
-	"log"
-
-	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/server"
-	"github.com/localrivet/gomcp/util/schema" // Import schema helper
-	// ... other imports
-)
-
-// Define the arguments struct (still useful for schema generation)
-type MultiplyArgs struct {
-	X float64 `json:"x" description:"Multiplicand" required:"true"`
-	Y float64 `json:"y" description:"Multiplier" required:"true"`
+// Define the arguments struct
+type SearchArgs struct {
+	Query      string   `json:"query" description:"Search term" required:"true"`
+	MaxResults int      `json:"max_results" description:"Maximum results to return" default:"10"`
+	Filters    []string `json:"filters" description:"Result filters"`
 }
 
-// Handler function for RegisterTool takes protocol.ToolCall
-func multiplyHandler(call protocol.ToolCall) (protocol.ToolResult, error) {
-	var args MultiplyArgs
-	// Manually parse arguments
-	if err := json.Unmarshal(call.Arguments, &args); err != nil {
-		log.Printf("[multiplyHandler] Error parsing args: %v", err)
-		// Return a structured error result
-		return protocol.ToolResult{IsError: true, Content: []protocol.Content{server.Text(fmt.Sprintf("Invalid arguments: %v", err))}}, nil
-	}
-
-	result := args.X * args.Y
-	log.Printf("[multiply tool] %f * %f -> %f", args.X, args.Y, result)
-
-	// Return a successful result
-	return protocol.ToolResult{Content: []protocol.Content{server.Text(fmt.Sprintf("%f", result))}}, nil
-}
-
-
-func registerToolsManually(srv *server.Server) {
-	// Register the tool using RegisterTool
-	srv.RegisterTool(
-		protocol.Tool{ // Define the full Tool struct
-			Name:        "multiply",
-			Description: "Multiplies two numbers.",
-			// Generate schema explicitly
-			InputSchema: schema.FromStruct(MultiplyArgs{}),
-			// OutputSchema can also be defined here if needed
-		},
-		multiplyHandler, // Pass the handler with the (ToolCall) signature
-	)
-	// Note: Error handling for RegisterTool might differ or be absent
-	// depending on the implementation version or desired behavior.
-	// Check server implementation details if needed.
-}
+// Register with the fluent interface
+srv.Tool("search", "Search for items",
+	func(ctx *server.Context, args SearchArgs) (map[string]interface{}, error) {
+		// Implementation...
+		return results, nil
+	})
 ```
 
 ### Resources
 
-Resources expose data to clients. They are primarily for providing information without significant computation or side effects (like GET requests). Use `server.AddResource`. Dynamic URIs with `{placeholders}` are supported.
+Resources expose data to clients. They are primarily for providing information without significant computation or side effects (like GET requests). In GoMCP, you can register resources using the fluent `Resource` method on the server, along with functional options.
 
 ```go
 package main
 
 import (
 	"fmt"
-	"net/url"
 	"time"
 
-	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
-	// ... other imports
 )
 
-// Static resource handler
-func handleAppVersion(uri *url.URL) (protocol.Content, error) {
-	return server.Text("1.2.3"), nil
-}
+func main() {
+	// Create a server with fluent interface
+	srv := server.NewServer("resource-demo").
+		// Register a simple text resource
+		Resource("app://info/version",
+			server.WithTextContent("1.2.3"),
+			server.WithName("App Version"),
+			server.WithDescription("Get the application version."),
+			server.WithMimeType("text/plain"),
+		).
+		// Register a resource with dynamic content from a handler
+		Resource("user://data/{userID}/profile",
+			server.WithHandler(func(ctx *server.Context, userID string) (map[string]interface{}, error) {
+				ctx.Info("Handling user profile request for: %s", userID)
+				// Fetch user data from database, etc.
+				userData := map[string]interface{}{
+					"id":        userID,
+					"email":     fmt.Sprintf("user%s@example.com", userID),
+					"lastLogin": time.Now().Format(time.RFC3339),
+				}
+				return userData, nil
+			}),
+			server.WithName("User Profile"),
+			server.WithDescription("Get user profile data."),
+		)
 
-// Dynamic resource handler (extracting part from URI)
-func handleUserData(uri *url.URL) (protocol.Content, error) {
-	// Example URI: user://data/123/profile
-	// We need to parse the user ID from the path
-	userID := "" // Extract from uri.Path, e.g., using strings.Split
-	// Fetch user data...
-	userData := map[string]interface{}{
-		"id":        userID,
-		"email":     fmt.Sprintf("user%s@example.com", userID),
-		"lastLogin": time.Now().Format(time.RFC3339),
-	}
-	return server.JSON(userData) // Helper for JSON responses
-}
-
-
-func registerResources(srv *server.Server) error {
-	// Register a static resource
-	err := srv.AddResource(protocol.ResourceDefinition{
-		URI:         "app://info/version",
-		Description: "Get the application version.",
-		Handler:     handleAppVersion,
-	})
-	if err != nil { return err }
-
-	// Register a dynamic resource template
-	err = srv.AddResource(protocol.ResourceDefinition{
-		URI:         "user://data/{userID}/profile", // Template URI
-		Description: "Get user profile data.",
-		IsTemplate:  true, // Mark as template
-		Handler:     handleUserData,
-	})
-	return err
+	// Start the server
+	srv.AsSSE(":9090", "/mcp").Run()
 }
 ```
 
 ### Prompts
 
-Prompts define reusable templates or interaction patterns for the client (often an LLM). Use `server.AddPrompt`.
+Prompts define reusable templates or interaction patterns for the client (often an LLM). GoMCP provides a fluent interface for registering prompts with your server.
+
+````go
+package main
+
+import (
+	"fmt"
+	"github.com/localrivet/gomcp/server"
+)
+
+func main() {
+	// Create a server with fluent interface
+	srv := server.NewServer("prompt-demo").
+		// Register a simple text prompt
+		Prompt("prompt://tasks/summarize",
+			server.WithPromptHandler(func(ctx *server.Context, args struct {
+				Text string `json:"text" description:"The text to summarize" required:"true"`
+			}) (string, error) {
+				return fmt.Sprintf("Please summarize the following text concisely:\n\n%s", args.Text), nil
+			}),
+			server.WithPromptName("Summarize Text"),
+			server.WithPromptDescription("Generate a prompt asking the LLM to summarize text.")).
+		// Register another prompt
+		Prompt("prompt://coding/refactor",
+			server.WithPromptHandler(func(ctx *server.Context, args struct {
+				Code     string `json:"code" description:"The code to refactor" required:"true"`
+				Language string `json:"language" description:"Programming language" default:"go"`
+			}) (string, error) {
+				return fmt.Sprintf("Refactor this %s code to improve readability and efficiency:\n\n```%s\n%s\n```",
+					args.Language, args.Language, args.Code), nil
+			}),
+			server.WithPromptName("Code Refactoring"),
+			server.WithPromptDescription("Generate a prompt for code refactoring."))
+
+	// Start the server
+	srv.AsWebsocket(":9090", "/mcp").Run()
+}
+````
+
+Prompts can also be registered with static content:
+
+```go
+srv.Prompt("prompt://greeting/welcome",
+	server.WithPromptTextContent("Welcome to our service! I'm an AI assistant ready to help you with any questions about our API."),
+	server.WithPromptName("Welcome Greeting"),
+	server.WithPromptDescription("A friendly welcome message to new users."))
+```
+
+### Transports
+
+GoMCP separates the core protocol logic from how clients and servers communicate. The fluent interface provides simple methods to configure and start the server with different transports:
+
+```go
+// WebSocket
+srv.AsWebsocket(":9090", "/mcp").Run()
+
+// SSE (Server-Sent Events)
+srv.AsSSE(":9090", "/mcp").Run()
+
+// Stdio
+srv.AsStdio().Run()
+
+// TCP
+srv.AsTCP(":9090").Run()
+```
+
+Client-side, use constructors like `client.NewStdioClient(...)` or `client.NewSSEClient(url, ...)`.
+
+## Quick Reference: Complete Server Example
+
+Here's a comprehensive example showing how to build a complete server with the fluent interface pattern:
 
 ```go
 package main
 
 import (
 	"fmt"
-	"net/url"
+	"log"
+	"os"
+	"time"
 
-	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
-	// ... other imports
 )
 
-// Prompt handler
-func handleSummarizePrompt(uri *url.URL, args map[string]interface{}) (protocol.Content, error) {
-	text, _ := args["text"].(string) // Basic argument handling
-	prompt := fmt.Sprintf("Please summarize the following text concisely:
+func main() {
+	// Configure logging
+	log.SetOutput(os.Stderr)
+	log.SetPrefix("[MCP Server] ")
 
-%s", text)
-	return server.Text(prompt), nil
-}
+	// Create a new server with fluent interface
+	server.NewServer("demo-server").
+		// Register tools
+		Tool("greet", "Greet a user",
+			func(ctx *server.Context, args struct {
+				Name string `json:"name" description:"User name" required:"true"`
+			}) (string, error) {
+				return fmt.Sprintf("Hello, %s! Welcome to GoMCP.", args.Name), nil
+			}).
+		Tool("calculate", "Perform a calculation",
+			func(ctx *server.Context, args struct {
+				Operation string  `json:"operation" description:"Operation to perform (add, subtract, multiply, divide)" required:"true"`
+				A         float64 `json:"a" description:"First number" required:"true"`
+				B         float64 `json:"b" description:"Second number" required:"true"`
+			}) (map[string]interface{}, error) {
+				var result float64
 
-func registerPrompts(srv *server.Server) error {
-	err := srv.AddPrompt(protocol.PromptDefinition{
-		URI:         "prompt://tasks/summarize",
-		Description: "Generate a prompt asking the LLM to summarize text.",
-		Arguments: &protocol.JSONSchema{ // Define expected arguments
-			Type: "object",
-			Properties: map[string]*protocol.JSONSchema{
-				"text": {Type: "string", Description: "The text to summarize."},
-			},
-			Required: []string{"text"},
-		},
-		Handler: handleSummarizePrompt,
-	})
-	return err
+				// Report progress
+				ctx.ReportProgress("Starting calculation", 0, 3)
+
+				// Simulate some work
+				time.Sleep(100 * time.Millisecond)
+				ctx.ReportProgress("Processing inputs", 1, 3)
+
+				// Perform the calculation
+				switch args.Operation {
+				case "add":
+					result = args.A + args.B
+				case "subtract":
+					result = args.A - args.B
+				case "multiply":
+					result = args.A * args.B
+				case "divide":
+					if args.B == 0 {
+						return nil, fmt.Errorf("division by zero")
+					}
+					result = args.A / args.B
+				default:
+					return nil, fmt.Errorf("unknown operation: %s", args.Operation)
+				}
+
+				time.Sleep(100 * time.Millisecond)
+				ctx.ReportProgress("Calculation complete", 3, 3)
+
+				return map[string]interface{}{
+					"operation": args.Operation,
+					"a":         args.A,
+					"b":         args.B,
+					"result":    result,
+				}, nil
+			}).
+		// Register resources
+		Resource("app://info/version",
+			server.WithTextContent("1.0.0"),
+			server.WithName("App Version"),
+			server.WithDescription("Get the application version")).
+		Resource("app://info/status",
+			server.WithJSONContent(map[string]interface{}{
+				"status": "online",
+				"uptime": "12h",
+				"connections": 42,
+			}),
+			server.WithName("App Status"),
+			server.WithDescription("Get server status information")).
+		Resource("users://{userID}/profile",
+			server.WithHandler(func(ctx *server.Context, userID string) (map[string]interface{}, error) {
+				return map[string]interface{}{
+					"id":       userID,
+					"name":     fmt.Sprintf("User %s", userID),
+					"lastSeen": time.Now().Format(time.RFC3339),
+				}, nil
+			}),
+			server.WithName("User Profile"),
+			server.WithDescription("Get user profile by ID")).
+		// Register prompts
+		Prompt("prompt://instructions/get-help",
+			server.WithPromptTextContent(
+				"You are a helpful assistant for the GoMCP API. " +
+				"Help the user understand how to use the API effectively. " +
+				"Provide code examples when appropriate."),
+			server.WithPromptName("Help Instructions"),
+			server.WithPromptDescription("Instructions for helping users with the API")).
+		// Configure and start
+		AsWebsocket(":9090", "/mcp").
+		Run()
 }
 ```
 
-### Transports
+This example demonstrates:
 
-GoMCP separates the core protocol logic from how clients and servers communicate. Supported transports are found in the `transport/` directory:
-
-- `transport/stdio`: Communication over standard input/output.
-- `transport/sse`: Streamable HTTP using Server-Sent Events (primary network transport).
-- `transport/websocket`: Communication over WebSockets.
-- `transport/tcp`: Raw TCP socket communication.
-
-Server-side, use functions like `server.ServeStdio(srv)` or `server.ServeSSE(srv, addr)`. Client-side, use constructors like `client.NewStdioClient(...)` or `client.NewSSEClient(url, ...)`.
+- Tool registration with argument validation and progress reporting
+- Resource registration with static and dynamic content
+- Prompt registration
+- Transport configuration
+- Server startup
 
 ## Examples
 
