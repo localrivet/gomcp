@@ -332,6 +332,15 @@ func (s *Server) NotifyResourceUpdated(uri string) {
 	}
 }
 
+// WithLogger sets a custom logger for the server.
+// This allows using an external logger implementation that implements the logx.Logger interface.
+func (s *Server) WithLogger(logger logx.Logger) *Server {
+	if logger != nil {
+		s.logger = logger
+	}
+	return s
+}
+
 // Run starts the configured transport(s) and blocks until the server is closed.
 func (s *Server) Run() error {
 	log.Println("Starting server...")
