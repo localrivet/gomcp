@@ -5,11 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/types"
 )
@@ -23,6 +23,7 @@ type Context struct {
 	progressToken  interface{}
 	server         *Server
 	messageHandler *MessageHandler
+	logger         logx.Logger // Added logger field
 }
 
 // NewContext creates a new Context instance for a request.
@@ -35,38 +36,105 @@ func NewContext(parentCtx context.Context, requestID string, session types.Clien
 		progressToken:  progressToken,
 		server:         srv,
 		messageHandler: srv.MessageHandler,
+		logger:         srv.logger, // Use the server's logger
 	}
 }
 
-// TODO: Add methods for accessing capabilities (e.g., Log, ReportProgress, ReadResource, CallTool)
+// SendProgress sends a progress notification using the session's connection ID.
+func (c *Context) SendProgress(value interface{}) {
+	if c.progressToken == nil {
+		if c.logger != nil {
+			c.logger.Debug("Cannot send progress: no progress token available")
+		}
+		return
+	}
+	c.messageHandler.SendProgress(c.session.SessionID(), c.progressToken, value)
+}
 
-// Log sends a log message to the client.
+// GenerateRequestID creates a new unique request ID.
+func (c *Context) GenerateRequestID() string {
+	return uuid.New().String()
+}
+
+// Log logs a message to both the server logger and the client.
+// The level parameter should be one of "error", "warning", "info", "debug".
 func (c *Context) Log(level string, message string) {
 	// Format message including request ID
 	logMsg := fmt.Sprintf("[%s] %s", c.requestID, message)
 
 	// Map level string to protocol.LoggingLevel (might need validation)
-	protoLevel := protocol.LoggingLevel(level)
-	if protoLevel != protocol.LogLevelError && protoLevel != protocol.LogLevelWarn &&
-		protoLevel != protocol.LogLevelInfo && protoLevel != protocol.LogLevelDebug {
-		// Default to info or log an internal warning if level is unknown
-		c.server.logger.Warn("Context Log: Unknown level '%s' used, defaulting to info", level)
+	var protoLevel protocol.LoggingLevel
+	switch level {
+	case "error":
+		protoLevel = protocol.LogLevelError
+		if c.logger != nil {
+			c.logger.Error(logMsg)
+		} else {
+			// Fallback to standard logging only if necessary
+			c.logger.Error("ERROR: %s", logMsg)
+		}
+	case "warning":
+		protoLevel = protocol.LogLevelWarn
+		if c.logger != nil {
+			c.logger.Warn(logMsg)
+		} else {
+			c.logger.Warn("WARNING: %s", logMsg)
+		}
+	case "info":
 		protoLevel = protocol.LogLevelInfo
+		if c.logger != nil {
+			c.logger.Info(logMsg)
+		} else {
+			c.logger.Info("INFO: %s", logMsg)
+		}
+	case "debug":
+		protoLevel = protocol.LogLevelDebug
+		if c.logger != nil {
+			c.logger.Debug(logMsg)
+		} else {
+			c.logger.Debug("DEBUG: %s", logMsg)
+		}
+	default:
+		// If unknown level, default to info
+		if protoLevel != protocol.LogLevelError && protoLevel != protocol.LogLevelWarn &&
+			protoLevel != protocol.LogLevelInfo && protoLevel != protocol.LogLevelDebug {
+			// Default to info or log an internal warning if level is unknown
+			if c.logger != nil {
+				c.logger.Warn("Context Log: Unknown level '%s' used, defaulting to info", level)
+			} else {
+				c.logger.Warn("WARNING: Context Log: Unknown level '%s' used, defaulting to info", level)
+			}
+			protoLevel = protocol.LogLevelInfo
+		}
 	}
 
-	params := protocol.LoggingMessageParams{
-		Level:   protoLevel,
-		Message: logMsg,
-		// Logger: // Could potentially add a logger name like "tool-execution"
-		// Data: // Could add request ID here as structured data
+	// Also send to client
+	// Prepare log message parameters
+	serverName := "server" // Default server name
+	if c.server.name != "" {
+		serverName = c.server.name
 	}
-	notification := protocol.NewNotification(protocol.MethodNotificationMessage, params)
 
-	// Send notification via the session associated with this context
-	if err := c.session.SendNotification(*notification); err != nil {
-		// Log error using the *server's* logger
-		c.server.logger.Error("Context Log: Failed to send log notification for session %s, request %s: %v", c.session.SessionID(), c.requestID, err)
-	}
+	// Create logger name using server name and request ID
+	loggerName := fmt.Sprintf("%s:%s", serverName, c.requestID)
+
+	// Send log message to client
+	c.messageHandler.SendLoggingMessage(protoLevel, message, &loggerName, nil)
+}
+
+// Done returns a channel that's closed when the context is canceled.
+func (c *Context) Done() <-chan struct{} {
+	return c.Context.Done()
+}
+
+// AddResponseMetadata adds metadata to be included in the response.
+func (c *Context) AddResponseMetadata(key string, value interface{}) {
+	// Implementation needed
+}
+
+// GetProgressToken returns the progress token associated with this context.
+func (c *Context) GetProgressToken() interface{} {
+	return c.progressToken
 }
 
 // Info sends an info level log message.
@@ -81,7 +149,7 @@ func (c *Context) Debug(message string) {
 
 // Warning sends a warning level log message.
 func (c *Context) Warning(message string) {
-	c.Log(string(protocol.LogLevelWarn), message)
+	c.Log("warning", message)
 }
 
 // Error sends an error level log message.
@@ -257,21 +325,27 @@ func (c *Context) ReportProgress(message string, current, total int) {
 	// Check for cancellation before sending progress
 	select {
 	case <-c.Done():
-		log.Printf("Context ReportProgress [%s]: Cancelled before reporting progress", c.requestID)
+		if c.logger != nil {
+			c.logger.Info("Context ReportProgress [%s]: Cancelled before reporting progress", c.requestID)
+		}
 		return // Don't report progress if cancelled
 	default:
 		// Continue if not cancelled
 	}
 
 	if c.progressToken == nil {
-		log.Printf("Context ReportProgress [%s]: No progress token, skipping notification", c.requestID)
+		if c.logger != nil {
+			c.logger.Info("Context ReportProgress [%s]: No progress token, skipping notification", c.requestID)
+		}
 		return
 	}
 
 	// Convert progressToken to string for logging/debugging if needed
 	tokenStr := fmt.Sprintf("%v", c.progressToken)
 
-	log.Printf("Context ReportProgress [%s] (Token: %s): %s (%d/%d)", c.requestID, tokenStr, message, current, total)
+	if c.logger != nil {
+		c.logger.Info("Context ReportProgress [%s] (Token: %s): %s (%d/%d)", c.requestID, tokenStr, message, current, total)
+	}
 
 	// Construct the progress value payload
 	progressValue := map[string]interface{}{

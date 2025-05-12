@@ -1,7 +1,6 @@
 package server
 
 import (
-	"log"
 	"strings"
 	"sync"
 
@@ -211,12 +210,12 @@ func (s *Server) handleToolListChange(sessionIDs []string) {
 
 // Close gracefully shuts down the server.
 func (s *Server) Close() error {
-	log.Println("Server received close signal")
+	s.logger.Info("Server received close signal")
 	// Close the done channel to signal termination
 	close(s.done)
 	// Wait for all goroutines (transports, handlers) to finish
 	s.wg.Wait()
-	log.Println("Server shut down gracefully")
+	s.logger.Info("Server shut down gracefully")
 	return nil
 }
 
@@ -337,13 +336,30 @@ func (s *Server) NotifyResourceUpdated(uri string) {
 func (s *Server) WithLogger(logger logx.Logger) *Server {
 	if logger != nil {
 		s.logger = logger
+
+		// Propagate logger to components that have their own logger instance
+		if s.Registry != nil {
+			s.Registry.SetLogger(logger)
+		}
+
+		if s.MessageHandler != nil {
+			s.MessageHandler.SetLogger(logger)
+		}
+
+		if s.SubscriptionManager != nil {
+			s.SubscriptionManager.SetLogger(logger)
+		}
+
+		if s.TransportManager != nil {
+			s.TransportManager.SetLogger(logger)
+		}
 	}
 	return s
 }
 
 // Run starts the configured transport(s) and blocks until the server is closed.
 func (s *Server) Run() error {
-	log.Println("Starting server...")
+	s.logger.Info("Starting server...")
 	// Add 1 to WaitGroup for the main server loop/signal handling
 	s.wg.Add(1)
 
@@ -361,7 +377,7 @@ func (s *Server) Run() error {
 
 	// Signal completion of the main server loop
 	s.wg.Done()
-	log.Println("Server Run loop finished")
+	s.logger.Info("Server Run loop finished")
 	return nil
 }
 

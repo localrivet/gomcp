@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"sync/atomic"
 
@@ -40,7 +39,9 @@ func (s *stdioSession) SendNotification(notification protocol.JSONRPCNotificatio
 	// For StdIO, format as Content-Length framed message
 	data, err := json.Marshal(notification)
 	if err != nil {
-		log.Printf("StdIO Session %s: Error marshalling notification %s: %v", s.connectionID, notification.Method, err)
+		if s.logger != nil {
+			s.logger.Error("StdIO Session %s: Error marshalling notification %s: %v", s.connectionID, notification.Method, err)
+		}
 		return fmt.Errorf("failed to marshal notification: %w", err)
 	}
 	headers := fmt.Sprintf("Content-Length: %d\r\n", len(data))
@@ -50,14 +51,18 @@ func (s *stdioSession) SendNotification(notification protocol.JSONRPCNotificatio
 
 	_, err = s.writer.Write(fullMessage)
 	if err != nil {
-		log.Printf("StdIO Session %s: Error writing notification to stdout: %v", s.connectionID, err)
+		if s.logger != nil {
+			s.logger.Error("StdIO Session %s: Error writing notification to stdout: %v", s.connectionID, err)
+		}
 		return fmt.Errorf("error writing notification to stdout: %w", err)
 	}
 	// Ensure the data is flushed immediately for interactive use
 	if f, ok := s.writer.(*os.File); ok {
 		f.Sync()
 	}
-	log.Printf("StdIO Session %s: Sent notification %s", s.connectionID, notification.Method)
+	if s.logger != nil {
+		s.logger.Info("StdIO Session %s: Sent notification %s", s.connectionID, notification.Method)
+	}
 	return nil
 }
 
@@ -66,7 +71,9 @@ func (s *stdioSession) SendResponse(response protocol.JSONRPCResponse) error {
 	// For StdIO, format as Content-Length framed message
 	data, err := json.Marshal(response)
 	if err != nil {
-		log.Printf("StdIO Session %s: Error marshalling response for ID %v: %v", s.connectionID, response.ID, err)
+		if s.logger != nil {
+			s.logger.Error("StdIO Session %s: Error marshalling response for ID %v: %v", s.connectionID, response.ID, err)
+		}
 		return fmt.Errorf("failed to marshal response: %w", err)
 	}
 	headers := fmt.Sprintf("Content-Length: %d\r\n", len(data))
@@ -76,14 +83,18 @@ func (s *stdioSession) SendResponse(response protocol.JSONRPCResponse) error {
 
 	_, err = s.writer.Write(fullMessage)
 	if err != nil {
-		log.Printf("StdIO Session %s: Error writing response to stdout: %v", s.connectionID, err)
+		if s.logger != nil {
+			s.logger.Error("StdIO Session %s: Error writing response to stdout: %v", s.connectionID, err)
+		}
 		return fmt.Errorf("error writing response to stdout: %w", err)
 	}
 	// Ensure the data is flushed immediately for interactive use
 	if f, ok := s.writer.(*os.File); ok {
 		f.Sync()
 	}
-	log.Printf("StdIO Session %s: Sent response for ID %v", s.connectionID, response.ID)
+	if s.logger != nil {
+		s.logger.Info("StdIO Session %s: Sent response for ID %v", s.connectionID, response.ID)
+	}
 	return nil
 }
 
@@ -92,7 +103,9 @@ func (s *stdioSession) Close() error {
 	// For StdIO, closing the session might involve closing stdin/stdout,
 	// but typically the process exit handles this. This method might be
 	// used for cleanup or signaling within the server.
-	log.Printf("StdIO Session %s: Close called.", s.connectionID)
+	if s.logger != nil {
+		s.logger.Info("StdIO Session %s: Close called.", s.connectionID)
+	}
 	// In a real scenario, you might close the underlying writer if it's closable.
 	// if closer, ok := s.writer.(io.Closer); ok {
 	// return closer.Close()
@@ -102,7 +115,9 @@ func (s *stdioSession) Close() error {
 
 func (s *stdioSession) Initialize() {
 	s.initialized.Store(true)
-	log.Printf("StdIO Session %s: Initialized.", s.connectionID)
+	if s.logger != nil {
+		s.logger.Info("StdIO Session %s: Initialized.", s.connectionID)
+	}
 }
 
 func (s *stdioSession) Initialized() bool {
@@ -111,7 +126,9 @@ func (s *stdioSession) Initialized() bool {
 
 func (s *stdioSession) SetNegotiatedVersion(version string) {
 	s.negotiatedVersion = version
-	log.Printf("StdIO Session %s: Negotiated protocol version set to %s", s.connectionID, version)
+	if s.logger != nil {
+		s.logger.Info("StdIO Session %s: Negotiated protocol version set to %s", s.connectionID, version)
+	}
 }
 
 func (s *stdioSession) GetNegotiatedVersion() string {
@@ -120,7 +137,9 @@ func (s *stdioSession) GetNegotiatedVersion() string {
 
 func (s *stdioSession) StoreClientCapabilities(caps protocol.ClientCapabilities) {
 	s.clientCapabilities = caps
-	log.Printf("StdIO Session %s stored client capabilities", s.connectionID)
+	if s.logger != nil {
+		s.logger.Info("StdIO Session %s stored client capabilities", s.connectionID)
+	}
 }
 
 func (s *stdioSession) GetClientCapabilities() protocol.ClientCapabilities {
@@ -171,12 +190,6 @@ func runStdioTransport(tm *TransportManager, s *Server) error {
 		s.logger,
 		stdioTransport, // Pass the created transport
 	)
-
-	// Store the StdIO session in the TransportManager - DEFER THIS
-	// tm.sessionsMu.Lock()
-	// tm.Sessions[session.SessionID()] = session
-	// tm.sessionsMu.Unlock()
-	// s.logger.Info("StdIO session registered: %s", session.SessionID())
 
 	// Ensure session is removed on exit
 	defer func() {
@@ -318,4 +331,9 @@ func splitHeader(line string) []string {
 	}
 	parts = append(parts, line[valueStart:])
 	return parts
+}
+
+// SetLogger sets the logger for the stdio session
+func (s *stdioSession) SetLogger(logger types.Logger) {
+	s.logger = logger
 }

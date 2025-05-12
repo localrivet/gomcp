@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/util/schema"
 	"github.com/localrivet/wilduri"
@@ -20,9 +20,7 @@ import (
 // Content might be loaded lazily.
 type registeredResource struct {
 	config resourceConfig // Store the original configuration
-
-	// Potentially pre-loaded content or other derived data
-	// For now, we rely mostly on config, but this allows for future optimization.
+	logger logx.Logger
 }
 
 // ToProtocolResource converts the internal registeredResource representation
@@ -70,8 +68,7 @@ func (rr *registeredResource) ToProtocolResource(uri string) protocol.Resource {
 		if _, exists := meta[key]; !exists { // Avoid overwriting mimeType/tags if keys clash
 			meta[key] = value
 		} else {
-			// Handle potential key clashes if necessary (e.g., log a warning)
-			log.Printf("Warning: Annotation key '%s' clashes with standard metadata key during resource conversion for %s", key, uri)
+			rr.logger.Warn("Warning: Annotation key '%s' clashes with standard metadata key during resource conversion for %s", key, uri)
 		}
 	}
 
@@ -128,6 +125,7 @@ type Registry struct {
 	toolChangedCallback     func()           // Callback to notify when tools change
 
 	registryMu sync.RWMutex
+	logger     logx.Logger
 }
 
 // NewRegistry creates a new Registry instance.
@@ -163,13 +161,18 @@ func (r *Registry) SetPromptChangedCallback(callback func()) {
 	r.promptChangedCallback = callback
 }
 
+// SetLogger updates the logger used by the registry.
+func (r *Registry) SetLogger(logger logx.Logger) {
+	r.logger = logger
+}
+
 // AddRoot registers a new root with the registry.
 func (r *Registry) AddRoot(root protocol.Root) *Registry {
 	r.registryMu.Lock()
 	defer r.registryMu.Unlock()
 	// Assuming roots are stored in a separate map or slice in Registry
 	// For now, just logging
-	log.Printf("Registered root: %s", root.URI)
+	r.logger.Info("Registered root: %s", root.URI)
 	return r
 }
 
@@ -177,7 +180,7 @@ func (r *Registry) AddRoot(root protocol.Root) *Registry {
 func (r *Registry) RemoveRoot(root protocol.Root) *Registry {
 	r.registryMu.Lock()
 	defer r.registryMu.Unlock()
-	log.Printf("Removed root: %s", root.URI)
+	r.logger.Info("Removed root: %s", root.URI)
 	return r
 }
 
@@ -233,21 +236,29 @@ func (r *Registry) Tool(
 	// Use reflection to get the function's type
 	fnType := reflect.TypeOf(fn)
 	if fnType.Kind() != reflect.Func {
-		log.Printf("Error registering tool %s: handler is not a function", name)
+		if r.logger != nil {
+			r.logger.Error("Error registering tool %s: handler is not a function", name)
+		}
 		return r // Or return an error
 	}
 	// Expecting signature func(Context, Args) (Ret, error)
 	if fnType.NumIn() != 2 || fnType.NumOut() != 2 {
-		log.Printf("Error registering tool %s: handler function must have 2 inputs (Context, Args) and 2 outputs (result, error)", name)
+		if r.logger != nil {
+			r.logger.Error("Error registering tool %s: handler function must have 2 inputs (Context, Args) and 2 outputs (result, error)", name)
+		}
 		return r // Or return an error
 	}
 	// Refer to Context directly as it's in the same package
 	if fnType.In(0) != reflect.TypeOf((*Context)(nil)) {
-		log.Printf("Error registering tool %s: handler function first input must be Context", name)
+		if r.logger != nil {
+			r.logger.Error("Error registering tool %s: handler function first input must be Context", name)
+		}
 		return r // Or return an error
 	}
 	if fnType.Out(1) != reflect.TypeOf((*error)(nil)).Elem() {
-		log.Printf("Error registering tool %s: handler function second output must be error", name)
+		if r.logger != nil {
+			r.logger.Error("Error registering tool %s: handler function second output must be error", name)
+		}
 		return r // Or return an error
 	}
 
@@ -266,14 +277,18 @@ func (r *Registry) Tool(
 			schemaArgsType = schemaArgsType.Elem()
 		}
 		if schemaArgsType.Kind() != reflect.Struct {
-			log.Printf("Error registering tool %s: handler function second input must be Context and either json.RawMessage or a struct/pointer-to-struct", name)
+			if r.logger != nil {
+				r.logger.Error("Error registering tool %s: handler function second input must be Context and either json.RawMessage or a struct/pointer-to-struct", name)
+			}
 			return r // Or return an error
 		}
 		// Create a new instance of the struct type to pass to FromStruct
 		structInstance := reflect.New(schemaArgsType).Elem().Interface()
 		inputSchema = schema.FromStruct(structInstance) // Pass struct instance, not type
 	} else {
-		log.Printf("Registering tool %s with json.RawMessage input type. Input schema will be null.", name)
+		if r.logger != nil {
+			r.logger.Info("Registering tool %s with json.RawMessage input type. Input schema will be null.", name)
+		}
 		// For raw message handlers, input schema is effectively null/any
 		// Assign an empty or default ToolInputSchema struct
 		inputSchema = protocol.ToolInputSchema{} // Assign empty struct
@@ -292,7 +307,9 @@ func (r *Registry) Tool(
 		RetType:  retType,
 	}
 
-	log.Printf("Registered tool: %s - %s %+v", name, desc, inputSchema) // Placeholder
+	if r.logger != nil {
+		r.logger.Info("Registered tool: %s - %s %+v", name, desc, inputSchema) // Placeholder
+	}
 
 	// Call the callback if set
 	if r.toolChangedCallback != nil {
@@ -309,7 +326,9 @@ func (r *Registry) RemoveTool(name string) *Registry {
 	defer r.registryMu.Unlock()
 	delete(r.toolRegistry, name)
 	delete(r.toolHandlers, name) // Also remove handler info
-	log.Printf("Removed tool: %s", name)
+	if r.logger != nil {
+		r.logger.Info("Removed tool: %s", name)
+	}
 
 	// Call the callback if set
 	if r.toolChangedCallback != nil {
@@ -327,13 +346,17 @@ func (r *Registry) AddPrompt(prompt protocol.Prompt) *Registry {
 		promptKey = prompt.Name
 	}
 	r.promptRegistry[promptKey] = prompt // Using Name as the key
-	log.Printf("Registered prompt: %s", prompt.Name)
+	if r.logger != nil {
+		r.logger.Info("Registered prompt: %s", prompt.Name)
+	}
 
 	// Call the callback if set, AFTER releasing the lock
 	callback := r.promptChangedCallback
 	r.registryMu.Unlock() // Explicitly unlock before callback
 	if callback != nil {
-		log.Printf("DEBUG: Calling promptChangedCallback for prompt %s", prompt.Name)
+		if r.logger != nil {
+			r.logger.Debug("Calling promptChangedCallback for prompt %s", prompt.Name)
+		}
 		callback()
 	}
 
@@ -346,7 +369,9 @@ func (r *Registry) RemovePrompt(name string) *Registry {
 	defer r.registryMu.Unlock() // Will unlock after function returns
 
 	delete(r.promptRegistry, name)
-	log.Printf("Removed prompt: %s", name)
+	if r.logger != nil {
+		r.logger.Info("Removed prompt: %s", name)
+	}
 
 	// Call the callback if set, but after releasing the lock
 	if r.promptChangedCallback != nil {
@@ -408,7 +433,9 @@ func (r *Registry) GetToolHandler(name string) (func(ctx *Context, rawArgs json.
 
 	// Create the wrapper function
 	wrapper := func(ctx *Context, rawArgs json.RawMessage) (interface{}, error) { // Return interface{} and error
-		log.Printf("Executing tool wrapper for: %s with raw args: %s", name, string(rawArgs))
+		if r.logger != nil {
+			r.logger.Debug("Executing tool wrapper for: %s with raw args: %s", name, string(rawArgs))
+		}
 
 		var inputs []reflect.Value
 		var callErr error
@@ -426,7 +453,9 @@ func (r *Registry) GetToolHandler(name string) (func(ctx *Context, rawArgs json.
 				// Parse rawArgs into a map first
 				var argsMap map[string]interface{}
 				if mapErr := json.Unmarshal(rawArgs, &argsMap); mapErr != nil {
-					log.Printf("Error unmarshalling raw arguments for tool %s: %v", name, mapErr)
+					if r.logger != nil {
+						r.logger.Error("Error unmarshalling raw arguments for tool %s: %v", name, mapErr)
+					}
 					callErr = fmt.Errorf("invalid arguments format: %w", mapErr)
 				} else {
 					// Configure mapstructure for case-insensitive field matching
@@ -455,10 +484,14 @@ func (r *Registry) GetToolHandler(name string) (func(ctx *Context, rawArgs json.
 					// Try to decode with case-insensitive behavior
 					decoder, err := mapstructure.NewDecoder(decoderConfig)
 					if err != nil {
-						log.Printf("Internal error creating argument decoder for tool %s: %v", name, err)
+						if r.logger != nil {
+							r.logger.Error("Internal error creating argument decoder for tool %s: %v", name, err)
+						}
 						callErr = fmt.Errorf("internal error creating decoder: %w", err)
 					} else if decodeErr := decoder.Decode(argsMap); decodeErr != nil {
-						log.Printf("Error decoding arguments for tool %s: %v", name, decodeErr)
+						if r.logger != nil {
+							r.logger.Error("Error decoding arguments for tool %s: %v", name, decodeErr)
+						}
 
 						// Fall back to direct JSON unmarshaling as a last resort
 						if jsonErr := json.Unmarshal(rawArgs, argsInterface); jsonErr != nil {
@@ -468,7 +501,9 @@ func (r *Registry) GetToolHandler(name string) (func(ctx *Context, rawArgs json.
 				}
 			} else {
 				// Handle case where rawArgs is empty or null for struct type
-				log.Printf("Tool %s called with empty/null input for struct type %s", name, argsType.String())
+				if r.logger != nil {
+					r.logger.Debug("Tool %s called with empty/null input for struct type %s", name, argsType.String())
+				}
 			}
 			inputs = []reflect.Value{reflect.ValueOf(ctx), argsPtrValue.Elem()} // Pass context and decoded/empty struct
 		}
@@ -495,7 +530,9 @@ func (r *Registry) GetToolHandler(name string) (func(ctx *Context, rawArgs json.
 			if !ok {
 				return nil, fmt.Errorf("tool '%s' returned a non-error value in the error position", name)
 			}
-			log.Printf("Tool %s returned an error: %v", name, err)
+			if r.logger != nil {
+				r.logger.Error("Tool %s returned an error: %v", name, err)
+			}
 			returnedErr = err
 		}
 
@@ -538,17 +575,23 @@ func (r *Registry) RegisterResourceTemplate(uriPattern string, config resourceCo
 			r.registryMu.Unlock()
 			return fmt.Errorf("URI template pattern '%s' is already registered", uriPattern)
 		case DuplicateIgnore:
-			log.Printf("Ignoring duplicate template registration for URI pattern: %s (keeping existing)", uriPattern)
+			if r.logger != nil {
+				r.logger.Info("Ignoring duplicate template registration for URI pattern: %s (keeping existing)", uriPattern)
+			}
 			r.registryMu.Unlock()
 			return nil
 		case DuplicateWarn:
-			log.Printf("Warning: Overwriting existing resource template registration for URI pattern: %s", uriPattern)
+			if r.logger != nil {
+				r.logger.Warn("Warning: Overwriting existing resource template registration for URI pattern: %s", uriPattern)
+			}
 			// Continue with replacement
 		case DuplicateReplace:
 			// Just replace silently
 		default:
 			// Default behavior: Warn and replace
-			log.Printf("Warning: Overwriting existing resource template registration for URI pattern: %s", uriPattern)
+			if r.logger != nil {
+				r.logger.Warn("Warning: Overwriting existing resource template registration for URI pattern: %s", uriPattern)
+			}
 		}
 	}
 
@@ -663,7 +706,9 @@ func (r *Registry) RegisterResourceTemplate(uriPattern string, config resourceCo
 		// Validate additional pattern
 		additionalTmpl, err := wilduri.New(additionalPattern)
 		if err != nil {
-			log.Printf("Skipping invalid additional URI template pattern '%s': %v", additionalPattern, err)
+			if r.logger != nil {
+				r.logger.Warn("Skipping invalid additional URI template pattern '%s': %v", additionalPattern, err)
+			}
 			continue
 		}
 
@@ -679,7 +724,9 @@ func (r *Registry) RegisterResourceTemplate(uriPattern string, config resourceCo
 		r.templateRegistry[additionalPattern] = &additionalInfo
 	}
 
-	log.Printf("Registered resource template: %s", uriPattern)
+	if r.logger != nil {
+		r.logger.Info("Registered resource template: %s", uriPattern)
+	}
 
 	// Call the callback AFTER releasing the lock
 	callback := r.resourceChangedCallback
@@ -688,7 +735,9 @@ func (r *Registry) RegisterResourceTemplate(uriPattern string, config resourceCo
 		// For templates, maybe we don't notify with a specific URI?
 		// Or should we notify with the pattern URI?
 		// Let's notify with the pattern URI for now.
-		log.Printf("Calling resourceChangedCallback for template pattern %s", uriPattern)
+		if r.logger != nil {
+			r.logger.Debug("Calling resourceChangedCallback for template pattern %s", uriPattern)
+		}
 		callback(uriPattern)
 
 		// Also call callback for additional patterns
@@ -750,17 +799,23 @@ func (r *Registry) RegisterStaticResource(uri string, config resourceConfig) err
 			r.registryMu.Unlock()
 			return fmt.Errorf("resource URI already registered: %s", uri)
 		case DuplicateIgnore:
-			log.Printf("Ignoring duplicate resource registration for URI: %s (keeping existing)", uri)
+			if r.logger != nil {
+				r.logger.Info("Ignoring duplicate resource registration for URI: %s (keeping existing)", uri)
+			}
 			r.registryMu.Unlock()
 			return nil
 		case DuplicateWarn:
-			log.Printf("Warning: Overwriting existing resource registration for URI: %s", uri)
+			if r.logger != nil {
+				r.logger.Warn("Warning: Overwriting existing resource registration for URI: %s", uri)
+			}
 			// Continue with replacement
 		case DuplicateReplace:
 			// Just replace silently
 		default:
 			// Default behavior: Warn and replace
-			log.Printf("Warning: Overwriting existing resource registration for URI: %s", uri)
+			if r.logger != nil {
+				r.logger.Warn("Warning: Overwriting existing resource registration for URI: %s", uri)
+			}
 		}
 	}
 
@@ -768,6 +823,7 @@ func (r *Registry) RegisterStaticResource(uri string, config resourceConfig) err
 
 	regRes := &registeredResource{
 		config: config, // Store the passed config
+		logger: r.logger,
 	}
 
 	// Use custom key if provided, otherwise use URI
@@ -783,7 +839,9 @@ func (r *Registry) RegisterStaticResource(uri string, config resourceConfig) err
 		r.resourceRegistry[additionalURI] = regRes
 	}
 
-	log.Printf("Registered static resource: %s", uri)
+	if r.logger != nil {
+		r.logger.Info("Registered static resource: %s", uri)
+	}
 
 	// Call the callback if set, AFTER releasing the lock (deferred unlock handles this)
 	// We need to call it outside the lock to prevent deadlocks if the callback tries to access the registry.
@@ -792,7 +850,9 @@ func (r *Registry) RegisterStaticResource(uri string, config resourceConfig) err
 	callback := r.resourceChangedCallback
 	r.registryMu.Unlock() // Explicitly unlock before callback
 	if callback != nil {
-		log.Printf("Calling resourceChangedCallback for %s", uri)
+		if r.logger != nil {
+			r.logger.Debug("Calling resourceChangedCallback for %s", uri)
+		}
 		callback(uri)
 
 		// Also call callback for additional URIs
@@ -832,11 +892,15 @@ func (r *Registry) RegisterResource(resource protocol.Resource) *Registry {
 
 	r.registryMu.Unlock() // Unlock BEFORE calling the callback
 
-	log.Printf("Registered resource (legacy method): %s", resource.URI)
+	if r.logger != nil {
+		r.logger.Info("Registered resource (legacy method): %s", resource.URI)
+	}
 
 	// Call the callback if set, AFTER releasing the lock
 	if r.resourceChangedCallback != nil {
-		log.Printf("Calling resourceChangedCallback for %s", resource.URI)
+		if r.logger != nil {
+			r.logger.Debug("Calling resourceChangedCallback for %s", resource.URI)
+		}
 		r.resourceChangedCallback(resource.URI)
 	}
 	return r

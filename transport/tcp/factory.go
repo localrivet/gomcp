@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/gomcp/types"
 )
 
@@ -16,7 +17,7 @@ const DefaultDialTimeout = 10 * time.Second
 func Dial(address string, opts types.TransportOptions) (types.Transport, error) {
 	logger := opts.Logger
 	if logger == nil {
-		logger = &defaultLogger{}
+		logger = logx.NewDefaultLogger()
 	}
 
 	logger.Info("TCPTransport: Dialing %s...", address)
@@ -43,7 +44,7 @@ type Listener struct {
 func Listen(address string, opts types.TransportOptions) (*Listener, error) {
 	logger := opts.Logger
 	if logger == nil {
-		logger = &defaultLogger{}
+		logger = logx.NewDefaultLogger()
 	}
 
 	logger.Info("TCPTransport: Listening on %s...", address)

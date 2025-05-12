@@ -63,22 +63,24 @@ func FromStruct(v interface{}) protocol.ToolInputSchema {
 		} else if jsonTag != "" {
 			// Use JSON tag if present
 			name = strings.Split(jsonTag, ",")[0]
+
+			// Determine if field is required (convention: non-pointer types are required)
+			// Only include fields with JSON tags in required fields list
+			isPtr := field.Type.Kind() == reflect.Ptr
+			if !isPtr && !trackFields[name] {
+				requiredFields = append(requiredFields, name)
+				trackFields[name] = true
+			}
 		} else {
 			// For exported fields without JSON tags, use lowercase field name for schema
 			// This creates more natural looking JSON while still allowing case-insensitive matching
 			name = strings.ToLower(field.Name)
-		}
-
-		// Determine if field is required (convention: non-pointer types are required)
-		isPtr := field.Type.Kind() == reflect.Ptr
-		if !isPtr && !trackFields[name] {
-			requiredFields = append(requiredFields, name)
-			trackFields[name] = true
+			// Fields without JSON tags are not included in required fields list
 		}
 
 		// Determine the schema type (handle pointers correctly for type mapping)
 		fieldType := field.Type
-		if isPtr {
+		if field.Type.Kind() == reflect.Ptr {
 			fieldType = fieldType.Elem() // Get the underlying type for pointers
 		}
 		schemaType := goTypeToMCPType(fieldType.Kind())

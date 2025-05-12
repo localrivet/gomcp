@@ -5,24 +5,28 @@ import (
 
 	"testing"
 
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewProtocolHandler(t *testing.T) {
+	// Create a logger for testing
+	logger := logx.NewDefaultLogger()
+
 	// Test handler creation for 2024 version
-	handler2024 := newProtocolHandler(ProtocolVersion2024)
+	handler2024 := newProtocolHandler(ProtocolVersion2024, logger)
 	_, ok := handler2024.(*protocol2024Handler)
 	assert.True(t, ok, "Expected 2024 protocol handler")
 
 	// Test handler creation for 2025 version
-	handler2025 := newProtocolHandler(ProtocolVersion2025)
+	handler2025 := newProtocolHandler(ProtocolVersion2025, logger)
 	_, ok = handler2025.(*protocol2025Handler)
 	assert.True(t, ok, "Expected 2025 protocol handler")
 
 	// Test handler creation for unknown version (should default to latest)
-	handlerUnknown := newProtocolHandler("unknown")
+	handlerUnknown := newProtocolHandler("unknown", logger)
 	_, ok = handlerUnknown.(*protocol2025Handler)
 	assert.True(t, ok, "Expected 2025 protocol handler for unknown version")
 }

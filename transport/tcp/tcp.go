@@ -8,12 +8,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"log" // Added import for default logger
+	"io" // Added import for default logger
+	"log"
 	"net" // Added for TCP
+	"os"
 	"sync"
 	"time" // Added for read timeout
 
+	// Added for logx.Logger
+
+	"github.com/localrivet/gomcp/logx"     // Added for logx package
 	"github.com/localrivet/gomcp/protocol" // For ErrorPayload, ErrorCodeParseError
 	"github.com/localrivet/gomcp/types"    // For types.Transport, types.Logger
 )
@@ -39,7 +43,9 @@ var _ types.Transport = (*TCPTransport)(nil) // Updated to ensure interface comp
 func NewTCPTransport(conn net.Conn, opts types.TransportOptions) *TCPTransport {
 	logger := opts.Logger
 	if logger == nil {
-		logger = &defaultLogger{} // Use a simple default logger
+		// Use the logx package to create a standard logger adapter
+		stdLog := log.New(os.Stderr, "[TCP] ", log.LstdFlags)
+		logger = logx.NewStandardLoggerAdapter(stdLog)
 	}
 
 	bufferSize := 4096 // Default buffer size
@@ -259,15 +265,3 @@ func (t *TCPTransport) EstablishReceiver(ctx context.Context) error {
 	}
 	return nil
 }
-
-// --- Default Logger (Copied from stdio for now) ---
-type defaultLogger struct{}
-
-func (l *defaultLogger) Debug(msg string, args ...interface{}) { log.Printf("DEBUG: "+msg, args...) }
-func (l *defaultLogger) Info(msg string, args ...interface{})  { log.Printf("INFO: "+msg, args...) }
-func (l *defaultLogger) Warn(msg string, args ...interface{})  { log.Printf("WARN: "+msg, args...) }
-func (l *defaultLogger) Error(msg string, args ...interface{}) { log.Printf("ERROR: "+msg, args...) }
-
-// --- TODO ---
-// - Consider adding read/write deadlines to net.Conn operations within Send/Receive goroutine
-// - Evaluate framing: Newline is simple but less robust than length-prefixing.

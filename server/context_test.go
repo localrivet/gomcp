@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/server"
 	"github.com/stretchr/testify/assert"
@@ -20,7 +21,7 @@ import (
 
 // Helper to create a message handler for testing
 func setupTestMessageHandler() (*server.MessageHandler, *server.Server, *mockClientSession) {
-	srv := server.NewServer("Test Server")
+	srv := server.NewServer("Test Server").WithLogger(logx.NewDefaultLogger())
 	mh := server.NewMessageHandler(srv)
 	srv.MessageHandler = mh
 	srv.SubscriptionManager = server.NewSubscriptionManager()
@@ -45,7 +46,7 @@ func setupTestContext(parent context.Context, requestID string, progressToken in
 
 // Helper to create a server and message handler for context tests
 func setupTestServerAndMessageHandler() (*server.Server, *mockClientSession, *server.MessageHandler) {
-	srv := server.NewServer("Context Test Server")
+	srv := server.NewServer("Context Test Server").WithLogger(logx.NewDefaultLogger())
 	mh := server.NewMessageHandler(srv)
 	srv.MessageHandler = mh
 	mockSession := newMockClientSession("test-session-ctx") // Use a unique prefix
@@ -58,7 +59,7 @@ func setupTestServerAndMessageHandler() (*server.Server, *mockClientSession, *se
 func setupContextTestServer(t *testing.T) (*server.Server, *mockClientSession, func()) {
 	t.Helper()
 	// Create a minimal server instance needed for tests
-	srv := server.NewServer("test-server")
+	srv := server.NewServer("test-server").WithLogger(logx.NewDefaultLogger())
 	mh := server.NewMessageHandler(srv) // Use the exported NewMessageHandler
 	srv.MessageHandler = mh
 	srv.SubscriptionManager = server.NewSubscriptionManager() // Takes no arguments
@@ -67,6 +68,8 @@ func setupContextTestServer(t *testing.T) (*server.Server, *mockClientSession, f
 
 	// Create a mock session
 	session := newMockClientSession("test-session-setup")
+	// Add logger if mockClientSession implements SetLogger
+	// session.SetLogger(logx.NewDefaultLogger())
 
 	// Register session (important for callbacks, etc.)
 	srv.TransportManager.RegisterSession(session, &protocol.ClientCapabilities{})

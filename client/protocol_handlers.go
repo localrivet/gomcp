@@ -3,26 +3,28 @@ package client
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/gomcp/protocol"
 )
 
 // Protocol handler factory
-func newProtocolHandler(version string) ProtocolHandler {
+func newProtocolHandler(version string, logger logx.Logger) ProtocolHandler {
 	switch version {
 	case ProtocolVersion2024:
-		return &protocol2024Handler{}
+		return &protocol2024Handler{logger: logger}
 	case ProtocolVersion2025:
-		return &protocol2025Handler{}
+		return &protocol2025Handler{logger: logger}
 	default:
 		// Default to latest
-		return &protocol2025Handler{}
+		return &protocol2025Handler{logger: logger}
 	}
 }
 
 // protocol2024Handler implements the ProtocolHandler interface for the 2024-11-05 version
-type protocol2024Handler struct{}
+type protocol2024Handler struct {
+	logger logx.Logger
+}
 
 func (h *protocol2024Handler) FormatRequest(method string, params interface{}) (*protocol.JSONRPCRequest, error) {
 	id := generateID()
@@ -166,7 +168,9 @@ func tryUnmarshalPromptMessages(result json.RawMessage) ([]protocol.PromptMessag
 
 func tryUnmarshalInitializeResult(result json.RawMessage) (*protocol.InitializeResult, error) {
 	// Debug message with more context
-	log.Printf("[Client] Attempting to unmarshal response as initialize result (part of type detection)")
+	// log.Printf("[Client] Attempting to unmarshal response as initialize result (part of type detection)")
+	// Note: We can't use a logger here because we're not in a handler. This function is used for type detection.
+	// and doesn't have access to a logger instance. These debug messages should be removed or handled differently.
 
 	var initResult protocol.InitializeResult
 	if err := json.Unmarshal(result, &initResult); err != nil {
@@ -181,8 +185,9 @@ func tryUnmarshalInitializeResult(result json.RawMessage) (*protocol.InitializeR
 		return nil, fmt.Errorf("not an initialize result: missing required fields")
 	}
 
-	log.Printf("[Client] Successfully identified and unmarshaled initialize result from %s (v%s)",
-		initResult.ServerInfo.Name, initResult.ProtocolVersion)
+	// Using a comment instead of log.Printf to avoid stdout pollution
+	// log.Printf("[Client] Successfully identified and unmarshaled initialize result from %s (v%s)",
+	//	initResult.ServerInfo.Name, initResult.ProtocolVersion)
 	return &initResult, nil
 }
 
@@ -203,7 +208,9 @@ func (h *protocol2024Handler) ParseCallToolResult(result interface{}) ([]protoco
 }
 
 // protocol2025Handler implements the ProtocolHandler interface for the 2025-03-26 version
-type protocol2025Handler struct{}
+type protocol2025Handler struct {
+	logger logx.Logger
+}
 
 func (h *protocol2025Handler) FormatRequest(method string, params interface{}) (*protocol.JSONRPCRequest, error) {
 	id := generateID()

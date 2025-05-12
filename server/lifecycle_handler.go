@@ -1,21 +1,27 @@
 package server
 
 import (
-	"log"
-
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/gomcp/protocol"
 )
 
 // LifecycleHandler provides methods for handling MCP lifecycle messages.
 type LifecycleHandler struct {
 	server *Server // Reference back to the main Server struct
+	logger logx.Logger
 }
 
 // NewLifecycleHandler creates a new LifecycleHandler instance.
 func NewLifecycleHandler(srv *Server) *LifecycleHandler {
 	return &LifecycleHandler{
 		server: srv,
+		logger: srv.logger, // Use server's logger by default
 	}
+}
+
+// SetLogger updates the logger used by the lifecycle handler.
+func (h *LifecycleHandler) SetLogger(logger logx.Logger) {
+	h.logger = logger
 }
 
 // InitializeHandler handles the 'initialize' request.
@@ -39,9 +45,9 @@ func (h *LifecycleHandler) InitializeHandler(params protocol.InitializeRequestPa
 	// If no specific match, default to the latest supported version
 	if negotiatedVersion == "" {
 		negotiatedVersion = protocol.CurrentProtocolVersion // Default to latest
-		log.Printf("Client requested version '%s', defaulting to latest supported: %s", clientSchemaVersion, negotiatedVersion)
+		h.logger.Info("Client requested version '%s', defaulting to latest supported: %s", clientSchemaVersion, negotiatedVersion)
 	} else {
-		log.Printf("Client requested version '%s', negotiated version: %s", clientSchemaVersion, negotiatedVersion)
+		h.logger.Info("Client requested version '%s', negotiated version: %s", clientSchemaVersion, negotiatedVersion)
 	}
 
 	// TODO: Store the negotiatedVersion per session if needed for future requests?
@@ -115,7 +121,7 @@ func (h *LifecycleHandler) InitializeHandler(params protocol.InitializeRequestPa
 	}
 
 	// Log the client capabilities received
-	log.Printf("Client capabilities: %+v", params.Capabilities)
+	h.logger.Info("Client capabilities: %+v", params.Capabilities)
 
 	// Return result, client capabilities, and no error
 	return result, &params.Capabilities, nil
@@ -123,7 +129,7 @@ func (h *LifecycleHandler) InitializeHandler(params protocol.InitializeRequestPa
 
 // ShutdownHandler handles the 'shutdown' request.
 func (h *LifecycleHandler) ShutdownHandler() error {
-	log.Println("Handling shutdown request")
+	h.logger.Info("Handling shutdown request")
 	// Signal the transport manager to stop accepting new connections
 	h.server.TransportManager.Shutdown()
 	// The actual server termination will happen after the response is sent and 'exit' is received.
@@ -132,13 +138,13 @@ func (h *LifecycleHandler) ShutdownHandler() error {
 
 // ExitHandler handles the 'exit' notification.
 func (h *LifecycleHandler) ExitHandler() {
-	log.Println("Handling exit notification")
+	h.logger.Info("Handling exit notification")
 	// Trigger server termination by closing the done channel
 	close(h.server.done)
 }
 
 // InitializedHandler handles the 'initialized' notification.
 func (h *LifecycleHandler) InitializedHandler() {
-	log.Println("Handling initialized notification")
+	h.logger.Info("Handling initialized notification")
 	// The client is now ready to receive requests and notifications.
 }

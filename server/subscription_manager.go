@@ -2,20 +2,32 @@ package server
 
 import (
 	"sync"
+
+	"github.com/localrivet/gomcp/logx"
 )
 
-// SubscriptionManager manages resource subscriptions for client connections.
+// SubscriptionManager maintains mappings between resource URIs and clients interested in updates.
 type SubscriptionManager struct {
-	// subscriptions maps resource URIs to a set of subscribed connection IDs.
-	subscriptions map[string]map[string]struct{}
-	mu            sync.RWMutex
+	// Maps URIs to a set of connection IDs (using a map for O(1) lookups)
+	subscriptions map[string]map[string]bool
+	// Maps connection IDs to a set of URIs (for efficient cleanup on disconnect)
+	connectionURIs map[string]map[string]bool
+	mu             sync.RWMutex
+	logger         logx.Logger // Logger instance
 }
 
-// NewSubscriptionManager creates a new SubscriptionManager.
+// NewSubscriptionManager creates a new subscription manager.
 func NewSubscriptionManager() *SubscriptionManager {
 	return &SubscriptionManager{
-		subscriptions: make(map[string]map[string]struct{}),
+		subscriptions:  make(map[string]map[string]bool),
+		connectionURIs: make(map[string]map[string]bool),
+		logger:         logx.NewDefaultLogger(), // Initialize with default logger
 	}
+}
+
+// SetLogger updates the logger used by the subscription manager.
+func (sm *SubscriptionManager) SetLogger(logger logx.Logger) {
+	sm.logger = logger
 }
 
 // Subscribe adds a subscription for a given connection ID to a resource URI.
@@ -24,9 +36,13 @@ func (sm *SubscriptionManager) Subscribe(uri, connectionID string) {
 	defer sm.mu.Unlock()
 
 	if _, ok := sm.subscriptions[uri]; !ok {
-		sm.subscriptions[uri] = make(map[string]struct{})
+		sm.subscriptions[uri] = make(map[string]bool)
 	}
-	sm.subscriptions[uri][connectionID] = struct{}{}
+	sm.subscriptions[uri][connectionID] = true
+
+	if sm.logger != nil {
+		sm.logger.Debug("Connection %s subscribed to resource %s", connectionID, uri)
+	}
 }
 
 // Unsubscribe removes a subscription for a given connection ID from a resource URI.
@@ -38,6 +54,10 @@ func (sm *SubscriptionManager) Unsubscribe(uri, connectionID string) {
 		delete(connectionIDs, connectionID)
 		if len(connectionIDs) == 0 {
 			delete(sm.subscriptions, uri)
+		}
+
+		if sm.logger != nil {
+			sm.logger.Debug("Connection %s unsubscribed from resource %s", connectionID, uri)
 		}
 	}
 }
@@ -72,6 +92,10 @@ func (sm *SubscriptionManager) UnsubscribeAll(connectionID string) {
 	}
 	for _, uri := range urisToRemove {
 		delete(sm.subscriptions, uri)
+	}
+
+	if sm.logger != nil && len(urisToRemove) > 0 {
+		sm.logger.Debug("Connection %s unsubscribed from all resources (%d total)", connectionID, len(urisToRemove))
 	}
 }
 

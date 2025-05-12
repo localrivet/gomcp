@@ -5,8 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log" // Import net/url
+	"io" // Import net/url
 	"net/http"
 	"os" // Import os
 	"path/filepath"
@@ -21,15 +20,16 @@ import (
 	"github.com/localrivet/gomcp/protocol"
 	"github.com/localrivet/gomcp/types"
 
+	"github.com/localrivet/gomcp/logx"
 	"github.com/localrivet/wilduri"
 )
 
 // MessageHandler handles incoming and outgoing MCP messages.
 type MessageHandler struct {
-	server *Server // Reference back to the main Server struct
-
-	activeRequests       map[string]chan *protocol.JSONRPCResponse // Use correct type
-	requestMu            sync.Mutex
+	server               *Server
+	logger               logx.Logger // Logger for message handler
+	activeRequests       map[string]chan *protocol.JSONRPCResponse
+	requestMu            sync.RWMutex
 	notificationHandlers map[string]func(params json.RawMessage) // Use correct type for handler signature
 	notificationMu       sync.Mutex
 	activeCancels        map[string]context.CancelFunc // Map to store cancel functions for active requests
@@ -45,6 +45,7 @@ type MessageHandler struct {
 func NewMessageHandler(srv *Server) *MessageHandler {
 	mh := &MessageHandler{
 		server:               srv,
+		logger:               srv.logger,                                      // Use server's logger by default
 		activeRequests:       make(map[string]chan *protocol.JSONRPCResponse), // Use correct type
 		notificationHandlers: make(map[string]func(params json.RawMessage)),
 		activeCancels:        make(map[string]context.CancelFunc), // Initialize cancel map
@@ -54,11 +55,16 @@ func NewMessageHandler(srv *Server) *MessageHandler {
 	return mh
 }
 
+// SetLogger updates the logger used by the message handler.
+func (h *MessageHandler) SetLogger(logger logx.Logger) {
+	h.logger = logger
+}
+
 // HandleMessage processes an incoming JSON-RPC message for a specific session.
 // It unmarshals the message, dispatches it to the appropriate handler, and sends a response if necessary.
 func (mh *MessageHandler) HandleMessage(session types.ClientSession, message []byte) error {
 	// Use the server's logger
-	mh.server.logger.Debug("Received raw message from session %s: %s", session.SessionID(), string(message))
+	mh.logger.Debug("Received raw message from session %s: %s", session.SessionID(), string(message))
 
 	// Attempt to unmarshal into a structure that can identify the message type
 	var msg struct {
@@ -70,7 +76,7 @@ func (mh *MessageHandler) HandleMessage(session types.ClientSession, message []b
 	}
 
 	if err := json.Unmarshal(message, &msg); err != nil {
-		log.Printf("Error unmarshalling message structure from session %s: %v\n", session.SessionID(), err)
+		mh.logger.Error("Error unmarshalling message structure from session %s: %v", session.SessionID(), err)
 		// Send a parse error response. For parse errors, the ID is typically null.
 		errorResponse := protocol.NewErrorResponse(nil, protocol.CodeParseError, fmt.Sprintf("Parse error: %v", err), nil)
 		// Attempt to send the error response back to the session.
@@ -86,7 +92,7 @@ func (mh *MessageHandler) HandleMessage(session types.ClientSession, message []b
 		// It's a Request
 		var req protocol.JSONRPCRequest
 		if err := json.Unmarshal(message, &req); err != nil {
-			log.Printf("Error unmarshalling request from session %s: %v\n", session.SessionID(), err)
+			mh.logger.Error("Error unmarshalling request from session %s: %v", session.SessionID(), err)
 			// Send an invalid request error response
 			errorResponse := protocol.NewErrorResponse(msg.ID, protocol.CodeInvalidRequest, fmt.Sprintf("Invalid Request: %v", err), nil)
 			// Use the session to send the response.
@@ -100,7 +106,7 @@ func (mh *MessageHandler) HandleMessage(session types.ClientSession, message []b
 		// It's a Notification
 		var notif protocol.JSONRPCNotification
 		if err := json.Unmarshal(message, &notif); err != nil {
-			log.Printf("Error unmarshalling notification from session %s: %v\n", session.SessionID(), err)
+			mh.logger.Error("Error unmarshalling notification from session %s: %v", session.SessionID(), err)
 			// For notifications, we just log the error and continue
 			return err
 		}
@@ -111,7 +117,7 @@ func (mh *MessageHandler) HandleMessage(session types.ClientSession, message []b
 		// It's a Response
 		var res protocol.JSONRPCResponse
 		if err := json.Unmarshal(message, &res); err != nil {
-			log.Printf("Error unmarshalling response from session %s: %v\n", session.SessionID(), err)
+			mh.logger.Error("Error unmarshalling response from session %s: %v", session.SessionID(), err)
 			// For responses, we just log the error and continue
 			return err
 		}
@@ -124,17 +130,17 @@ func (mh *MessageHandler) HandleMessage(session types.ClientSession, message []b
 			mh.requestMu.Unlock()
 			respChan <- &res // Send the response to the waiting goroutine
 			close(respChan)  // Close the channel
-			log.Printf("Handled response for ID %v from session %s", res.ID, session.SessionID())
+			mh.logger.Info("Handled response for ID %v from session %s", res.ID, session.SessionID())
 		} else {
 			mh.requestMu.Unlock()
-			log.Printf("Received unsolicited response for ID %v from session %s", res.ID, session.SessionID())
+			mh.logger.Warn("Received unsolicited response for ID %v from session %s", res.ID, session.SessionID())
 			// TODO: Potentially send an error response for unsolicited responses?
 			// The JSON-RPC spec doesn't explicitly require this for unsolicited responses.
 		}
 		// If none of the above, it's an unknown message type.
 	} else {
 		// Unknown message type
-		log.Printf("Received unknown message type from session %s: %s", session.SessionID(), string(message))
+		mh.logger.Warn("Received unknown message type from session %s: %s", session.SessionID(), string(message))
 		// Send an invalid request error response
 		errorResponse := protocol.NewErrorResponse(msg.ID, protocol.CodeInvalidRequest, "Unknown message type", nil)
 		// Use the session to send the response.
@@ -148,7 +154,7 @@ func (mh *MessageHandler) HandleMessage(session types.ClientSession, message []b
 // connectionID is the unique identifier for the client connection.
 func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protocol.JSONRPCRequest) {
 	requestIDStr := fmt.Sprintf("%v", req.ID) // Convert request ID to string
-	mh.server.logger.Info("Handling request from session %s: %s (ID: %s)", session.SessionID(), req.Method, requestIDStr)
+	mh.logger.Info("Handling request from session %s: %s (ID: %s)", session.SessionID(), req.Method, requestIDStr)
 
 	// Create cancellable context for this request
 	reqCtx, cancel := context.WithCancel(context.Background())
@@ -164,7 +170,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 		mh.cancelMu.Lock()
 		delete(mh.activeCancels, requestIDStr)
 		mh.cancelMu.Unlock()
-		mh.server.logger.Debug("Removed cancel function for request ID: %s", requestIDStr)
+		mh.logger.Debug("Removed cancel function for request ID: %s", requestIDStr)
 	}()
 
 	var result interface{}
@@ -192,11 +198,11 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 
 			if err == nil {
 				// Store the negotiated version in the session
-				mh.server.logger.Info("Setting negotiated protocol version for session %s: %s",
+				mh.logger.Info("Setting negotiated protocol version for session %s: %s",
 					session.SessionID(), initResult.ProtocolVersion)
 				session.SetNegotiatedVersion(initResult.ProtocolVersion)
 				// Verify the version was set
-				mh.server.logger.Debug("Verified negotiated protocol version for session %s: %s",
+				mh.logger.Debug("Verified negotiated protocol version for session %s: %s",
 					session.SessionID(), session.GetNegotiatedVersion())
 
 				// Also store the client capabilities
@@ -226,7 +232,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			Tools: tools,
 			// NextCursor is optional, leaving empty for now
 		}
-		mh.server.logger.Debug("Responding with %d tools for %s request", len(tools), protocol.MethodListTools)
+		mh.logger.Debug("Responding with %d tools for %s request", len(tools), protocol.MethodListTools)
 
 	case protocol.MethodCallTool:
 		// Handle the 'tools/call' request. Client executes a registered server tool.
@@ -250,11 +256,11 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			progressToken = params.Meta.ProgressToken // Extract progress token
 		}
 
-		mh.server.logger.Debug("Attempting to call tool '%s' with ID '%s' for request %s", toolName, toolCallID, requestIDStr)
+		mh.logger.Debug("Attempting to call tool '%s' with ID '%s' for request %s", toolName, toolCallID, requestIDStr)
 
 		toolHandler, ok := mh.server.Registry.GetToolHandler(toolName)
 		if !ok {
-			mh.server.logger.Warn("Tool not found: %s", toolName)
+			mh.logger.Warn("Tool not found: %s", toolName)
 			// Tool not found - return result with error according to 2025-03-26 schema
 			result = protocol.CallToolResult{
 				ToolCallID: toolCallID,
@@ -270,7 +276,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			// Report start progress if token exists
 			if progressToken != nil {
 				startMessage := fmt.Sprintf("Executing tool: %s", toolName)
-				mh.server.logger.Debug("Reporting start progress for token %v: %s", progressToken, startMessage)
+				mh.logger.Debug("Reporting start progress for token %v: %s", progressToken, startMessage)
 				// Use dummy current/total for now, or extract from payload if defined
 				toolCtx.ReportProgress(startMessage, 0, 100)
 			}
@@ -288,19 +294,19 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 					status = "failed"
 					message = fmt.Sprintf("Tool execution failed: %s (%v)", toolName, toolErr)
 				}
-				mh.server.logger.Debug("Reporting end progress for token %v: %s (status: %s)", progressToken, message, status)
+				mh.logger.Debug("Reporting end progress for token %v: %s (status: %s)", progressToken, message, status)
 				// Use the message and dummy current/total
 				toolCtx.ReportProgress(message, current, total)
 			}
 
 			// --- Determine and Construct Final Result ---
 			negotiatedVersion := session.GetNegotiatedVersion()
-			mh.server.logger.Debug("Using negotiated protocol version for session %s: %s",
+			mh.logger.Debug("Using negotiated protocol version for session %s: %s",
 				session.SessionID(), negotiatedVersion)
 
 			if toolErr != nil {
 				// Handle TOOL EXECUTION Error
-				mh.server.logger.Error("Tool '%s' execution failed: %v", toolName, toolErr)
+				mh.logger.Error("Tool '%s' execution failed: %v", toolName, toolErr)
 				if negotiatedVersion == protocol.OldProtocolVersion {
 					// --- V2024 Error Result ---
 					content := []protocol.Content{protocol.TextContent{Type: "text", Text: toolErr.Error()}}
@@ -333,12 +339,12 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 				}
 			} else {
 				// Handle TOOL EXECUTION Success
-				mh.server.logger.Info("Tool '%s' executed successfully for request %s", toolName, requestIDStr)
+				mh.logger.Info("Tool '%s' executed successfully for request %s", toolName, requestIDStr)
 				if negotiatedVersion == protocol.OldProtocolVersion {
 					// --- V2024 Success Result ---
 					content, conversionErr := convertToolOutputToContent(toolOutput)
 					if conversionErr != nil {
-						mh.server.logger.Error("Failed to convert tool output to V2024 content: %v", conversionErr)
+						mh.logger.Error("Failed to convert tool output to V2024 content: %v", conversionErr)
 						content = []protocol.Content{protocol.TextContent{Type: "text", Text: fmt.Sprintf("Error processing tool output: %v", conversionErr)}}
 					}
 					result = protocol.CallToolResultV2024{
@@ -390,7 +396,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 		var params protocol.ReadResourceRequestParams
 		// Use UnmarshalPayload which handles map[string]interface{} or json.RawMessage
 		if err := protocol.UnmarshalPayload(req.Params, &params); err != nil {
-			mh.server.logger.Warn("Error unmarshalling resources/read params from session %s: %v", session.SessionID(), err)
+			mh.logger.Warn("Error unmarshalling resources/read params from session %s: %v", session.SessionID(), err)
 			err = &protocol.MCPError{
 				ErrorPayload: protocol.ErrorPayload{
 					Code:    protocol.CodeMCPResourceNotFound,
@@ -410,7 +416,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 
 		if resourceFound {
 			// --- Handle Static Resource ---
-			mh.server.logger.Debug("Found static resource for URI: %s", params.URI)
+			mh.logger.Debug("Found static resource for URI: %s", params.URI)
 			finalResource = resource // Use the found static resource
 
 			// Retrieve the internal registered resource to access the config
@@ -605,7 +611,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			}
 		} else {
 			// --- Try Matching Resource Template ---
-			mh.server.logger.Debug("Static resource not found, attempting template match for URI: %s", params.URI)
+			mh.logger.Debug("Static resource not found, attempting template match for URI: %s", params.URI)
 			templateRegistry := mh.server.Registry.TemplateRegistry()
 			var matched bool
 			for pattern, templateInfo := range templateRegistry {
@@ -613,7 +619,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 				// TODO: Replace placeholder matching with actual library/logic
 				matchResult, ok := matchURITemplate(pattern, params.URI)
 				if ok {
-					mh.server.logger.Debug("Matched URI %s to template pattern %s", params.URI, pattern)
+					mh.logger.Debug("Matched URI %s to template pattern %s", params.URI, pattern)
 					matched = true
 					finalResource = protocol.Resource{URI: params.URI, Kind: "dynamic"} // Use requested URI, kind is dynamic
 
@@ -639,7 +645,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 				}
 			}
 			if !matched && readErr == nil { // If no static resource and no template matched
-				mh.server.logger.Warn("Resource or template not found for URI: %s", params.URI)
+				mh.logger.Warn("Resource or template not found for URI: %s", params.URI)
 				readErr = &protocol.MCPError{
 					ErrorPayload: protocol.ErrorPayload{
 						Code:    protocol.CodeMCPResourceNotFound,
@@ -660,7 +666,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			// This should ideally not happen if logic above is correct
 			// If static resource was found, finalResource is set.
 			// If template was found, finalResource is set.
-			mh.server.logger.Error("Internal inconsistency: found resource contents but no final resource metadata for URI %s", params.URI)
+			mh.logger.Error("Internal inconsistency: found resource contents but no final resource metadata for URI %s", params.URI)
 			err = &protocol.MCPError{
 				ErrorPayload: protocol.ErrorPayload{
 					Code:    protocol.CodeInternalError,
@@ -680,7 +686,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 		var params protocol.SubscribeResourceParams
 		rawParams, ok := req.Params.(json.RawMessage)
 		if !ok {
-			mh.server.logger.Warn("Invalid params type for resources/subscribe from session %s: expected json.RawMessage", session.SessionID())
+			mh.logger.Error("Error unmarshalling resources/subscribe params from session %s: %v", session.SessionID(), err)
 			err = &protocol.MCPError{
 				ErrorPayload: protocol.ErrorPayload{
 					Code:    protocol.CodeInvalidParams,
@@ -690,7 +696,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			break // Exit the switch case
 		}
 		if err := json.Unmarshal(rawParams, &params); err != nil {
-			log.Printf("Error unmarshalling resources/subscribe params from session %s: %v", session.SessionID(), err)
+			mh.logger.Error("Error unmarshalling resources/subscribe params from session %s: %v", session.SessionID(), err)
 			err = &protocol.MCPError{
 				ErrorPayload: protocol.ErrorPayload{
 					Code:    protocol.CodeInvalidParams,
@@ -700,7 +706,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			break // Exit the switch case
 		}
 
-		log.Printf("Received resources/subscribe request from session %s for URIs: %v", session.SessionID(), params.URIs)
+		mh.logger.Info("Received resources/subscribe request from session %s for URIs: %v", session.SessionID(), params.URIs)
 		// Use the SubscriptionManager to subscribe the session ID
 		for _, uri := range params.URIs {
 			mh.server.SubscriptionManager.Subscribe(uri, session.SessionID())
@@ -714,7 +720,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 		var params protocol.UnsubscribeResourceParams
 		rawParams, ok := req.Params.(json.RawMessage)
 		if !ok {
-			mh.server.logger.Warn("Invalid params type for resources/unsubscribe from session %s: expected json.RawMessage", session.SessionID())
+			mh.logger.Warn("Invalid params type for resources/unsubscribe from session %s: expected json.RawMessage", session.SessionID())
 			err = &protocol.MCPError{
 				ErrorPayload: protocol.ErrorPayload{
 					Code:    protocol.CodeInvalidParams,
@@ -724,7 +730,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			break // Exit the switch case
 		}
 		if err := json.Unmarshal(rawParams, &params); err != nil {
-			log.Printf("Error unmarshalling resources/unsubscribe params from session %s: %v", session.SessionID(), err)
+			mh.logger.Error("Error unmarshalling resources/unsubscribe params from session %s: %v", session.SessionID(), err)
 			err = &protocol.MCPError{
 				ErrorPayload: protocol.ErrorPayload{
 					Code:    protocol.CodeInvalidParams,
@@ -734,7 +740,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			break // Exit the switch case
 		}
 
-		log.Printf("Received resources/unsubscribe request from session %s for URIs: %v", session.SessionID(), params.URIs)
+		mh.logger.Info("Received resources/unsubscribe request from session %s for URIs: %v", session.SessionID(), params.URIs)
 		// Use the SubscriptionManager to unsubscribe the session ID
 		for _, uri := range params.URIs {
 			mh.server.SubscriptionManager.Unsubscribe(uri, session.SessionID())
@@ -745,7 +751,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 
 	case protocol.MethodPing:
 		// Handle ping request (no parameters expected, result is empty object)
-		log.Printf("Received ping request from session %s", session.SessionID())
+		mh.logger.Info("Received ping request from session %s", session.SessionID())
 		result = struct{}{} // Empty struct marshals to {}
 		err = nil
 
@@ -763,7 +769,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 	case protocol.MethodResourcesListTemplates:
 		// Handle resources/templates/list request
 		// No parameters expected
-		log.Printf("Received resources/templates/list request from session %s", session.SessionID())
+		mh.logger.Info("Received resources/templates/list request from session %s", session.SessionID())
 		// TODO: Implement actual template retrieval from registry when that's added
 		templates := make([]protocol.ResourceTemplate, 0) // Return empty list for now
 		result = protocol.ListResourceTemplatesResult{
@@ -792,13 +798,13 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			uri = params.Name
 		}
 
-		log.Printf("Received prompts/get request from session %s for URI: %s", session.SessionID(), uri)
+		mh.logger.Info("Received prompts/get request from session %s for URI: %s", session.SessionID(), uri)
 
 		// Debug log all registered prompts to help diagnose issues
 		prompts := mh.server.Registry.GetPrompts()
-		log.Printf("DEBUG: Currently registered prompts (%d total):", len(prompts))
+		mh.logger.Debug("Currently registered prompts (%d total):", len(prompts))
 		for i, p := range prompts {
-			log.Printf("DEBUG: Prompt %d - URI: '%s', Name: '%s'", i, p.URI, p.Name)
+			mh.logger.Debug("Prompt %d - URI: '%s', Name: '%s'", i, p.URI, p.Name)
 		}
 
 		prompt, ok := mh.server.Registry.GetPrompt(uri)
@@ -812,7 +818,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			break
 		}
 
-		log.Printf("Found prompt: URI='%s', Name='%s', MessageCount=%d", prompt.URI, prompt.Name, len(prompt.Messages))
+		mh.logger.Info("Found prompt: URI='%s', Name='%s', MessageCount=%d", prompt.URI, prompt.Name, len(prompt.Messages))
 
 		// Format the result in schema-compliant format
 		result = protocol.GetPromptResult{
@@ -851,12 +857,12 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			break // Exit the switch case
 		}
 
-		log.Printf("Received logging/set_level request from session %s. Setting level to: %s", session.SessionID(), params.Level)
+		mh.logger.Info("Received logging/set_level request from session %s. Setting level to: %s", session.SessionID(), params.Level)
 		// Store the requested level in the Server struct
 		mh.server.loggingLevel = params.Level
 		// Apply the level to the actual logger instance
 		mh.server.logger.SetLevel(params.Level)
-		log.Printf("Server logging level set to: %s", params.Level)
+		mh.logger.Info("Server logging level set to: %s", params.Level)
 
 		// The result for logging/set_level is an empty object {}.
 		result = struct{}{} // Use an empty struct for an empty JSON object result.
@@ -875,7 +881,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 	// Send response
 	if err != nil {
 		// Send error response
-		log.Printf("Sending error response for request %v to session %s: %v", req.ID, session.SessionID(), err)
+		mh.logger.Error("Sending error response for request %v to session %s: %v", req.ID, session.SessionID(), err)
 		// Check if the error is an MCPError to use its specific code and data
 		mcpErr, isMCPErr := err.(*protocol.MCPError)
 		if isMCPErr {
@@ -890,7 +896,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 		// Check if context was cancelled before sending success response
 		select {
 		case <-reqCtx.Done():
-			mh.server.logger.Info("Request %s cancelled before sending success response.", requestIDStr)
+			mh.logger.Info("Request %s cancelled before sending success response.", requestIDStr)
 			// Do not send a success response if cancelled. An error response might have already been sent
 			// by the handler if it detected cancellation, or the client might just see the request end.
 			// JSON-RPC spec is a bit ambiguous here, but LSP sends ErrorCodeRequestCancelled.
@@ -900,7 +906,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 			// session.SendResponse(*errorResponse)
 		default:
 			// Context not cancelled, send success response
-			mh.server.logger.Info("Sending success response for request %v to session %s", req.ID, session.SessionID())
+			mh.logger.Info("Sending success response for request %v to session %s", req.ID, session.SessionID())
 			successResponse := protocol.NewSuccessResponse(req.ID, result)
 			session.SendResponse(*successResponse)
 		}
@@ -910,7 +916,7 @@ func (mh *MessageHandler) handleRequest(session types.ClientSession, req *protoc
 // handleNotification handles an incoming notification message.
 // connectionID is the unique identifier for the client connection.
 func (mh *MessageHandler) handleNotification(session types.ClientSession, notif *protocol.JSONRPCNotification) {
-	mh.server.logger.Info("Handling notification from session %s: %s", session.SessionID(), notif.Method)
+	mh.logger.Info("Handling notification from session %s: %s", session.SessionID(), notif.Method)
 
 	// Unmarshal notification parameters if they exist.
 	// Note: Not all notifications have parameters, so we don't strictly require it.
@@ -926,14 +932,14 @@ func (mh *MessageHandler) handleNotification(session types.ClientSession, notif 
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("Panic in notification handler for method %s: %v", notif.Method, r)
+					mh.logger.Error("Panic in notification handler for method %s: %v", notif.Method, r)
 					// TODO: Potentially send a logging notification about the panic?
 				}
 			}()
 			// Pass the raw parameters directly to the handler
 			rawParams, ok := notif.Params.(json.RawMessage)
 			if !ok {
-				log.Printf("Invalid params type for notification %s: expected json.RawMessage", notif.Method)
+				mh.logger.Error("Invalid params type for notification %s: expected json.RawMessage", notif.Method)
 				// Log and ignore the notification if params is not json.RawMessage
 				return
 			}
@@ -941,7 +947,7 @@ func (mh *MessageHandler) handleNotification(session types.ClientSession, notif 
 		}()
 	} else {
 		// Handle unknown notification methods.
-		log.Printf("Received unknown notification method from session %s: %s", session.SessionID(), notif.Method)
+		mh.logger.Warn("Received unknown notification method from session %s: %s", session.SessionID(), notif.Method)
 		// For notifications, we typically don't send an error response for unknown methods.
 		// We just log and ignore.
 	}
@@ -952,7 +958,7 @@ func (mh *MessageHandler) handleNotification(session types.ClientSession, notif 
 		// receiving the InitializeResult and indicates that the client is ready
 		// to receive further requests and notifications.
 		// No parameters expected for this notification.
-		mh.server.logger.Info("Received 'initialized' notification from session %s", session.SessionID())
+		mh.logger.Info("Received 'initialized' notification from session %s", session.SessionID())
 		// TODO: Perform any post-initialization setup here if needed.
 
 	case protocol.MethodCancelled: // Handle $/cancelled notification
@@ -960,14 +966,14 @@ func (mh *MessageHandler) handleNotification(session types.ClientSession, notif 
 		// indicate that a previously sent request should be cancelled.
 		var params protocol.CancelledParams
 		if unmarshalErr := protocol.UnmarshalPayload(notif.Params, &params); unmarshalErr != nil {
-			mh.server.logger.Warn("Error unmarshalling $/cancelled parameters from session %s: %v", session.SessionID(), unmarshalErr)
+			mh.logger.Warn("Error unmarshalling $/cancelled parameters from session %s: %v", session.SessionID(), unmarshalErr)
 			// For notifications, we just log the error and continue.
 			return
 		}
 
 		// Convert ID to string (can be number or string)
 		requestIDToCancel := fmt.Sprintf("%v", params.ID)
-		mh.server.logger.Info("Received $/cancelled notification from session %s for ID: %s", session.SessionID(), requestIDToCancel)
+		mh.logger.Info("Received $/cancelled notification from session %s for ID: %s", session.SessionID(), requestIDToCancel)
 
 		// Find and call the cancel function
 		mh.cancelMu.Lock()
@@ -977,12 +983,12 @@ func (mh *MessageHandler) handleNotification(session types.ClientSession, notif 
 			// if the request finishes concurrently and tries to remove itself.
 			delete(mh.activeCancels, requestIDToCancel)
 			mh.cancelMu.Unlock() // Unlock before potentially long-running cancel call
-			mh.server.logger.Info("Attempting to cancel request ID: %s", requestIDToCancel)
+			mh.logger.Info("Attempting to cancel request ID: %s", requestIDToCancel)
 			cancelFunc() // Call the cancel function
-			mh.server.logger.Info("Cancellation signal sent for request ID: %s", requestIDToCancel)
+			mh.logger.Info("Cancellation signal sent for request ID: %s", requestIDToCancel)
 		} else {
 			mh.cancelMu.Unlock()
-			mh.server.logger.Warn("Could not cancel request ID %s: No active cancel function found (already completed or invalid ID?)", requestIDToCancel)
+			mh.logger.Warn("Could not cancel request ID %s: No active cancel function found (already completed or invalid ID?)", requestIDToCancel)
 		}
 		return // Return after handling cancellation
 
@@ -991,7 +997,7 @@ func (mh *MessageHandler) handleNotification(session types.ClientSession, notif 
 		// to send a log message to the server.
 		var params protocol.LoggingMessageParams
 		if unmarshalErr := protocol.UnmarshalPayload(notif.Params, &params); unmarshalErr != nil {
-			mh.server.logger.Warn("Error unmarshalling notifications/message parameters from session %s: %v", session.SessionID(), unmarshalErr)
+			mh.logger.Warn("Error unmarshalling notifications/message parameters from session %s: %v", session.SessionID(), unmarshalErr)
 			return
 		}
 
@@ -1005,22 +1011,22 @@ func (mh *MessageHandler) handleNotification(session types.ClientSession, notif 
 
 		switch params.Level {
 		case protocol.LogLevelError:
-			mh.server.logger.Error(logMessage)
+			mh.logger.Error(logMessage)
 		case protocol.LogLevelWarn:
-			mh.server.logger.Warn(logMessage)
+			mh.logger.Warn(logMessage)
 		case protocol.LogLevelInfo:
-			mh.server.logger.Info(logMessage)
+			mh.logger.Info(logMessage)
 		case protocol.LogLevelDebug:
-			mh.server.logger.Debug(logMessage)
+			mh.logger.Debug(logMessage)
 		default:
-			mh.server.logger.Warn("Received client log message with unknown level '%s': %s", params.Level, logMessage)
+			mh.logger.Warn("Received client log message with unknown level '%s': %s", params.Level, logMessage)
 		}
 		// No return here, might fall through to default below if not handled
 
 	case protocol.MethodExit:
 		// Handle the 'exit' notification. Client indicates it's exiting.
 		// No parameters expected.
-		mh.server.logger.Info("Received 'exit' notification from session %s", session.SessionID())
+		mh.logger.Info("Received 'exit' notification from session %s", session.SessionID())
 		mh.lifecycleHandler.ExitHandler() // Call the handler to trigger server shutdown
 
 	// TODO: Add cases for other notifications as they are implemented.
@@ -1040,50 +1046,32 @@ func (mh *MessageHandler) RegisterNotificationHandler(method string, handler fun
 
 // sendNotification sends a JSON-RPC notification over the transport to a specific session.
 func (mh *MessageHandler) sendNotification(sessionID string, notif *protocol.JSONRPCNotification) {
-	// Marshal the notification to JSON
-	// data, err := json.Marshal(notif) // Marshalling happens within session.SendNotification
-	// if err != nil {
-	// 	log.Printf("Error marshalling notification for session %s: %v", sessionID, err)
-	// 	return
-	// }
-
 	// Get the session from the TransportManager
 	session, _, ok := mh.server.TransportManager.GetSession(sessionID) // Capture caps with _
 	if !ok {
-		mh.server.logger.Warn("Error sending notification: session not found for ID %s", sessionID)
-		// TODO: Handle session not found error - REMOVED (logging is sufficient)
+		mh.logger.Warn("Error sending notification: session not found for ID %s", sessionID)
 		return
 	}
 
 	// Send the notification using the session's method
 	if err := session.SendNotification(*notif); err != nil {
-		mh.server.logger.Error("Error sending notification via session %s: %v", sessionID, err)
-		// TODO: Handle send error (e.g., connection closed) - REMOVED (logging is sufficient)
+		mh.logger.Error("Error sending notification via session %s: %v", sessionID, err)
 	}
 }
 
 // SendNotificationToConnections sends a JSON-RPC notification to multiple connection IDs.
 func (mh *MessageHandler) SendNotificationToConnections(connectionIDs []string, notif *protocol.JSONRPCNotification) {
-	// Marshal the notification once - No longer needed, marshaling happens in session.SendNotification
-	// data, err := json.Marshal(notif)
-	// if err != nil {
-	// 	mh.server.logger.Error("Error marshalling notification for multiple connections: %v", err)
-	// 	// TODO: Handle marshalling error - REMOVED (obsolete)
-	// 	return
-	// }
-
 	// Send the message to each connection
 	for _, connectionID := range connectionIDs {
 		// Get the session
 		session, _, ok := mh.server.TransportManager.GetSession(connectionID) // Capture caps with _
 		if !ok {
-			mh.server.logger.Warn("Error sending notification to connections: session not found for ID %s", connectionID)
+			mh.logger.Warn("Error sending notification to connections: session not found for ID %s", connectionID)
 			continue // Skip this ID and try the next one
 		}
 		// Send via the session
 		if err := session.SendNotification(*notif); err != nil {
-			mh.server.logger.Error("Error sending notification to connection %s via session: %v", connectionID, err)
-			// TODO: Handle send error (e.g., connection closed) - REMOVED (logging is sufficient)
+			mh.logger.Error("Error sending notification to connection %s via session: %v", connectionID, err)
 		}
 	}
 }
@@ -1102,7 +1090,7 @@ func (mh *MessageHandler) SendProgress(connectionID string, token interface{}, v
 	// would handle both string and number and convert numbers to strings.
 	tokenStr, ok := token.(string)
 	if !ok {
-		log.Printf("Error sending progress: progress token is not a string (type: %T)", token)
+		mh.logger.Error("Error sending progress: progress token is not a string (type: %T)", token)
 		return // Cannot send progress without a valid string token
 	}
 
@@ -1115,7 +1103,7 @@ func (mh *MessageHandler) SendProgress(connectionID string, token interface{}, v
 	notification := protocol.NewNotification(protocol.MethodProgress, params)
 
 	mh.sendNotification(connectionID, notification)
-	log.Printf("Sent progress notification for token %v to connection %s", token, connectionID)
+	mh.logger.Debug("Sent progress notification for token %v to connection %s", token, connectionID)
 }
 
 // SendLoggingMessage sends a notifications/message notification to all connected clients.
@@ -1135,7 +1123,7 @@ func (mh *MessageHandler) SendLoggingMessage(level protocol.LoggingLevel, messag
 	connectionIDs := mh.server.TransportManager.GetAllSessionIDs()
 	if len(connectionIDs) > 0 {
 		mh.SendNotificationToConnections(connectionIDs, notification)
-		log.Printf("Sent logging message notification (level: %s) to %d connections", level, len(connectionIDs))
+		mh.logger.Debug("Sent logging message notification (level: %s) to %d connections", level, len(connectionIDs))
 	}
 }
 
@@ -1194,9 +1182,8 @@ func matchURITemplate(pattern, uri string) (map[string]string, bool) {
 	// Use wilduri library pattern matching which already supports wildcards
 	tmpl, err := wilduri.New(pattern)
 	if err != nil {
-		// Log the error, as an invalid pattern shouldn't be registered in the first place,
-		// but handle defensively.
-		log.Printf("Error parsing registered URI template pattern '%s': %v", pattern, err)
+		// We can't access mh.logger here since it's not a method of MessageHandler
+		// Just return false without logging, let the caller handle it
 		return nil, false
 	}
 
@@ -1466,16 +1453,16 @@ func convertHandlerResultToResourceContents(returnValues []reflect.Value, uri st
 // handleCompletionComplete handles the `completion/complete` request for argument autocompletion.
 // It now returns the standard `error` interface type.
 func (mh *MessageHandler) handleCompletionComplete(ctx context.Context, rawParams json.RawMessage) (interface{}, error) {
-	mh.server.logger.Debug("Handling completion/complete request")
+	mh.logger.Debug("Handling completion/complete request")
 
 	var params protocol.CompleteRequest
 	if err := json.Unmarshal(rawParams, &params); err != nil {
-		mh.server.logger.Error("Failed to unmarshal completion/complete params: %v", err)
+		mh.logger.Error("Failed to unmarshal completion/complete params: %v", err)
 		// Return an MCPError wrapped as a standard error
 		return nil, protocol.NewInvalidParamsError(fmt.Sprintf("failed to parse params: %s", err.Error()))
 	}
 
-	mh.server.logger.Debug("Completion requested for ref type '%s' (Name: '%s', URI: '%s'), argument '%s' with value '%s'",
+	mh.logger.Debug("Completion requested for ref type '%s' (Name: '%s', URI: '%s'), argument '%s' with value '%s'",
 		params.Ref.Type, params.Ref.Name, params.Ref.URI, params.Argument.Name, params.Argument.Value)
 
 	// --- Actual Completion Logic ---
@@ -1508,7 +1495,7 @@ func (mh *MessageHandler) handleCompletionComplete(ctx context.Context, rawParam
 		// TODO: Potentially add matching for resource templates as well?
 
 	default:
-		mh.server.logger.Warn("Unsupported completion reference type: %s", params.Ref.Type)
+		mh.logger.Warn("Unsupported completion reference type: %s", params.Ref.Type)
 		// Return empty results for unsupported types
 	}
 
@@ -1533,7 +1520,7 @@ func (mh *MessageHandler) handleCompletionComplete(ctx context.Context, rawParam
 		},
 	}
 
-	mh.server.logger.Debug("completion/complete handled, returning %d suggestions (total: %d, hasMore: %t)", len(suggestions), totalMatches, hasMore)
+	mh.logger.Debug("completion/complete handled, returning %d suggestions (total: %d, hasMore: %t)", len(suggestions), totalMatches, hasMore)
 	return result, nil // Return nil for the error interface
 }
 
@@ -1541,7 +1528,7 @@ func (mh *MessageHandler) handleCompletionComplete(ctx context.Context, rawParam
 // // This was previously misinterpreted as LLM generation, but is now understood as argument completion.
 // // Keeping this commented out for reference, but the unified handleCompletionComplete should be used.
 // func (mh *MessageHandler) handleCompletionCompleteV2024(ctx context.Context, rawParams json.RawMessage) (interface{}, *protocol.MCPError) {
-// 	mh.server.logger.Debug("Handling V2024 completion/complete request (Simulation)")
+// 	mh.logger.Debug("Handling V2024 completion/complete request (Simulation)")
 
 // 	// Check capability
 // 	if !mh.server.ImplementsCompletions {
@@ -1552,7 +1539,7 @@ func (mh *MessageHandler) handleCompletionComplete(ctx context.Context, rawParam
 // 	// Parse params (V2024 CreateMessageRequestParams)
 // 	var paramsV2024 protocol.CreateMessageRequestParams
 // 	if err := json.Unmarshal(rawParams, &paramsV2024); err != nil {
-// 		mh.server.logger.Error("Failed to unmarshal V2024 completion/complete params: %v", err)
+// 		mh.logger.Error("Failed to unmarshal V2024 completion/complete params: %v", err)
 // 		return nil, protocol.NewInvalidParamsError(fmt.Sprintf("failed to parse V2024 params: %s", err.Error()))
 // 	}
 
@@ -1576,7 +1563,7 @@ func (mh *MessageHandler) handleCompletionComplete(ctx context.Context, rawParam
 // 		// StopReason: protocol.StringPtr("simulated_stop"), // Optional
 // 	}
 
-// 	mh.server.logger.Debug("V2024 completion/complete handled successfully (simulation)")
+// 	mh.logger.Debug("V2024 completion/complete handled successfully (simulation)")
 // 	return result, nil
 // }
 

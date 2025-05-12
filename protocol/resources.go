@@ -4,7 +4,7 @@ package protocol
 import (
 	"encoding/json" // Added for UnmarshalJSON
 	"fmt"           // Added for UnmarshalJSON
-	"log"           // Added for UnmarshalJSON
+	// Added for UnmarshalJSON
 )
 
 // --- Resource Access Structures ---
@@ -134,7 +134,9 @@ func (r *ReadResourceResult) UnmarshalJSON(data []byte) error {
 					actualContent = ac
 				} else {
 					// None matched or all had errors
-					log.Printf("Warning: Could not determine resource content type for: %s", string(raw))
+
+					// We don't log unrecognized content types here to avoid direct logging
+					// Callers should validate content types after unmarshaling
 					continue // Skip this content part
 				}
 			}

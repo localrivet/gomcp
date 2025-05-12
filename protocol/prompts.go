@@ -4,7 +4,6 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 )
 
 // --- Prompt Structures ---
@@ -91,7 +90,9 @@ func (pm *PromptMessage) UnmarshalJSON(data []byte) error {
 			}
 			pm.Content = erc
 		default:
-			log.Printf("Warning: Unknown content type '%s' encountered in prompt message", typeDetect.Type)
+			// We don't log directly in the protocol package to avoid import cycles
+			// and because the protocol package should be independent of logging implementations.
+			// Callers should handle unknown content types appropriately.
 			return fmt.Errorf("unknown content type: %s", typeDetect.Type)
 		}
 

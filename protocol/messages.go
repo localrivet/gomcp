@@ -4,7 +4,6 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 )
 
 // Annotations provides optional annotations for the client (2025-03-26).
@@ -234,7 +233,7 @@ func (sm *SamplingMessage) UnmarshalJSON(data []byte) error {
 			}
 			actualContent = erc
 		default:
-			log.Printf("Warning: Unknown content type '%s' encountered in sampling message", typeDetect.Type)
+			// Instead of logging directly, just use a fallback silently
 			continue
 		}
 		sm.Content = append(sm.Content, actualContent)
@@ -390,8 +389,7 @@ func (sr *SamplingResult) UnmarshalJSON(data []byte) error {
 			}
 			actualContent = erc
 		default:
-			log.Printf("Warning: Unknown content type '%s' encountered in sampling result", typeDetect.Type)
-			// Optionally store as raw data or skip
+			// Instead of logging directly, just use a fallback silently
 			continue
 		}
 		sr.Content = append(sr.Content, actualContent)
@@ -471,4 +469,48 @@ func StringPtr(s string) *string {
 // IntPtr is a helper function to return a pointer to an int value.
 func IntPtr(i int) *int {
 	return &i
+}
+
+// ContentTypeDetect provides helper functionality for detecting content types.
+type ContentTypeDetect struct {
+	Type     string            `json:"type,omitempty"`
+	Text     string            `json:"text,omitempty"`
+	Tool     json.RawMessage   `json:"tool,omitempty"`
+	Data     json.RawMessage   `json:"data,omitempty"`
+	Parts    []json.RawMessage `json:"parts,omitempty"`
+	Function json.RawMessage   `json:"function,omitempty"`
+}
+
+// detectContentType determines the content type from a JSON raw message.
+func (typeDetect *ContentTypeDetect) detectContentType(data json.RawMessage) string {
+	if err := json.Unmarshal(data, typeDetect); err != nil {
+		// Assume this might be a string
+		var strContent string
+		if err := json.Unmarshal(data, &strContent); err == nil {
+			return "text"
+		}
+		// Could not detect type
+		return ""
+	}
+
+	// Determine type based on detected fields
+	if typeDetect.Type != "" {
+		// Use explicitly specified type
+		return typeDetect.Type
+	} else if typeDetect.Text != "" {
+		return "text"
+	} else if typeDetect.Function != nil {
+		return "function"
+	} else if typeDetect.Tool != nil {
+		return "tool"
+	} else if typeDetect.Data != nil {
+		return "data"
+	} else if len(typeDetect.Parts) > 0 {
+		return "multi_part"
+	} else {
+		// No recognizable fields
+		// Instead of logging directly, just return unknown
+		// log.Printf("Warning: Unknown content type '%s' encountered in sampling message", typeDetect.Type)
+		return "unknown"
+	}
 }

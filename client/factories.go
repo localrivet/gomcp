@@ -245,7 +245,7 @@ func newClientWithTransport(config *ClientConfig, transport ClientTransport) (Cl
 	transport.SetNotificationHandler(client.handleNotification)
 
 	// Create protocol handler based on preferred version
-	client.protocolHandler = newProtocolHandler(config.PreferredProtocolVersion)
+	client.protocolHandler = newProtocolHandler(config.PreferredProtocolVersion, config.Logger)
 
 	return client, nil
 }

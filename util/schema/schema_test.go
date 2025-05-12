@@ -185,6 +185,15 @@ func TestFromStructRequiredFields(t *testing.T) {
 		t.Errorf("Required fields mismatch.\nExpected: %v\nGot:      %v", expectedRequired, schema.Required)
 	}
 
+	// Check that properties exist for all fields except ignored fields
+	expectedProps := []string{"req1", "opt1", "req2", "opt2", "nojsontag", "req3"}
+	actualProps := make([]string, 0, len(schema.Properties))
+	for k := range schema.Properties {
+		actualProps = append(actualProps, k)
+	}
+	sort.Strings(actualProps)
+	sort.Strings(expectedProps)
+
 	// Also check a couple of properties for basic correctness
 	if prop, ok := schema.Properties["req1"]; !ok || prop.Type != "string" {
 		t.Errorf("Property 'req1' missing or has wrong type: %+v", prop)
@@ -195,8 +204,9 @@ func TestFromStructRequiredFields(t *testing.T) {
 	if _, ok := schema.Properties["IgnoredField"]; ok {
 		t.Errorf("Property 'IgnoredField' should not be present")
 	}
-	if _, ok := schema.Properties["NoJsonTag"]; ok {
-		t.Errorf("Property 'NoJsonTag' should not be present")
+	// Fields without JSON tags should still be included in properties but with lowercase names
+	if _, ok := schema.Properties["nojsontag"]; !ok {
+		t.Errorf("Property 'nojsontag' should be present in properties")
 	}
 }
 

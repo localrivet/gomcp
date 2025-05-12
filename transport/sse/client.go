@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http" // ADDED for tracing
 	"net/url"
 	"strings"
@@ -254,7 +253,9 @@ func (t *SSETransport) Send(ctx context.Context, data []byte) error {
 			if err != nil {
 				postErr = fmt.Errorf("failed to parse serverBaseURL '%s': %w", t.serverBaseURL, err)
 			} else {
-				log.Printf("[DEBUG TEMP] SSETransport: Resolving Ref: Base='%s', Rel='%s'", baseParsed.String(), endpointParsed.String())
+				if t.logger != nil {
+					t.logger.Debug("SSETransport: Resolving Ref: Base='%s', Rel='%s'", baseParsed.String(), endpointParsed.String())
+				}
 				resolvedURL := baseParsed.ResolveReference(endpointParsed)
 				postURL = resolvedURL.String()
 				t.logger.Debug("SSETransport: Resolved relative endpoint URL '%s' against base '%s' to: %s", rawEndpointURL, t.serverBaseURL, postURL)
@@ -271,7 +272,9 @@ func (t *SSETransport) Send(ctx context.Context, data []byte) error {
 			if err != nil {
 				postErr = fmt.Errorf("failed to parse mcpEndpoint '%s': %w", t.mcpEndpoint, err)
 			} else {
-				log.Printf("[DEBUG TEMP] SSETransport: Resolving Ref (Default): Base='%s', Rel='%s'", baseParsed.String(), mcpEndpointParsed.String())
+				if t.logger != nil {
+					t.logger.Debug("SSETransport: Resolving Ref (Default): Base='%s', Rel='%s'", baseParsed.String(), mcpEndpointParsed.String())
+				}
 				resolvedURL := baseParsed.ResolveReference(mcpEndpointParsed)
 				postURL = resolvedURL.String()
 				t.logger.Debug("SSETransport: Using default resolved endpoint: %s", postURL)
