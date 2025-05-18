@@ -1,60 +1,53 @@
 # Task ID: 9
-# Title: Implement Hook System
-# Status: pending
-# Dependencies: 3, 4
+# Title: Implement Type Conversion Package
+# Status: done
+# Dependencies: 1
 # Priority: medium
-# Description: Create an extensible hook system for customizing server and client behavior.
+# Description: Implement or refine the type conversion package (util/conversion) to simplify working with dynamic data types.
 # Details:
-Implement a hook system for customization and extension:
+Implement a type conversion package that supports:
 
-1. Define hook interfaces and types
-2. Create hook registration and execution mechanisms
-3. Implement common hooks (pre/post request, error handling, etc.)
-4. Add hook points in server and client implementations
-5. Create utilities for hook chaining and composition
-
-Example implementation:
 ```go
-package hooks
+// util/conversion/conversion.go
+package conversion
 
-import (
-    "context"
-    "github.com/your-org/gomcp/protocol"
-)
-
-type RequestHook func(ctx context.Context, req *protocol.Request) (*protocol.Request, error)
-type ResponseHook func(ctx context.Context, resp *protocol.Response) (*protocol.Response, error)
-type ErrorHook func(ctx context.Context, err error) error
-
-type HookManager struct {
-    preRequestHooks  []RequestHook
-    postRequestHooks []RequestHook
-    preResponseHooks []ResponseHook
-    postResponseHooks []ResponseHook
-    errorHooks       []ErrorHook
+// ToString converts a value to a string
+func ToString(v interface{}) (string, error) {
+	// Implementation
 }
 
-func NewHookManager() *HookManager {
-    return &HookManager{}
+// ToInt converts a value to an int
+func ToInt(v interface{}) (int, error) {
+	// Implementation
 }
 
-func (m *HookManager) AddPreRequestHook(hook RequestHook) {
-    m.preRequestHooks = append(m.preRequestHooks, hook)
+// ToFloat64 converts a value to a float64
+func ToFloat64(v interface{}) (float64, error) {
+	// Implementation
 }
 
-func (m *HookManager) ExecutePreRequestHooks(ctx context.Context, req *protocol.Request) (*protocol.Request, error) {
-    var err error
-    for _, hook := range m.preRequestHooks {
-        req, err = hook(ctx, req)
-        if err != nil {
-            return req, err
-        }
-    }
-    return req, nil
+// ToBool converts a value to a bool
+func ToBool(v interface{}) (bool, error) {
+	// Implementation
 }
 
-// Additional methods
+// ToMap converts a value to a map[string]interface{}
+func ToMap(v interface{}) (map[string]interface{}, error) {
+	// Implementation
+}
+
+// ToSlice converts a value to a []interface{}
+func ToSlice(v interface{}) ([]interface{}, error) {
+	// Implementation
+}
 ```
 
+Implement support for common conversions:
+- String to/from numeric types
+- String to/from boolean
+- JSON to/from Go types
+- Map and slice conversions
+- Time and date conversions
+
 # Test Strategy:
-Create unit tests for hook registration and execution. Test hook chaining with multiple hooks. Verify hook execution order is preserved. Test error handling in hooks. Create integration tests with server and client to ensure hooks are called at the right points in the request/response cycle.
+Create unit tests for all conversion functions with various input types. Test edge cases like empty values, zero values, and invalid conversions. Test error messages for clarity and correctness.

@@ -1,393 +1,127 @@
-// Package stdio provides a Transport implementation that uses standard input/output.
+// Package stdio provides a standard I/O implementation of the MCP transport.
+//
+// This package implements the Transport interface using standard input and output,
+// suitable for CLI applications and direct LLM integration.
 package stdio
 
 import (
 	"bufio"
-	"bytes" // Needed for byte buffer
-	"context"
-	"encoding/json" // Needed for json.Valid
-	"errors"        // Added for error checking
-	"fmt"
+	"errors"
 	"io"
 	"os"
-	"strings" // Added for error checking
-	"sync"
+	"strings"
 
-	// "time" // No longer needed directly in ReceiveWithContext
-
-	"github.com/localrivet/gomcp/logx"
-	"github.com/localrivet/gomcp/protocol" // For ErrorPayload, ErrorCodeParseError
-	"github.com/localrivet/gomcp/types"    // For types.Transport, types.Logger
+	"github.com/localrivet/gomcp/transport"
 )
 
-// StdioTransport implements the Transport interface using standard input/output.
-// It reads messages from stdin using a dedicated reader goroutine and writes messages to stdout.
-type StdioTransport struct {
-	reader     io.Reader // Underlying reader (e.g., os.Stdin)
-	writer     io.Writer // Underlying writer (e.g., os.Stdout)
-	writeMutex sync.Mutex
-	logger     types.Logger
-	closed     bool
-	closeMutex sync.Mutex
-
-	// Store original streams for potential closing
-	rawReader io.Reader
-	rawWriter io.Writer
-
-	// For persistent reader goroutine
-	messageChan     chan messageOrError // Channel for read messages/errors
-	startReaderOnce sync.Once           // Ensures reader goroutine starts only once
-	readerCtx       context.Context     // Context to manage reader goroutine lifecycle
-	readerCancel    context.CancelFunc  // Function to cancel the reader context
+// Transport implements the transport.Transport interface for Standard I/O.
+type Transport struct {
+	transport.BaseTransport
+	reader  *bufio.Reader
+	writer  *bufio.Writer
+	done    chan struct{}
+	readEOF bool
+	newline bool // Whether to append a newline to each message
 }
 
-// messageOrError holds either a received message or an error from the reader goroutine.
-type messageOrError struct {
-	data []byte
-	err  error
+// NewTransport creates a new Standard I/O transport.
+// By default, it uses os.Stdin and os.Stdout.
+func NewTransport() *Transport {
+	return NewTransportWithIO(os.Stdin, os.Stdout)
 }
 
-// NewStdioTransport creates a new StdioTransport with default options.
-func NewStdioTransport() *StdioTransport {
-	return NewStdioTransportWithOptions(types.TransportOptions{})
+// NewTransportWithIO creates a new Standard I/O transport with custom io.Reader and io.Writer.
+// This is particularly useful for testing or custom I/O streams.
+func NewTransportWithIO(in io.Reader, out io.Writer) *Transport {
+	return &Transport{
+		reader:  bufio.NewReader(in),
+		writer:  bufio.NewWriter(out),
+		done:    make(chan struct{}),
+		newline: true, // Default to appending newlines
+	}
 }
 
-// NewStdioTransportWithOptions creates a new StdioTransport with the specified options.
-func NewStdioTransportWithOptions(opts types.TransportOptions) *StdioTransport {
-	return NewStdioTransportWithReadWriter(os.Stdin, os.Stdout, opts)
-}
-
-// NewStdioTransportWithReadWriter creates a new StdioTransport using the provided reader/writer.
-func NewStdioTransportWithReadWriter(reader io.Reader, writer io.Writer, opts types.TransportOptions) *StdioTransport {
-	logger := opts.Logger
-	if logger == nil {
-		// Use the centralized logx logger
-		logger = logx.NewDefaultLogger()
-		// Assign back to opts so the transport uses the created logger
-		opts.Logger = logger
-	}
-	logger.Info("Creating new StdioTransport")
-
-	// Keep original writer for potential closing
-	rawWriter := writer
-
-	// Wrap stdout/stderr with a buffered writer for reliable flushing
-	if f, ok := writer.(*os.File); ok && (f == os.Stdout || f == os.Stderr) {
-		writer = bufio.NewWriter(writer)
-	}
-
-	// Create a context to manage the reader goroutine's lifecycle
-	readerCtx, readerCancel := context.WithCancel(context.Background())
-
-	t := &StdioTransport{
-		reader:       reader,
-		writer:       writer, // This might be the buffered writer now
-		logger:       logger,
-		rawReader:    reader,
-		rawWriter:    rawWriter, // Store the original writer
-		closed:       false,
-		messageChan:  make(chan messageOrError, 1), // Buffered channel
-		readerCtx:    readerCtx,
-		readerCancel: readerCancel,
-	}
-
-	// Automatically start the reader goroutine when the transport is created.
-	// This is generally safe as StdioTransport usually implies a dedicated process.
-	// Alternatively, use startReaderOnce in ReceiveWithContext if lazy start is needed.
-	go t.startReader()
-
-	return t
-}
-
-// Send writes a message to the underlying writer (stdout), respecting the context.
-// It ensures the message ends with a newline and handles locking and flushing.
-func (t *StdioTransport) Send(ctx context.Context, data []byte) error {
-	// Check context cancellation first
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
-
-	t.closeMutex.Lock()
-	if t.closed {
-		t.closeMutex.Unlock()
-		return fmt.Errorf("transport is closed")
-	}
-	t.closeMutex.Unlock()
-
-	t.writeMutex.Lock()
-	defer t.writeMutex.Unlock()
-
-	if len(data) == 0 {
-		return fmt.Errorf("cannot send empty message")
-	}
-	// Ensure data ends with exactly one newline
-	data = bytes.TrimRight(data, "\n")
-	data = append(data, '\n')
-
-	t.logger.Debug("StdioTransport Send: %s", string(data))
-
-	_, err := t.writer.Write(data)
-	if err != nil {
-		// Check if it's a pipe closed error, which might be expected
-		if errors.Is(err, io.ErrClosedPipe) || strings.Contains(err.Error(), "pipe closed") {
-			t.logger.Warn("StdioTransport: Attempted to write to closed pipe: %v", err)
-			// Close the transport from this end if write fails due to pipe closure
-			_ = t.Close()
-			return err // Return the original error
-		}
-		t.logger.Error("StdioTransport: Failed to write message: %v", err)
-		return fmt.Errorf("failed to write message: %w", err)
-	}
-
-	// Attempt to flush if the writer supports it (like bufio.Writer)
-	if flusher, ok := t.writer.(interface{ Flush() error }); ok {
-		if err := flusher.Flush(); err != nil {
-			t.logger.Warn("StdioTransport: Failed to flush writer: %v", err)
-		}
-	}
-
+// Initialize initializes the transport.
+func (t *Transport) Initialize() error {
+	// Nothing to initialize for stdio transport
 	return nil
 }
 
-// EstablishReceiver for StdioTransport does nothing, as the reader is started
-// automatically during construction. It exists to satisfy the Transport interface.
-func (t *StdioTransport) EstablishReceiver(ctx context.Context) error {
-	t.logger.Debug("StdioTransport: EstablishReceiver called (no-op).")
-	// Check if already closed
-	t.closeMutex.Lock()
-	defer t.closeMutex.Unlock()
-	if t.closed {
-		return fmt.Errorf("transport is closed")
-	}
+// Start starts the transport, beginning to read from stdin.
+func (t *Transport) Start() error {
+	// Start a goroutine to read from stdin
+	go t.readLoop()
 	return nil
 }
 
-// Receive reads the next available message from the internal channel,
-// waiting if necessary. It respects the provided context for cancellation.
-// This replaces the old Receive and ReceiveWithContext methods.
-func (t *StdioTransport) Receive(ctx context.Context) ([]byte, error) {
-	// Note: Reader goroutine is started in the constructor.
-
-	t.closeMutex.Lock()
-	isClosed := t.closed
-	t.closeMutex.Unlock()
-	// Check if closed *before* waiting on channel. Avoids race if Close happens
-	// between this check and the select statement. The select handles closure
-	// during the wait.
-	if isClosed {
-		return nil, fmt.Errorf("transport is closed")
-	}
-
-	select {
-	case <-ctx.Done():
-		t.logger.Warn("StdioTransport: Receive context canceled: %v", ctx.Err())
-		return nil, ctx.Err()
-	case msg, ok := <-t.messageChan:
-		if !ok {
-			// Channel closed, means reader stopped (EOF, error, or Close called).
-			t.logger.Info("StdioTransport: Message channel closed.")
-			// Ensure transport state reflects closure if not already set
-			t.closeMutex.Lock()
-			alreadyClosed := t.closed
-			if !alreadyClosed {
-				t.closed = true // Mark as closed if channel closure is the first indication
-			}
-			t.closeMutex.Unlock()
-			// Return EOF or a specific closed error
-			return nil, io.EOF // Consistent with reader goroutine sending EOF
-		}
-		// Return the message data or error received from the channel
-		if msg.err != nil && !errors.Is(msg.err, io.EOF) { // Don't log EOF as an error here
-			t.logger.Error("StdioTransport: Received error from reader channel: %v", msg.err)
-		}
-		// If EOF is received, mark transport as closed
-		if errors.Is(msg.err, io.EOF) {
-			t.closeMutex.Lock()
-			t.closed = true
-			t.closeMutex.Unlock()
-		}
-		return msg.data, msg.err
-	}
+// Stop stops the transport, closing the done channel.
+func (t *Transport) Stop() error {
+	// Signal the read loop to stop
+	close(t.done)
+	return nil
 }
 
-// startReader launches the persistent goroutine that reads from stdin,
-// validates messages, and sends them to the messageChan.
-func (t *StdioTransport) startReader() {
-	defer close(t.messageChan) // Ensure channel is closed when reader exits
-
-	scanner := bufio.NewScanner(t.reader)
-	// Explicitly set a larger buffer in case of rapid, large messages or unusual buffering.
-	const maxMessageSize = 1 * 1024 * 1024      // 1 MiB
-	buf := make([]byte, bufio.MaxScanTokenSize) // Start with default, but allow growth
-	scanner.Buffer(buf, maxMessageSize)
-
-	t.logger.Info("StdioTransport: Reader goroutine started.")
-
-	for {
-		// Check for cancellation signal before blocking on Scan
-		select {
-		case <-t.readerCtx.Done():
-			t.logger.Info("StdioTransport: Reader goroutine stopping due to context cancellation.")
-			// Send the cancellation error to ensure ReceiveWithContext unblocks if waiting
-			// Avoid sending if channel is already potentially closed or blocked
-			// A non-blocking send attempt might be safer here, but complicates logic.
-			// Relying on channel closure is generally sufficient.
-			return
-		default:
-			// Continue to Scan
-		}
-
-		// Blocking call to read the next line
-		scanned := scanner.Scan()
-
-		if !scanned {
-			// Scan returned false, check for errors or EOF
-			err := scanner.Err()
-			if err != nil {
-				// Check if the error is due to the reader being closed (expected on Close())
-				// or context cancellation during scan
-				if errors.Is(err, os.ErrClosed) || errors.Is(err, io.ErrClosedPipe) || strings.Contains(err.Error(), "file already closed") || errors.Is(err, context.Canceled) {
-					t.logger.Info("StdioTransport: Reader goroutine stopping due to closed reader or context cancellation: %v", err)
-					// Don't send error, signal clean closure via closed channel
-				} else {
-					t.logger.Error("StdioTransport: Scanner error: %v", err)
-					// Attempt to send the error non-blockingly in case channel is full/closed
-					select {
-					case t.messageChan <- messageOrError{err: fmt.Errorf("scanner error: %w", err)}:
-					default:
-						t.logger.Warn("StdioTransport: Failed to send scanner error to channel (full or closed).")
-					}
-				}
-			} else {
-				// If Scan returned false and scanner.Err() is nil, it's EOF
-				t.logger.Info("StdioTransport: Reached EOF.")
-				// Attempt to send EOF non-blockingly
-				select {
-				case t.messageChan <- messageOrError{err: io.EOF}: // Signal clean EOF
-				default:
-					t.logger.Warn("StdioTransport: Failed to send EOF to channel (full or closed).")
-				}
-			}
-			return // Exit reader loop
-		}
-
-		// Got a line
-		lineBytes := scanner.Bytes() // Get the line bytes (without newline)
-		// Make a copy because scanner.Bytes() buffer can be overwritten by next Scan()
-		lineCopy := make([]byte, len(lineBytes))
-		copy(lineCopy, lineBytes)
-
-		// Append the newline character back for consistency.
-		lineCopy = append(lineCopy, '\n')
-
-		t.logger.Debug("StdioTransport Received raw line: %s", string(lineCopy))
-
-		// Basic JSON validation
-		if !json.Valid(lineCopy) {
-			t.logger.Error("StdioTransport: Received invalid JSON: %s", string(lineCopy))
-			// _ = t.sendParseError("Received invalid JSON") // Do NOT send parse error; client seems unable to handle it.
-			// Just log it server-side and continue reading the next line.
-			continue
-		}
-
-		// Send the valid message
-		select {
-		case t.messageChan <- messageOrError{data: lineCopy, err: nil}:
-			// Message sent successfully
-		case <-t.readerCtx.Done():
-			t.logger.Info("StdioTransport: Reader goroutine stopping due to context cancellation while sending.")
-			return
-		}
-	}
-}
-
-// Close signals the reader goroutine to stop and attempts to close the underlying reader/writer.
-func (t *StdioTransport) Close() error {
-	t.closeMutex.Lock()
-	if t.closed {
-		t.closeMutex.Unlock()
-		return nil // Already closed
-	}
-	// Mark as closed immediately inside the lock
-	t.closed = true
-	t.logger.Info("StdioTransport: Closing...")
-	t.closeMutex.Unlock() // Unlock after marking closed
-
-	// Signal the reader goroutine to stop by canceling its context
-	// This should happen before closing the rawReader to avoid race conditions
-	// where the reader goroutine tries to read from a closed reader.
-	t.readerCancel()
-
-	// Closing the rawReader is crucial to unblock the scanner.Scan() call
-	// in the reader goroutine if it's currently blocked.
-	var firstErr error
-	if closer, ok := t.rawReader.(io.Closer); ok {
-		t.logger.Debug("StdioTransport: Closing reader...")
-		if err := closer.Close(); err != nil {
-			// Ignore errors that indicate the reader is already closed or pipe broken,
-			// as these might be expected consequences of concurrent closure or the other end closing.
-			if !errors.Is(err, os.ErrClosed) && !errors.Is(err, io.ErrClosedPipe) && !strings.Contains(err.Error(), "file already closed") {
-				t.logger.Error("StdioTransport: Error closing reader: %v", err)
-				firstErr = err // Record the first significant error
-			}
-		}
-	}
-
-	// Close writer
-	if closer, ok := t.rawWriter.(io.Closer); ok {
-		t.logger.Debug("StdioTransport: Closing writer...")
-		if err := closer.Close(); err != nil {
-			if !errors.Is(err, os.ErrClosed) && !errors.Is(err, io.ErrClosedPipe) && !strings.Contains(err.Error(), "file already closed") {
-				t.logger.Error("StdioTransport: Error closing writer: %v", err)
-				if firstErr == nil {
-					firstErr = err
-				}
-			}
-		}
-	}
-
-	// Drain the message channel after closing reader/writer and canceling context.
-	// This helps ensure ReceiveWithContext doesn't block indefinitely if called after Close.
-	go func() {
-		for range t.messageChan {
-			// Discard any messages buffered or sent before closure was fully processed
-		}
-		t.logger.Debug("StdioTransport: Message channel drained.")
-	}()
-
-	if firstErr == nil {
-		t.logger.Info("StdioTransport: Closed successfully.")
-	}
-	return firstErr
-}
-
-// IsClosed returns true if the transport has been closed.
-func (t *StdioTransport) IsClosed() bool {
-	t.closeMutex.Lock()
-	defer t.closeMutex.Unlock()
-	return t.closed
-}
-
-// sendParseError is a helper to send a JSON-RPC ParseError.
-func (t *StdioTransport) sendParseError(ctx context.Context, message string) error {
-	errResp := protocol.JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      nil, // No ID for parse errors before request ID is known
-		Error: &protocol.ErrorPayload{
-			Code:    protocol.CodeParseError,
-			Message: message,
-		},
-	}
-	jsonData, err := json.Marshal(errResp)
+// Send sends a message over stdout.
+func (t *Transport) Send(message []byte) error {
+	// Write the message to stdout
+	_, err := t.writer.Write(message)
 	if err != nil {
-		t.logger.Error("StdioTransport: Failed to marshal parse error response: %v", err)
 		return err
 	}
-	// Use Send directly, ignoring potential errors during error reporting
-	_ = t.Send(ctx, jsonData) // Pass context
-	return nil
+
+	// Add newline if configured
+	if t.newline {
+		_, err = t.writer.WriteString("\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	return t.writer.Flush()
 }
 
-var _ types.Transport = (*StdioTransport)(nil) // Ensure interface compliance
+// Receive is not implemented for stdio transport as it uses the readLoop.
+func (t *Transport) Receive() ([]byte, error) {
+	return nil, errors.New("not implemented: stdio transport uses readLoop with handler")
+}
+
+// SetNewline configures whether to append a newline to each sent message.
+func (t *Transport) SetNewline(newline bool) {
+	t.newline = newline
+}
+
+// readLoop reads messages from stdin and passes them to the handler.
+func (t *Transport) readLoop() {
+	for {
+		select {
+		case <-t.done:
+			return
+		default:
+			// Read a line from stdin
+			line, err := t.reader.ReadString('\n')
+			if err != nil {
+				if err == io.EOF {
+					t.readEOF = true
+					// If we've reached EOF, wait for stop signal
+					<-t.done
+					return
+				}
+				// Log other errors but continue
+				continue
+			}
+
+			// Trim newline character(s)
+			line = strings.TrimRight(line, "\r\n")
+
+			// Skip empty lines
+			if line == "" {
+				continue
+			}
+
+			// Process the message with the handler
+			if response, err := t.HandleMessage([]byte(line)); err == nil && response != nil {
+				t.Send(response)
+			}
+		}
+	}
+}

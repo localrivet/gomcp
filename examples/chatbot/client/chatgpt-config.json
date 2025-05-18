@@ -1,8 +1,0 @@
-{
-    "mcpServers": {
-        "mcp-proxy": {
-            "Command": "/Users/almatuck/go/bin/mcp-proxy sse http://localhost:4477/mcp --verbose",
-            "Args": []
-        }
-    }
-}

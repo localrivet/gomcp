@@ -1,59 +1,39 @@
 # Task ID: 5
-# Title: Implement Transport Interface and Stdio Transport
-# Status: pending
-# Dependencies: 1
-# Priority: medium
-# Description: Create the transport interface and implement the stdio transport for local inter-process communication.
+# Title: Implement Version Detection and Negotiation
+# Status: done
+# Dependencies: 2, 3, 4
+# Priority: high
+# Description: Create a version detection and negotiation system that automatically handles different MCP specification versions.
 # Details:
-Define a transport interface and implement stdio transport:
+Implement a version detection and negotiation system in the mcp package:
 
-1. Create a Transport interface in the protocol package
-2. Implement a stdio transport that uses standard input/output
-3. Support request/response communication
-4. Handle serialization/deserialization of messages
-5. Implement proper error handling
-
-Example implementation:
 ```go
-// In protocol package
-type Transport interface {
-    Connect() error
-    Disconnect() error
-    Send(message interface{}) error
-    Receive() (interface{}, error)
-    // Additional methods
+// mcp/version.go
+package mcp
+
+// VersionDetector detects and negotiates MCP versions
+type VersionDetector struct {
+	// Implementation details
 }
 
-// In transport/stdio package
-package stdio
-
-import (
-    "bufio"
-    "encoding/json"
-    "io"
-    "os"
-    "github.com/your-org/gomcp/protocol"
-)
-
-type StdioTransport struct {
-    reader *bufio.Reader
-    writer *bufio.Writer
+// DetectVersion determines the appropriate MCP version based on a message
+func (d *VersionDetector) DetectVersion(message []byte) (string, error) {
+	// Parse message and extract version
+	// Return appropriate version string
 }
 
-func NewStdioTransport() *StdioTransport {
-    return &StdioTransport{
-        reader: bufio.NewReader(os.Stdin),
-        writer: bufio.NewWriter(os.Stdout),
-    }
+// NegotiateVersion handles version negotiation between client and server
+func (d *VersionDetector) NegotiateVersion(clientVersions []string, serverVersions []string) (string, error) {
+	// Implement version negotiation logic
+	// Return the highest mutually supported version
 }
-
-func (t *StdioTransport) Connect() error {
-    // Implementation
-    return nil
-}
-
-// Additional methods
 ```
 
+Ensure the system can:
+1. Automatically detect the version from incoming messages
+2. Negotiate the highest mutually supported version
+3. Provide appropriate type adapters for converting between versions
+4. Handle unknown or unsupported versions gracefully
+
 # Test Strategy:
-Create unit tests for the stdio transport using io.Pipe to simulate stdin/stdout. Test sending and receiving various message types. Verify error handling for malformed messages. Test with large messages to ensure buffering works correctly. Create integration tests that spawn child processes to test real stdio communication.
+Create unit tests for version detection with messages from all supported versions. Test negotiation with various version combinations. Test edge cases like unknown versions, malformed version strings, and empty version lists.

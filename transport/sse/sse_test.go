@@ -1,229 +1,193 @@
 package sse
 
 import (
-	"context"
-	"encoding/json"
-	"io"
+	"fmt"
+	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	"reflect" // Added for DeepEqual
-	"strings"
-	"sync"
 	"testing"
-
-	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/types"
+	"time"
 )
 
-// --- Mock Logger ---
-type NilLogger struct{}
-
-func (n *NilLogger) Debug(msg string, args ...interface{}) {}
-func (n *NilLogger) Info(msg string, args ...interface{})  {}
-func (n *NilLogger) Warn(msg string, args ...interface{})  {}
-func (n *NilLogger) Error(msg string, args ...interface{}) {}
-func NewNilLogger() *NilLogger                             { return &NilLogger{} }
-
-var _ types.Logger = (*NilLogger)(nil)
-
-// --- Mock MCPServerLogic ---
-type mockMCPServer struct {
-	handleMessageFunc func(ctx context.Context, session types.ClientSession, rawMessage json.RawMessage) []*protocol.JSONRPCResponse
-	sessions          sync.Map // Store mock sessions if needed for Register/Unregister testing
-}
-
-func (m *mockMCPServer) HandleMessage(ctx context.Context, session types.ClientSession, rawMessage json.RawMessage) []*protocol.JSONRPCResponse {
-	if m.handleMessageFunc != nil {
-		return m.handleMessageFunc(ctx, session, rawMessage)
+func getRandomPort() string {
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatal(err)
 	}
-	return nil // Default behavior
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	return fmt.Sprintf(":%d", port)
 }
 
-func (m *mockMCPServer) RegisterSession(session types.ClientSession) error { // Use types.ClientSession
-	m.sessions.Store(session.SessionID(), session)
-	return nil
-}
+func TestNewTransport(t *testing.T) {
+	// Test server mode
+	randomPort := getRandomPort()
+	serverTransport := NewTransport(randomPort)
+	if serverTransport.isClient {
+		t.Errorf("Expected server mode for address '%s', got client mode", randomPort)
+	}
 
-func (m *mockMCPServer) UnregisterSession(sessionID string) {
-	m.sessions.Delete(sessionID)
-}
-
-// --- Mock sseSession for Testing HandleMessage ---
-// This mock captures responses instead of queuing them.
-type mockTestSession struct {
-	id            string
-	sentResponses []*protocol.JSONRPCResponse
-	mu            sync.Mutex
-	logger        types.Logger // Add logger to avoid nil panics if SendResponse fails internally
-}
-
-func newMockTestSession(id string, logger types.Logger) *mockTestSession {
-	return &mockTestSession{
-		id:            id,
-		sentResponses: make([]*protocol.JSONRPCResponse, 0),
-		logger:        logger,
+	// Test client mode
+	randomClientPort := 9876 // Use a specific port number for predictable testing
+	clientUrl := fmt.Sprintf("http://localhost:%d", randomClientPort)
+	clientTransport := NewTransport(clientUrl)
+	if !clientTransport.isClient {
+		t.Errorf("Expected client mode for address '%s', got server mode", clientUrl)
 	}
 }
 
-func (m *mockTestSession) SessionID() string { return m.id }
-func (m *mockTestSession) SendNotification(notification protocol.JSONRPCNotification) error {
-	// Not needed for this test
-	return nil
-}
-func (m *mockTestSession) SendResponse(response protocol.JSONRPCResponse) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	// Make a copy to avoid data races if the original response is modified later
-	respCopy := response
-	m.sentResponses = append(m.sentResponses, &respCopy)
-	if m.logger != nil { // Log if logger is available
-		m.logger.Debug("MockSession %s: Captured response for ID %v", m.id, response.ID)
-	}
-	return nil
-}
-func (m *mockTestSession) Close() error                                             { return nil }
-func (m *mockTestSession) Initialize()                                              {}
-func (m *mockTestSession) Initialized() bool                                        { return true } // Assume initialized for this test
-func (m *mockTestSession) SetNegotiatedVersion(version string)                      {}
-func (m *mockTestSession) GetNegotiatedVersion() string                             { return "" }
-func (m *mockTestSession) StoreClientCapabilities(caps protocol.ClientCapabilities) {}
-func (m *mockTestSession) GetClientCapabilities() protocol.ClientCapabilities {
-	return protocol.ClientCapabilities{}
-}
+func TestServerMode(t *testing.T) {
+	transport := NewTransport(":0") // Use random port
 
-// SendRequest is required by the ClientSession interface but not used in this specific test.
-func (m *mockTestSession) SendRequest(request protocol.JSONRPCRequest) error {
-	// Minimal implementation to satisfy the interface
-	return nil
-}
-
-// GetWriter returns nil for the mock session, as it's not needed for testing response capture.
-func (m *mockTestSession) GetWriter() io.Writer {
-	return nil
-}
-
-// Ensure mockTestSession implements the types.ClientSession interface
-var _ types.ClientSession = (*mockTestSession)(nil)
-
-// --- Test SSEServer HandleMessage Response Handling ---
-func TestSSEServerHandleMessageResponse(t *testing.T) {
-	testCases := []struct {
-		name                  string
-		mockResponsesToReturn []*protocol.JSONRPCResponse // What mockMCPServer returns
-		expectedStatusCode    int                         // Expected HTTP status code from HandleMessage
-		expectedResponsesSent []*protocol.JSONRPCResponse // What should be captured by mockTestSession.SendResponse
-	}{
-		{
-			name:                  "Nil Response (Notification)",
-			mockResponsesToReturn: nil,
-			expectedStatusCode:    http.StatusNoContent,
-			expectedResponsesSent: nil, // No response sent via SSE
-		},
-		{
-			name:                  "Empty Slice Response",
-			mockResponsesToReturn: []*protocol.JSONRPCResponse{},
-			expectedStatusCode:    http.StatusNoContent,
-			expectedResponsesSent: nil, // No response sent via SSE
-		},
-		{
-			name: "Single Response",
-			mockResponsesToReturn: []*protocol.JSONRPCResponse{
-				{JSONRPC: "2.0", ID: 1, Result: "test"},
-			},
-			expectedStatusCode: http.StatusNoContent, // POST is acknowledged
-			expectedResponsesSent: []*protocol.JSONRPCResponse{ // Response sent via SSE
-				{JSONRPC: "2.0", ID: 1, Result: "test"},
-			},
-		},
-		{
-			name: "Multiple Responses (Batch)",
-			mockResponsesToReturn: []*protocol.JSONRPCResponse{
-				{JSONRPC: "2.0", ID: 1, Result: "test1"},
-				{JSONRPC: "2.0", ID: 2, Result: "test2"},
-			},
-			expectedStatusCode: http.StatusNoContent, // POST is acknowledged
-			expectedResponsesSent: []*protocol.JSONRPCResponse{ // Responses sent via SSE
-				{JSONRPC: "2.0", ID: 1, Result: "test1"},
-				{JSONRPC: "2.0", ID: 2, Result: "test2"},
-			},
-		},
-		{
-			name: "Single Error Response",
-			mockResponsesToReturn: []*protocol.JSONRPCResponse{
-				{JSONRPC: "2.0", ID: 3, Error: &protocol.ErrorPayload{Code: -32600, Message: "Invalid Request"}},
-			},
-			expectedStatusCode: http.StatusNoContent, // POST is acknowledged
-			expectedResponsesSent: []*protocol.JSONRPCResponse{ // Error response sent via SSE
-				{JSONRPC: "2.0", ID: 3, Error: &protocol.ErrorPayload{Code: -32600, Message: "Invalid Request"}},
-			},
-		},
+	// Initialize should succeed
+	err := transport.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Setup Mock Server Logic
-			mockServerLogic := &mockMCPServer{
-				handleMessageFunc: func(ctx context.Context, session types.ClientSession, rawMessage json.RawMessage) []*protocol.JSONRPCResponse {
-					return tc.mockResponsesToReturn
-				},
-			}
+	// Start should succeed
+	err = transport.Start()
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
 
-			// Setup SSEServer with Mock Logic
-			sseServer := NewSSEServer(mockServerLogic, SSEServerOptions{Logger: NewNilLogger()})
+	// Test sending a message
+	err = transport.Send([]byte("test message"))
+	if err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
 
-			// Create and register the mock session that captures SendResponse calls
-			mockSess := newMockTestSession("test-session-id", sseServer.logger)
-			sseServer.sessions.Store(mockSess.SessionID(), mockSess)
-			defer sseServer.sessions.Delete(mockSess.SessionID())
+	// Clean up
+	err = transport.Stop()
+	if err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+}
 
-			// Create Request
-			reqBody := `{"jsonrpc":"2.0","id":1,"method":"test"}` // Body content doesn't matter much here
-			req := httptest.NewRequest(http.MethodPost, "/message?sessionId=test-session-id", strings.NewReader(reqBody))
-			req.Header.Set("Content-Type", "application/json")
+func TestClientMode(t *testing.T) {
+	// Create a test SSE server
+	messages := []string{"message 1", "message 2", "message 3"}
+	messageIndex := 0
+	serverDone := make(chan struct{})
 
-			// Create Response Recorder for the HTTP POST response
-			rr := httptest.NewRecorder()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("Expected ResponseWriter to be a Flusher")
+			return
+		}
 
-			// Call the handler
-			sseServer.HandleMessage(rr, req)
+		// Set SSE headers
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
 
-			// Assert HTTP Status Code (should be 204 if responses were sent via SSE)
-			if status := rr.Code; status != tc.expectedStatusCode {
-				t.Errorf("handler returned wrong status code: got %v want %v", status, tc.expectedStatusCode)
-			}
+		// Send initial comment
+		fmt.Fprintf(w, ": connected\n\n")
+		flusher.Flush()
 
-			// Assert HTTP Body (should be empty if responses were sent via SSE)
-			if body := rr.Body.String(); body != "" && tc.expectedStatusCode == http.StatusNoContent {
-				t.Errorf("handler returned unexpected body for 204 status: got %q want empty", body)
-			}
+		// Send all messages
+		for messageIndex < len(messages) {
+			fmt.Fprintf(w, "data: %s\n\n", messages[messageIndex])
+			flusher.Flush()
+			messageIndex++
+			time.Sleep(100 * time.Millisecond)
+		}
 
-			// Assert Responses Sent via Mock Session's SendResponse
-			mockSess.mu.Lock()
-			capturedResponses := mockSess.sentResponses
-			mockSess.mu.Unlock()
+		// Signal that we've sent all messages
+		close(serverDone)
 
-			// Check length first for nil/empty expected cases
-			expectedLen := 0
-			if tc.expectedResponsesSent != nil {
-				expectedLen = len(tc.expectedResponsesSent)
-			}
-			capturedLen := 0
-			if capturedResponses != nil {
-				capturedLen = len(capturedResponses)
-			}
+		// Keep the connection open with a timeout
+		select {
+		case <-time.After(500 * time.Millisecond):
+			// Connection kept alive for enough time, now we can exit
+			return
+		}
+	}))
+	defer server.Close()
 
-			if capturedLen != expectedLen {
-				t.Errorf("handler sent wrong number of responses via SSE: got %d want %d", capturedLen, expectedLen)
-			} else if expectedLen > 0 {
-				// Only do DeepEqual if we expect non-empty responses
-				if !reflect.DeepEqual(capturedResponses, tc.expectedResponsesSent) {
-					// Marshal for better diff output
-					capturedJSON, _ := json.MarshalIndent(capturedResponses, "", "  ")
-					expectedJSON, _ := json.MarshalIndent(tc.expectedResponsesSent, "", "  ")
-					t.Errorf("handler sent unexpected responses via SSE:\ngot:\n%s\n\nwant:\n%s", string(capturedJSON), string(expectedJSON))
+	// Create client transport
+	transport := NewTransport(server.URL)
+
+	// Set up message handler to collect received messages
+	receivedMessages := make([]string, 0, len(messages))
+
+	transport.SetMessageHandler(func(msg []byte) ([]byte, error) {
+		receivedMessages = append(receivedMessages, string(msg))
+		return nil, nil
+	})
+
+	// Initialize and start
+	err := transport.Initialize()
+	if err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	err = transport.Start()
+	if err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Wait for all messages to be sent by the server
+	select {
+	case <-serverDone:
+		// Server is done sending messages
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for server to send messages")
+	}
+
+	// Wait a bit for client to process messages
+	time.Sleep(500 * time.Millisecond)
+
+	// Try to receive any remaining messages
+	for i := 0; i < 3; i++ {
+		msg, err := transport.Receive()
+		if err == nil && msg != nil {
+			found := false
+			for _, expected := range messages {
+				if string(msg) == expected {
+					found = true
+					break
 				}
 			}
-			// If expectedLen is 0, we already passed by checking capturedLen == expectedLen
-		})
+			if found {
+				receivedMessages = append(receivedMessages, string(msg))
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Clean up
+	err = transport.Stop()
+	if err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+
+	// Verify that we got at least some messages
+	if len(receivedMessages) == 0 {
+		t.Errorf("Expected to receive some messages, got none")
+	}
+}
+
+func TestClientSendError(t *testing.T) {
+	// Create client transport
+	transport := NewTransport("http://localhost:9999") // Use unlikely port
+
+	// Send should fail in client mode
+	err := transport.Send([]byte("test message"))
+	if err == nil {
+		t.Error("Expected Send to fail in client mode, but it succeeded")
+	}
+}
+
+func TestServerReceiveError(t *testing.T) {
+	// Create server transport
+	transport := NewTransport(getRandomPort())
+
+	// Receive should fail in server mode
+	_, err := transport.Receive()
+	if err == nil {
+		t.Error("Expected Receive to fail in server mode, but it succeeded")
 	}
 }

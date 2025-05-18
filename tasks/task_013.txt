@@ -1,72 +1,66 @@
 # Task ID: 13
-# Title: Implement Version Negotiation
-# Status: pending
-# Dependencies: 1, 3, 4
-# Priority: high
-# Description: Create a robust version negotiation system to ensure compatibility between different MCP versions.
+# Title: Implement Prompt Registration and Handling
+# Status: done
+# Dependencies: 10
+# Priority: medium
+# Description: Implement prompt registration and handling functionality in the server package.
 # Details:
-Implement version negotiation for protocol compatibility:
+Implement prompt registration and handling:
 
-1. Define version negotiation request and response types
-2. Create version compatibility checking functions
-3. Implement server-side version handling
-4. Add client-side version negotiation during connection
-5. Support graceful fallbacks for incompatible features
-
-Example implementation:
 ```go
-// In protocol package
-type VersionInfo struct {
-    Version string   `json:"version"`
-    Supported []string `json:"supported,omitempty"`
+// server/prompt.go
+package server
+
+// PromptTemplate represents a prompt template
+type PromptTemplate struct {
+	Role    string
+	Content string
 }
 
-type VersionNegotiationRequest struct {
-    ClientVersion VersionInfo `json:"client_version"`
+// Prompt represents a registered prompt
+type Prompt struct {
+	Name        string
+	Description string
+	Templates   []PromptTemplate
+	Schema      map[string]interface{}
+	// Additional fields
 }
 
-type VersionNegotiationResponse struct {
-    ServerVersion VersionInfo `json:"server_version"`
-    Compatible    bool        `json:"compatible"`
-    SelectedVersion string    `json:"selected_version"`
+// system creates a system prompt template
+func system(content string) PromptTemplate {
+	return PromptTemplate{Role: "system", Content: content}
 }
 
-// In server package
-func (s *Server) handleVersionNegotiation(req *protocol.VersionNegotiationRequest) (*protocol.VersionNegotiationResponse, error) {
-    serverVersions := []string{protocol.VersionLatest}
-    if s.supportLegacy {
-        serverVersions = append(serverVersions, protocol.VersionLegacy)
-    }
-    
-    // Find highest compatible version
-    selectedVersion := ""
-    for _, sv := range serverVersions {
-        for _, cv := range req.ClientVersion.Supported {
-            if sv == cv {
-                if selectedVersion == "" || versionGreaterThan(sv, selectedVersion) {
-                    selectedVersion = sv
-                }
-            }
-        }
-    }
-    
-    return &protocol.VersionNegotiationResponse{
-        ServerVersion: protocol.VersionInfo{
-            Version:   protocol.VersionLatest,
-            Supported: serverVersions,
-        },
-        Compatible:     selectedVersion != "",
-        SelectedVersion: selectedVersion,
-    }, nil
+// user creates a user prompt template
+func user(content string) PromptTemplate {
+	return PromptTemplate{Role: "user", Content: content}
 }
 
-// Helper function to compare versions
-func versionGreaterThan(v1, v2 string) bool {
-    // Implementation
-    // ...
-    return false
+// assistant creates an assistant prompt template
+func assistant(content string) PromptTemplate {
+	return PromptTemplate{Role: "assistant", Content: content}
+}
+
+// registerPrompt registers a prompt with the server
+func (s *Server) registerPrompt(name, description string, templates []PromptTemplate) *Server {
+	// Implementation
+	return s
+}
+
+// handlePrompt handles a prompt request
+func (s *Server) handlePrompt(ctx *Context, name string, args map[string]interface{}) (interface{}, error) {
+	// Implementation
+}
+```
+
+Implement template variable substitution:
+
+```go
+// Substitute variables in a template
+func substituteVariables(template string, vars map[string]interface{}) (string, error) {
+	// Replace {{variable}} with the corresponding value
 }
 ```
 
 # Test Strategy:
-Create unit tests for version negotiation with various version combinations. Test compatibility checking with compatible and incompatible versions. Verify fallback behavior works correctly. Test error handling for incompatible versions. Create integration tests with clients and servers using different versions to ensure negotiation works properly.
+Create unit tests for prompt registration with various templates. Test prompt handling with valid and invalid arguments. Test template variable substitution. Test error handling for missing or invalid prompts.

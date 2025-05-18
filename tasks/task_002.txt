@@ -1,54 +1,33 @@
 # Task ID: 2
-# Title: Implement Schema Package
-# Status: pending
+# Title: Implement Core MCP Types for v20241105
+# Status: done
 # Dependencies: 1
 # Priority: high
-# Description: Create a schema package that supports JSON Schema generation from Go structs and validation for both MCP specification versions.
+# Description: Define all core protocol types for the 2024-11-05 specification version in the mcp/v20241105 package.
 # Details:
-Implement a schema package that handles JSON Schema generation and validation:
+Create type definitions for all MCP message types according to the 2024-11-05 specification:
 
-1. Create functions to generate JSON Schema from Go structs
-2. Support both 2025-03-26 and 2024-11-05 schema versions
-3. Implement validation functions for input/output validation
-4. Handle case sensitivity issues in field names
-5. Support structs without explicit JSON tags
-
-Example implementation:
 ```go
-package schema
+// mcp/v20241105/types.go
+package v20241105
 
-import (
-    "reflect"
-    "encoding/json"
-    "github.com/your-org/gomcp/protocol"
-)
-
-// GenerateSchema creates a JSON schema from a Go struct
-func GenerateSchema(v interface{}, version string) (map[string]interface{}, error) {
-    // Implementation that handles different versions
-    t := reflect.TypeOf(v)
-    schema := make(map[string]interface{})
-    
-    // Add schema version based on MCP version
-    if version == protocol.VersionLatest {
-        schema["$schema"] = "http://json-schema.org/draft-07/schema#"
-    } else {
-        schema["$schema"] = "http://json-schema.org/draft-04/schema#"
-    }
-    
-    // Process struct fields and build schema
-    // ...
-    
-    return schema, nil
+// Message represents the base MCP message structure
+type Message struct {
+	Type    string          `json:"type"`
+	Version string          `json:"version"`
+	ID      string          `json:"id,omitempty"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
-// ValidateAgainstSchema validates data against a JSON schema
-func ValidateAgainstSchema(data interface{}, schema map[string]interface{}) error {
-    // Implementation
-    // ...
-    return nil
+// Define all message types (Tool, Resource, Prompt, etc.)
+type ToolMessage struct {
+	// Tool message fields
 }
+
+// Additional message types...
 ```
 
+Implement marshaling/unmarshaling functions for all types. Ensure all types are properly documented with comments that will appear in godoc.
+
 # Test Strategy:
-Create comprehensive tests with various Go struct types including nested structs, arrays, maps, and custom types. Test schema generation for both MCP versions. Verify validation works correctly with valid and invalid inputs. Test edge cases like case sensitivity and missing JSON tags.
+Create comprehensive unit tests for each type, including marshaling and unmarshaling tests with sample JSON data. Test edge cases like empty fields, maximum field sizes, and invalid data.

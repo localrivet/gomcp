@@ -1,74 +1,55 @@
 # Task ID: 7
-# Title: Implement WebSocket Transport
-# Status: pending
-# Dependencies: 1, 5
-# Priority: medium
-# Description: Create the WebSocket transport implementation for persistent, bidirectional communication.
+# Title: Implement Schema Generation and Validation
+# Status: done
+# Dependencies: 1
+# Priority: high
+# Description: Implement or refine the schema generation and validation package (util/schema) to support automatic JSON Schema generation from Go structs.
 # Details:
-Implement WebSocket transport for bidirectional communication:
+Implement a schema generation and validation package that supports:
 
-1. Create client and server implementations for WebSocket transport
-2. Support message framing and serialization
-3. Implement connection management and heartbeats
-4. Handle reconnection and error recovery
-5. Support concurrent requests and responses
-
-Example implementation:
 ```go
-package websocket
+// util/schema/schema.go
+package schema
 
-import (
-    "encoding/json"
-    "github.com/gorilla/websocket"
-    "github.com/your-org/gomcp/protocol"
-)
-
-type ClientTransport struct {
-    url      string
-    conn     *websocket.Conn
-    msgChan  chan []byte
-    errChan  chan error
-    // Additional fields
+// Generator creates JSON Schema from Go structs
+type Generator struct {
+	// Implementation details
 }
 
-func NewClientTransport(url string) *ClientTransport {
-    return &ClientTransport{
-        url:     url,
-        msgChan: make(chan []byte),
-        errChan: make(chan error),
-    }
+// NewGenerator creates a new schema generator
+func NewGenerator() *Generator {
+	// Implementation
 }
 
-func (t *ClientTransport) Connect() error {
-    conn, _, err := websocket.DefaultDialer.Dial(t.url, nil)
-    if err != nil {
-        return err
-    }
-    
-    t.conn = conn
-    
-    // Start reader goroutine
-    go t.readPump()
-    
-    return nil
+// GenerateSchema generates a JSON Schema from a Go struct type
+func (g *Generator) GenerateSchema(v interface{}) (map[string]interface{}, error) {
+	// Use reflection to analyze struct fields and tags
+	// Generate appropriate JSON Schema
 }
 
-func (t *ClientTransport) readPump() {
-    defer t.conn.Close()
-    
-    for {
-        _, message, err := t.conn.ReadMessage()
-        if err != nil {
-            t.errChan <- err
-            return
-        }
-        
-        t.msgChan <- message
-    }
+// Validator validates data against a schema
+type Validator struct {
+	// Implementation details
 }
 
-// Additional methods and server implementation
+// NewValidator creates a new schema validator
+func NewValidator(schema map[string]interface{}) *Validator {
+	// Implementation
+}
+
+// Validate validates data against the schema
+func (v *Validator) Validate(data interface{}) error {
+	// Validate data against schema
+}
 ```
 
+Implement support for struct tags:
+- `required:"true"` - Mark fields as required
+- `enum:"value1,value2"` - Restrict string values
+- `min:"0" max:"100"` - Set numeric boundaries
+- `format:"email"` - Validate string formats
+- `default:"value"` - Set default values
+- `description:"text"` - Add field descriptions
+
 # Test Strategy:
-Create unit tests using a mock WebSocket server. Test connection establishment and message exchange. Verify concurrent requests work correctly. Test reconnection logic with simulated disconnections. Ensure proper error handling for various WebSocket error conditions. Test with large messages to verify framing works correctly.
+Create unit tests for schema generation with various struct types and tags. Test validation against generated schemas with valid and invalid data. Test edge cases like nested structs, arrays, and maps.

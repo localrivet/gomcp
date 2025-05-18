@@ -1,0 +1,663 @@
+# GOMCP Library Product Requirements Document
+
+## Overview
+
+GOMCP is a Go implementation of the Model Context Protocol (MCP), designed to enable seamless integration between Go applications and Large Language Models (LLMs). This document outlines the requirements for a complete redesign of the library with a focus on developer experience, simplicity, and specification compliance.
+
+## Core Principles
+
+- **Developer experience first** - APIs should be intuitive and require minimal boilerplate
+- **Type safety** - Leverage Go's type system where beneficial
+- **Simplicity** - Complex operations should be simple to implement
+- **Consistency** - APIs should follow a consistent pattern
+- **Specification compliance** - Full implementation of the MCP specification (all versions)
+- **Minimal dependencies** - Core functionality should not rely on external packages
+- **Single entry point** - All functionality accessible through the root package
+- **One way to do things** - Follow Go's philosophy of having a single, clear approach for each operation
+- **Universal compatibility** - Automatic support for all specification versions
+
+## Package Structure
+
+```
+github.com/localrivet/gomcp/
+├── gomcp.go      # Main entry point with all public API functions
+├── mcp/          # Core types and specification implementation
+│   ├── v20241105/ # 2024-11-05 specification implementation
+│   ├── v20250326/ # 2025-03-26 specification implementation
+│   └── draft/     # Latest draft specification implementation
+├── server/       # Server implementation
+├── client/       # Client implementation
+├── transport/    # Transport layer implementations (specification-compliant only)
+│   ├── stdio/    # Standard I/O transport
+│   ├── ws/       # WebSocket transport
+│   ├── sse/      # Server-Sent Events transport
+│   └── http/     # HTTP transport
+└── util/         # Utility packages
+    ├── slog/     # Structured logging utilities
+    ├── schema/   # Schema generation and validation from Go structs
+    ├── validator/ # Argument validation utilities
+    └── conversion/ # Type conversion utilities
+```
+
+## API Design Principles
+
+### Single Entry Point
+
+All core functionality will be accessible through the root package:
+
+```go
+import "github.com/localrivet/gomcp"
+
+// Everything users need is accessible through this single import
+server := gomcp.NewServer("MyService")
+client := gomcp.NewClient("serviceURL")
+logger := gomcp.NewLogger(gomcp.LogToFile("./logs", "app"))
+```
+
+### One Way to Do Things
+
+Following Go's philosophy, there will be EXACTLY ONE canonical way to perform each operation:
+
+1. **EXACTLY ONE Server Constructor**: `gomcp.NewServer()` - No alternatives, ever
+2. **EXACTLY ONE Client Constructor**: `gomcp.NewClient()` - No alternatives, ever
+3. **One Way to Define Tools**: `server.Tool()`
+4. **One Way to Define Resources**: `server.Resource()`
+5. **One Way to Define Prompts**: `server.Prompt()`
+6. **One Way to Configure Logging**: `gomcp.LogConfig()`
+7. **One Way to Start the Server**: `server.Run()`
+
+Different variations of servers and clients are configured through:
+
+- **Functional Options**: For creation-time configuration (`gomcp.WithLogger()`, etc.)
+- **Fluent Methods**: For post-creation configuration (`server.AsStdio()`, etc.)
+
+Under no circumstances will alternative constructors be provided.
+
+### Multi-Specification Support
+
+All servers and clients automatically support all MCP specification versions:
+
+1. **Automatic Version Detection**: Servers and clients automatically detect and adapt to the specification version being used
+2. **No Version Selection Needed**: No need to specify which version to use - the system automatically handles this
+3. **Universal Compatibility**: Every server works with any client, regardless of specification version
+4. **Transparent Negotiation**: Version negotiation happens automatically during connection initialization
+5. **Feature Adaptation**: All features are automatically adapted to the negotiated version
+
+### Consistent Patterns
+
+All APIs will follow consistent patterns:
+
+1. **Creation**: `New*` functions for creating objects
+2. **Configuration**: Functional options via `With*` functions
+3. **Actions**: Method names are verbs or nouns based on their purpose
+4. **Responses**: Always return clear values and errors where appropriate
+5. **Configuration**: Always through options, never requiring environment variables
+
+### DRY Implementation
+
+The library will strictly adhere to DRY principles:
+
+1. **Shared Code**: Common functionality abstracted appropriately
+2. **No Duplicated Logic**: Each concern implemented exactly once
+3. **Central Definitions**: Types, constants, and interfaces defined in a single location
+4. **Clear Abstractions**: Well-defined layers with clear responsibilities
+
+## API Design
+
+### Root Package API
+
+The root `gomcp` package should provide simple entry points for common use cases.
+
+```go
+import "github.com/localrivet/gomcp"
+
+// Create a server - EXACTLY ONE constructor with options for configuration
+// No need to specify specification version - handles all versions automatically
+server := gomcp.NewServer("MyService", gomcp.WithLogger(myLogger))
+
+// Create a client - EXACTLY ONE constructor
+// No need to specify specification version - adapts to server's version automatically
+client := gomcp.NewClient("serviceURL")
+```
+
+### Server API
+
+The server API should use a fluent interface with method chaining for a clean, readable API.
+
+```go
+// Create and configure a server
+server := gomcp.NewServer("MyService", gomcp.WithLogger(myLogger)).
+    // Select transport type with fluent methods
+    AsStdio(). // or AsSSE(), AsWebsocket() depending on transport needs
+
+    // Add a tool using struct for type-safe parameters
+    Tool("calculate", "Perform calculations", func(ctx *server.Context, args struct {
+        Operation string `enum:"add,subtract,multiply,divide"` // Tag-based validation
+        X         float64
+        Y         float64
+    }) (string, error) {
+        var result float64
+        switch args.Operation {
+        case "add":
+            result = args.X + args.Y
+        case "subtract":
+            result = args.X - args.Y
+        case "multiply":
+            result = args.X * args.Y
+        case "divide":
+            if args.Y == 0 {
+                return "", errors.New("division by zero")
+            }
+            result = args.X / args.Y
+        }
+        return fmt.Sprintf("%.2f", result), nil
+    }).
+
+    // Add a resource with path parameters
+    Resource("users/{id}", "Get user information", func(ctx *server.Context, args struct {
+        ID string `path:"id"`
+    }) (any, error) {
+        return map[string]any{"id": args.ID, "name": "Example User"}, nil
+    }).
+
+    // Add a prompt with template
+    Prompt("greeting", "Greet a user",
+        system("You are a helpful assistant for {{service}}."),
+        user("Hello, my name is {{name}}."),
+    ).
+
+    // Define the root resource
+    Root(func(ctx *server.Context) (any, error) {
+        return map[string]any{
+            "name": "My MCP Service",
+            "version": "1.0.0",
+            "description": "Example MCP service",
+        }, nil
+    }).
+
+    // Start the server
+    Run()
+```
+
+### Client API
+
+The client API should be simple and flexible, using maps for arguments to support dynamic usage.
+
+```go
+// Create a client - EXACTLY ONE constructor
+client := gomcp.NewClient("serviceURL")
+
+// Call a tool with map-based arguments
+result, err := client.CallTool("calculate", map[string]any{
+    "operation": "add",
+    "x": 5,
+    "y": 3,
+})
+
+// Get a resource
+user, err := client.GetResource("users/123")
+
+// Get a prompt
+prompt, err := client.GetPrompt("greeting", map[string]any{
+    "name": "Alice",
+    "service": "MyApp",
+})
+
+// Get the root resource
+root, err := client.GetRoot()
+```
+
+## Feature Requirements
+
+### 1. Server Implementation
+
+- **Server Creation**: Simple creation with sensible defaults
+- **Tool Registration**: Type-safe registration using Go structs
+- **Resource Registration**: Support for static and dynamic resources
+- **Prompt Registration**: Template-based prompts with variable substitution
+- **Transport Selection**: Fluent methods for transport selection (`AsStdio()`, `AsSSE()`, `AsWebsocket()`, etc.)
+- **Logging**: Structured logging with configurable output
+- **Authentication**: Optional authentication middleware
+- **Context Management**: Request-scoped context with helper methods
+- **Struct Tag Validation**: Use Go struct tags for parameter validation
+- **Universal Specification Support**: Automatic support for all MCP specification versions
+
+### 2. Client Implementation
+
+- **Transport Auto-detection**: Based on URL or configuration
+- **Simple API Methods**: One method per operation type
+- **Flexible Arguments**: Map-based arguments for dynamic usage
+- **Resource Fetching**: Simple methods for fetching resources
+- **Error Handling**: Clear error types and messages
+- **Authentication**: Support for various authentication methods
+- **Reconnection**: Automatic reconnection for persistent connections
+- **Universal Specification Support**: Automatic adaptation to server's specification version
+
+### 3. Core Protocol Types
+
+- **JSON Schema Compliance**: Full implementation of JSON Schema for validation
+- **Complete Message Types**: All MCP message types supported
+- **Helper Functions**: Convenience functions for common operations
+- **Type Conversion**: Automatic conversion between Go and JSON types
+
+### 4. Transport Support
+
+Only specification-compliant transports will be supported:
+
+- **stdio**: For CLI and direct LLM integration
+- **WebSocket**: For web applications requiring bidirectional communication
+- **Server-Sent Events**: For web applications with server-to-client streaming
+- **HTTP**: For simple RESTful interfaces
+- **In-memory**: For testing and local usage
+
+### 5. Utility Packages
+
+The library will retain and improve the following utility packages from the current implementation:
+
+- **slog**:
+
+  - Flexible structured logging with multiple output formats (JSON, text)
+  - Environment variable configuration
+  - File, stdout, stderr, and discard output options
+  - Runtime log level adjustment
+  - Log file rotation with timestamps
+
+- **schema**:
+
+  - Automatic JSON Schema generation from Go structs
+  - Struct tag support for validation requirements
+  - Helper functions for argument handling and validation
+  - Integration with MCP tool schema requirements
+
+- **validator**:
+
+  - Intuitive validation API for tool arguments
+  - Struct tag-based validation (`required`, `enum`, etc.)
+  - Type-safe validation with detailed error messages
+  - Fluent interface for programmatic validation rules
+
+- **conversion**:
+  - Type-safe conversions between different data types
+  - Support for common conversions (string, int, float64, bool)
+  - Map and slice conversion utilities
+  - Error handling for invalid conversions
+
+## Specification Versioning Support
+
+The library will provide comprehensive, automatic support for all versions of the MCP specification:
+
+- **2024-11-05**: First stable release of the MCP specification
+- **2025-03-26**: Second stable release with additional features
+- **Draft**: Latest draft version of the specification
+
+Key versioning requirements:
+
+- **Automatic Version Detection**: Servers detect client capabilities during initialization
+- **Transparent Negotiation**: Version compatibility handled without user intervention
+- **Universal Compatibility**: All servers work with all clients regardless of specification version
+- **Multi-version Support**: Servers and clients automatically handle all specification versions
+- **Capability-Based Adaptation**: Features automatically adapt based on detected capabilities
+- **Seamless Upgrades**: Clients and servers transparently handle specification changes
+- **Comprehensive Support**: Complete implementation of all specification versions
+
+## Developer Experience Enhancements
+
+- **Zero Dependencies**: No third-party dependencies for core functionality
+- **Comprehensive Examples**: Examples for all major features
+- **Type-Safe API**: Leveraging Go's type system where beneficial
+- **Struct-Based Validation**: Using Go structs and tags for schema validation
+- **Fluent API**: Method chaining for a clean, readable API
+- **Automatic Schema Generation**: Generate JSON Schema from Go structs
+- **Contextual Helper Methods**: Context-aware methods for common operations
+
+## Testing Strategy
+
+The library will implement a comprehensive testing approach to ensure reliability and specification compliance:
+
+### Unit Testing
+
+- **100% Coverage Goal**: Aim for complete unit test coverage of all public APIs
+- **Table-Driven Tests**: Use Go's table-driven test pattern for thorough test cases
+- **Mocking Framework**: Implementation of test doubles for network and I/O operations
+- **Property-Based Testing**: Use property-based testing for complex validation logic
+- **Golden File Testing**: Implement golden file tests for protocol message validation
+- **Cross-Version Testing**: Ensure code works correctly with all specification versions
+
+### Integration Testing
+
+- **Transport Tests**: Comprehensive tests for all transport types
+- **Cross-Transport Tests**: Verify server-client communication across different transports
+- **Concurrent Access Tests**: Validate behavior under concurrent client connections
+- **Long-Running Tests**: Ensure stability during extended operation
+- **Error Recovery Tests**: Verify graceful handling of network issues and crashes
+- **Cross-Implementation Tests**: Test against other MCP implementations (Python, JavaScript, etc.)
+
+### Benchmarking
+
+- **Performance Baselines**: Establish performance baselines for key operations
+- **Continuous Benchmarking**: Track performance metrics across releases
+- **Regression Detection**: Automated detection of performance regressions
+- **Memory Allocation Tracking**: Monitor and minimize memory allocations
+- **CPU Profiling**: Regular profiling to identify and optimize hotspots
+- **Transport Comparison**: Compare performance across transport types
+
+## Performance Expectations
+
+The library will meet the following performance requirements:
+
+### Memory Usage
+
+- **Minimal Allocation**: Minimize heap allocations in hot paths
+- **Buffer Pooling**: Use sync.Pool for frequently allocated buffers
+- **Efficient JSON Handling**: Optimize JSON marshaling/unmarshaling for minimal allocation
+- **Memory Limits**: Optional memory usage limits for resource-constrained environments
+- **No Memory Leaks**: Comprehensive testing to ensure no resources are leaked
+
+### Latency
+
+- **Low Overhead**: Add < 1ms overhead to operations compared to raw protocol
+- **Predictable Latency**: Minimize latency spikes through careful resource management
+- **Fast Startup**: Server initialization in < 100ms
+- **Connection Establishment**: Client connection in < 500ms under normal conditions
+- **Tool Invocation**: Tool invocation round-trip < 5ms (excluding actual tool execution)
+- **Resource Fetching**: Resource retrieval < 5ms (excluding actual resource generation)
+
+### Throughput
+
+- **Connection Scaling**: Support for 1000+ simultaneous client connections
+- **Request Rate**: Handle 10,000+ requests/second on moderate hardware
+- **Message Size**: Efficiently process messages up to 100MB
+- **Concurrent Tools**: Execute multiple tool requests concurrently
+- **Resource Caching**: Efficient caching of resource responses when appropriate
+
+## Documentation Plan
+
+The library will include comprehensive documentation to ensure easy adoption:
+
+### Godoc Requirements
+
+- **Complete API Documentation**: Every exported function, method, and type must have descriptive documentation
+- **Example Documentation**: Key functionalities must include runnable examples
+- **Package Documentation**: Each package must have overview documentation explaining its purpose
+- **Internal Documentation**: Non-exported but complex code should be documented for maintainers
+- **Consistent Style**: Documentation must follow a consistent style guide
+
+### Examples and Tutorials
+
+- **Quick Start Guide**: Simple example to get users up and running in minutes
+- **Comprehensive Examples Repository**: Examples for all major use cases
+  - Basic server implementation
+  - Full client/server example
+  - Tool implementation patterns
+  - Resource implementation patterns
+  - Prompt implementation
+  - Authentication examples
+  - Error handling examples
+- **Runnable Examples**: All examples must be runnable and tested
+- **Real-World Examples**: Complex, realistic examples showing integration with LLMs
+- **Code Generation**: Automatic generation of example code for common patterns
+
+### Guides and References
+
+- **Developer Guide**: Comprehensive guide explaining concepts and usage
+- **Best Practices Guide**: Recommended patterns and anti-patterns
+- **Protocol Reference**: Clear documentation of MCP protocol implementation
+- **Troubleshooting Guide**: Common issues and their solutions
+- **Performance Tuning Guide**: Guidelines for optimizing performance
+- **Specification Compliance Guide**: Details on how the library implements each specification version
+
+## Library Versioning Strategy
+
+The library will follow semantic versioning with clear stability guarantees:
+
+### Semantic Versioning
+
+- **MAJOR.MINOR.PATCH Format**: Strictly follow SemVer 2.0.0
+- **API Compatibility**: MAJOR version increments only for breaking changes
+- **Feature Additions**: MINOR version increments for backward-compatible new features
+- **Bug Fixes**: PATCH version increments for backward-compatible bug fixes
+- **Pre-releases**: Use alpha/beta/rc suffixes for pre-release versions
+
+### Stability Guarantees
+
+- **API Stability**: Public APIs are guaranteed stable within MAJOR versions
+- **Performance Stability**: No performance regressions in MINOR releases
+- **Bug Fix Policy**: Critical bugs fixed in current and previous MAJOR versions
+- **Long-term Support**: Each MAJOR version supported for minimum 2 years
+- **Deprecation Cycle**: Features marked deprecated in one MINOR version before removal in next MAJOR version
+
+### Deprecation Policy
+
+- **Clear Warnings**: Deprecated features trigger compile-time warnings when used
+- **Documentation**: Deprecated features clearly marked in documentation
+- **Migration Path**: Every deprecation includes clear migration instructions
+- **Compatibility Layer**: Optional compatibility layer for easier migration
+- **Tooling Support**: Provide tools to identify usage of deprecated features
+
+## Cross-language Interoperability
+
+The library will prioritize seamless integration with other MCP implementations:
+
+### Protocol Conformance
+
+- **Strict Compliance**: Strictly adhere to MCP protocol specifications
+- **Validation Suite**: Implement comprehensive protocol validation suite
+- **Edge Case Handling**: Properly handle all protocol edge cases
+- **Default Behavior**: Follow specification defaults exactly
+- **Error Handling**: Implement error responses per specification
+
+### Cross-implementation Testing
+
+- **Standard Test Suite**: Develop standard test suite for cross-implementation testing
+- **Reference Implementation**: Position as reference implementation for Go
+- **Interoperability Matrix**: Test and document interoperability with:
+  - Python MCP implementations
+  - JavaScript/TypeScript MCP implementations
+  - Java MCP implementations
+  - Rust MCP implementations
+- **Conformance Certification**: Self-certification process for specification conformance
+- **Documentation**: Document any implementation-specific behaviors or limitations
+
+## Retained Infrastructure
+
+The library will retain and build upon several excellent components from the current implementation:
+
+### Logging System (slog)
+
+The existing `slog` package provides an excellent foundation with features like:
+
+```go
+// Configure logging with flexible options
+logConfig := gomcp.LogConfig(
+    "My Service",
+    gomcp.LogToFile("./logs", "service_log"),
+    gomcp.LogLevel("debug"),
+    gomcp.LogAsTextFormat(),
+)
+
+// Create server with configured logging
+server := gomcp.NewServer("My Service", gomcp.LogConfigOpt(logConfig))
+
+// Dynamic log level adjustment
+gomcp.SetLogLevel(slog.LevelDebug)
+```
+
+### Schema Generation
+
+The `schema` package streamlines JSON Schema generation:
+
+```go
+// Automatically generate schema from a struct type
+toolDef := server.Tool("example", "Example tool", func(ctx *server.Context, args struct {
+    Name     string  `required:"true" description:"User name"`
+    Age      int     `min:"0" max:"120" description:"User age"`
+    Role     string  `enum:"admin,user,guest" default:"user"`
+}) (string, error) {
+    // Implementation
+})
+
+// Schema will automatically include:
+// - "name" as a required string field with description
+// - "age" as a number with min/max validation
+// - "role" as a string with enum validation
+```
+
+### Arguments Validation
+
+The `validator` package provides flexible validation:
+
+```go
+// Automatic validation via struct tags
+func handler(ctx *server.Context, args struct {
+    Username string `required:"true" format:"email"`
+    Age      int    `min:"0" max:"120"`
+}) (string, error) {
+    // If Username is empty or not a valid email, or
+    // if Age is outside [0,120], validation will fail
+    // before this code is reached
+}
+
+// Manual validation when needed
+func complexValidation(args map[string]any) error {
+    v := validator.NewValidator()
+
+    v.Required("username", args["username"])
+
+    if age, ok := args["age"].(int); ok {
+        v.Min("age", age, 18)
+        v.Max("age", age, 65)
+    }
+
+    return v.Error()
+}
+```
+
+### Type Conversion
+
+The `conversion` package simplifies working with dynamic data types:
+
+```go
+// Convert string values to appropriate types
+func processArgs(args map[string]interface{}) error {
+    // Convert string to int with error handling
+    count, err := conversion.ToInt(args["count"])
+    if err != nil {
+        return err
+    }
+
+    // Convert dynamic values to float
+    amount, err := conversion.ToFloat64(args["amount"])
+    if err != nil {
+        return err
+    }
+
+    // Convert values to boolean
+    enabled, err := conversion.ToBool(args["enabled"])
+    if err != nil {
+        return err
+    }
+
+    // Convert nested maps
+    options, err := conversion.ToMap(args["options"])
+    if err != nil {
+        return err
+    }
+
+    // Process data with correct types
+    // ...
+
+    return nil
+}
+```
+
+## Struct Tag Based Validation
+
+The library should support validation using Go struct tags:
+
+- `required:"true"` - Mark fields as required
+- `enum:"value1,value2"` - Restrict string values
+- `min:"0" max:"100"` - Set numeric boundaries
+- `path:"paramName"` - Bind to path parameters
+- `format:"email"` - Validate string formats
+- `default:"value"` - Set default values
+
+Example:
+
+```go
+type CreateUserParams struct {
+    Username string  `required:"true" format:"email"`
+    Age      int     `min:"0" max:"120"`
+    Role     string  `enum:"admin,user,guest" default:"user"`
+    Notes    string  `maxLength:"1000"`
+}
+```
+
+## Error Handling
+
+- **Clear Error Types**: Specific error types for different error categories
+- **Contextual Errors**: Errors with context information for debugging
+- **Validation Errors**: Detailed validation errors with field names and reasons
+- **Transport Errors**: Specific errors for transport issues
+- **JSON Errors**: Errors for JSON parsing and serialization
+
+## Implementation Plan
+
+1. Define core protocol types in the `mcp` package for all supported spec versions
+2. Implement struct tag parsing and validation
+3. Create the server implementation with fluent interface
+4. Build basic transports (stdio first)
+5. Implement client package
+6. Implement automatic version detection and negotiation
+7. Add additional features and transports
+8. Comprehensive testing
+9. Documentation and examples
+
+## Success Criteria
+
+- **API Simplicity**: Implementing a basic MCP server should take less than 20 lines of code
+- **Type Safety**: Leverage Go's type system to prevent runtime errors
+- **Universal Compatibility**: Servers and clients automatically support all MCP specification versions
+- **Test Coverage**: 90%+ test coverage for core functionality
+- **Documentation**: Comprehensive documentation with examples
+- **No Boilerplate**: Minimal ceremony required for common operations
+- **Backward Compatibility**: Clean migration path for existing users
+- **Performance**: Low overhead compared to raw protocol implementation
+- **API Consistency**: Exactly one canonical way to perform each operation
+
+# GOMCP Task Master Integration
+
+## Overview
+
+We need to implement Task Master AI integration for the GOMCP project, a Go implementation of the Model Context Protocol (MCP). This will help us organize, track, and manage development tasks for the library with a focus on developer experience, simplicity, and specification compliance.
+
+## Key Requirements
+
+1. Set up and initialize Task Master for the GOMCP project
+2. Use Task Master to organize tasks for implementing the MCP specification
+3. Create a structured breakdown of implementation tasks
+4. Use Task Master's AI capabilities to help with task expansion and management
+5. Implement a workflow for tracking GOMCP development progress
+6. Ensure proper documentation of completed tasks to maintain implementation history
+
+## Implementation Details
+
+The GOMCP project is a Go implementation of the Model Context Protocol with the following structure:
+
+- **Single Entry Point**: All core functionality is accessible through the root package
+- **Multi-Specification Support**: Support for all MCP specification versions (2024-11-05, 2025-03-26, draft)
+- **Multiple Transport Options**: Support for stdio, WebSocket, SSE, HTTP, and in-memory transports
+- **Core Protocol Types**: Complete implementation of all MCP message types
+- **Developer Experience**: Focus on type safety, simplicity, and consistency
+
+We should organize the Task Master tasks to reflect the core components of the implementation:
+
+1. Set up initial project structure
+2. Implement core protocol types for each specification version
+3. Create server implementation with tool, resource, and prompt support
+4. Develop client implementation with transport auto-detection
+5. Implement transport layer for all supported transport types
+6. Add utility packages (logging, schema generation, validation, type conversion)
+7. Create examples and documentation
+8. Implement testing infrastructure and test cases
+
+Each main task should be broken down into subtasks based on the specific requirements and features of each component.

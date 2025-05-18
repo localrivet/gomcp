@@ -1,584 +1,381 @@
+// Package server provides the server-side implementation of the MCP protocol.
 package server
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
-	"time"
-
-	"github.com/google/uuid"
-	"github.com/localrivet/gomcp/logx"
-	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/types"
+	"log/slog"
 )
 
-// Context provides access to server capabilities within tool and resource handlers.
-// It also embeds context.Context for cancellation.
+// Context represents the context for a server request.
 type Context struct {
-	context.Context
-	requestID      string
-	session        types.ClientSession
-	progressToken  interface{}
-	server         *Server
-	messageHandler *MessageHandler
-	logger         logx.Logger // Added logger field
+	// Standard Go context for cancellation and timeout
+	ctx context.Context
+
+	// The raw request bytes
+	RequestBytes []byte
+
+	// The parsed request
+	Request *Request
+
+	// The response to be sent back
+	Response *Response
+
+	// The server instance
+	server *serverImpl
+
+	// Logger for this request
+	Logger *slog.Logger
+
+	// Version of the MCP protocol being used
+	Version string
+
+	// Request ID for tracing
+	RequestID string
+
+	// Metadata for storing contextual information during request processing
+	Metadata map[string]interface{}
 }
 
-// NewContext creates a new Context instance for a request.
-// It requires a parent context (e.g., from context.WithCancel).
-func NewContext(parentCtx context.Context, requestID string, session types.ClientSession, progressToken interface{}, srv *Server) *Context {
-	return &Context{
-		Context:        parentCtx,
-		requestID:      requestID,
-		session:        session,
-		progressToken:  progressToken,
-		server:         srv,
-		messageHandler: srv.MessageHandler,
-		logger:         srv.logger, // Use the server's logger
+// Request represents an incoming JSON-RPC 2.0 request.
+type Request struct {
+	// JSON-RPC 2.0 fields
+	JSONRPC string          `json:"jsonrpc"`
+	ID      interface{}     `json:"id,omitempty"`     // string or number or null
+	Method  string          `json:"method"`           // The method to call
+	Params  json.RawMessage `json:"params,omitempty"` // Parameters for the method call
+
+	// Parsed params based on method type
+	// These fields are populated after parsing
+	ToolName     string
+	ToolArgs     map[string]interface{}
+	ResourcePath string
+	PromptName   string
+	PromptArgs   map[string]interface{}
+}
+
+// Response represents an outgoing JSON-RPC 2.0 response.
+type Response struct {
+	// JSON-RPC 2.0 fields
+	JSONRPC string      `json:"jsonrpc"`
+	ID      interface{} `json:"id,omitempty"`     // Must match request ID
+	Result  interface{} `json:"result,omitempty"` // Result data, null if error
+	Error   *RPCError   `json:"error,omitempty"`  // Error data, null if success
+}
+
+// RPCError represents a JSON-RPC 2.0 error object.
+type RPCError struct {
+	Code    int         `json:"code"`    // Error code
+	Message string      `json:"message"` // Error message
+	Data    interface{} `json:"data,omitempty"`
+}
+
+// NewContext creates a new request context.
+func NewContext(ctx context.Context, requestBytes []byte, server *serverImpl) (*Context, error) {
+	// Create a basic context with the server instance
+	reqCtx := &Context{
+		ctx:          ctx,
+		RequestBytes: requestBytes,
+		server:       server,
+		Logger:       server.logger,
+		Metadata:     make(map[string]interface{}),
 	}
-}
 
-// SendProgress sends a progress notification using the session's connection ID.
-func (c *Context) SendProgress(value interface{}) {
-	if c.progressToken == nil {
-		if c.logger != nil {
-			c.logger.Debug("Cannot send progress: no progress token available")
-		}
-		return
+	// Parse the request
+	request := &Request{}
+	if err := json.Unmarshal(requestBytes, request); err != nil {
+		return reqCtx, err
 	}
-	c.messageHandler.SendProgress(c.session.SessionID(), c.progressToken, value)
+
+	reqCtx.Request = request
+	reqCtx.RequestID = stringify(request.ID) // Convert ID to string for internal use
+
+	// Default to latest protocol version if not specified
+	reqCtx.Version = "2025-03-26"
+
+	// Parse specific request type based on method
+	switch request.Method {
+	case "tools/call":
+		// Parse tool call request params
+		var toolParams struct {
+			Name      string                 `json:"name"`
+			Arguments map[string]interface{} `json:"arguments"`
+		}
+		if err := json.Unmarshal(request.Params, &toolParams); err != nil {
+			return reqCtx, err
+		}
+		request.ToolName = toolParams.Name
+		request.ToolArgs = toolParams.Arguments
+
+	case "resources/read":
+		// Parse resource request params
+		var resourceParams struct {
+			URI string `json:"uri"`
+		}
+		if err := json.Unmarshal(request.Params, &resourceParams); err != nil {
+			return reqCtx, err
+		}
+		request.ResourcePath = resourceParams.URI
+
+	case "prompts/get":
+		// Parse prompt request params
+		var promptParams struct {
+			Name      string                 `json:"name"`
+			Arguments map[string]interface{} `json:"arguments,omitempty"`
+		}
+		if err := json.Unmarshal(request.Params, &promptParams); err != nil {
+			return reqCtx, err
+		}
+		request.PromptName = promptParams.Name
+		request.PromptArgs = promptParams.Arguments
+	}
+
+	// Create a response with the same ID and JSON-RPC version
+	reqCtx.Response = &Response{
+		JSONRPC: "2.0",
+		ID:      request.ID,
+	}
+
+	return reqCtx, nil
 }
 
-// GenerateRequestID creates a new unique request ID.
-func (c *Context) GenerateRequestID() string {
-	return uuid.New().String()
-}
-
-// Log logs a message to both the server logger and the client.
-// The level parameter should be one of "error", "warning", "info", "debug".
-func (c *Context) Log(level string, message string) {
-	// Format message including request ID
-	logMsg := fmt.Sprintf("[%s] %s", c.requestID, message)
-
-	// Map level string to protocol.LoggingLevel (might need validation)
-	var protoLevel protocol.LoggingLevel
-	switch level {
-	case "error":
-		protoLevel = protocol.LogLevelError
-		if c.logger != nil {
-			c.logger.Error(logMsg)
-		} else {
-			// Fallback to standard logging only if necessary
-			c.logger.Error("ERROR: %s", logMsg)
-		}
-	case "warning":
-		protoLevel = protocol.LogLevelWarn
-		if c.logger != nil {
-			c.logger.Warn(logMsg)
-		} else {
-			c.logger.Warn("WARNING: %s", logMsg)
-		}
-	case "info":
-		protoLevel = protocol.LogLevelInfo
-		if c.logger != nil {
-			c.logger.Info(logMsg)
-		} else {
-			c.logger.Info("INFO: %s", logMsg)
-		}
-	case "debug":
-		protoLevel = protocol.LogLevelDebug
-		if c.logger != nil {
-			c.logger.Debug(logMsg)
-		} else {
-			c.logger.Debug("DEBUG: %s", logMsg)
-		}
+// stringify converts an ID (which could be string, number, or null) to a string
+func stringify(id interface{}) string {
+	if id == nil {
+		return ""
+	}
+	switch v := id.(type) {
+	case string:
+		return v
+	case float64, float32, int, int64, int32:
+		return json.Number(fmt.Sprintf("%v", v)).String()
 	default:
-		// If unknown level, default to info
-		if protoLevel != protocol.LogLevelError && protoLevel != protocol.LogLevelWarn &&
-			protoLevel != protocol.LogLevelInfo && protoLevel != protocol.LogLevelDebug {
-			// Default to info or log an internal warning if level is unknown
-			if c.logger != nil {
-				c.logger.Warn("Context Log: Unknown level '%s' used, defaulting to info", level)
-			} else {
-				c.logger.Warn("WARNING: Context Log: Unknown level '%s' used, defaulting to info", level)
+		return fmt.Sprintf("%v", id)
+	}
+}
+
+// Done returns a channel that's closed when this context is canceled.
+func (c *Context) Done() <-chan struct{} {
+	return c.ctx.Done()
+}
+
+// Deadline returns the time when this context will be canceled, if any.
+func (c *Context) Deadline() (deadline interface{}, ok bool) {
+	return c.ctx.Deadline()
+}
+
+// Err returns nil if Done is not yet closed, otherwise it returns the reason.
+func (c *Context) Err() error {
+	return c.ctx.Err()
+}
+
+// Value returns the value associated with this context for key, or nil.
+func (c *Context) Value(key interface{}) interface{} {
+	return c.ctx.Value(key)
+}
+
+// ExecuteTool provides a convenient way to execute a tool from within another tool handler.
+// This is useful for tool composition and internal tool calls.
+func (c *Context) ExecuteTool(toolName string, args map[string]interface{}) (interface{}, error) {
+	// Forward to the server's executeTool method
+	if c.server == nil {
+		return nil, fmt.Errorf("server not available in context")
+	}
+	return c.server.executeTool(c, toolName, args)
+}
+
+// GetRegisteredTools returns a list of all tools registered with the server.
+// This is useful for tools that need to inspect or enumerate available tools.
+func (c *Context) GetRegisteredTools() ([]*Tool, error) {
+	if c.server == nil {
+		return nil, fmt.Errorf("server not available in context")
+	}
+
+	c.server.mu.RLock()
+	defer c.server.mu.RUnlock()
+
+	tools := make([]*Tool, 0, len(c.server.tools))
+	for _, tool := range c.server.tools {
+		tools = append(tools, tool)
+	}
+
+	return tools, nil
+}
+
+// GetToolDetails returns detailed information about a specific tool.
+// This is useful for tools that need to inspect the capabilities of other tools.
+func (c *Context) GetToolDetails(toolName string) (*Tool, error) {
+	if c.server == nil {
+		return nil, fmt.Errorf("server not available in context")
+	}
+
+	c.server.mu.RLock()
+	defer c.server.mu.RUnlock()
+
+	tool, exists := c.server.tools[toolName]
+	if !exists {
+		return nil, fmt.Errorf("tool not found: %s", toolName)
+	}
+
+	return tool, nil
+}
+
+// ExecuteResource provides a convenient way to execute a resource from within another resource handler.
+// This is useful for resource composition and internal resource calls.
+func (c *Context) ExecuteResource(resourcePath string) (interface{}, error) {
+	// Forward to the server's processResourceRequest method
+	if c.server == nil {
+		return nil, fmt.Errorf("server not available in context")
+	}
+
+	// Find the resource and extract parameters
+	resource, params, exists := c.server.findResourceAndExtractParams(resourcePath)
+	if !exists {
+		return nil, fmt.Errorf("resource not found: %s", resourcePath)
+	}
+
+	// Execute the resource handler
+	result, err := resource.Handler(c, params)
+	if err != nil {
+		return nil, fmt.Errorf("resource execution failed: %w", err)
+	}
+
+	return result, nil
+}
+
+// GetRegisteredResources returns a list of all resources registered with the server.
+// This is useful for handlers that need to inspect or enumerate available resources.
+func (c *Context) GetRegisteredResources() ([]*Resource, error) {
+	if c.server == nil {
+		return nil, fmt.Errorf("server not available in context")
+	}
+
+	c.server.mu.RLock()
+	defer c.server.mu.RUnlock()
+
+	resources := make([]*Resource, 0, len(c.server.resources))
+	for _, resource := range c.server.resources {
+		resources = append(resources, resource)
+	}
+
+	return resources, nil
+}
+
+// GetResourceDetails returns detailed information about a specific resource.
+// This is useful for handlers that need to inspect the capabilities of other resources.
+func (c *Context) GetResourceDetails(resourcePath string) (*Resource, error) {
+	if c.server == nil {
+		return nil, fmt.Errorf("server not available in context")
+	}
+
+	c.server.mu.RLock()
+	defer c.server.mu.RUnlock()
+
+	// First try direct match by path
+	resource, exists := c.server.resources[resourcePath]
+	if exists {
+		return resource, nil
+	}
+
+	// Otherwise try to find by pattern matching
+	for _, resource := range c.server.resources {
+		if resource.Template != nil {
+			if _, matched := resource.Template.Match(resourcePath); matched {
+				return resource, nil
 			}
-			protoLevel = protocol.LogLevelInfo
 		}
 	}
 
-	// Also send to client
-	// Prepare log message parameters
-	serverName := "server" // Default server name
-	if c.server.name != "" {
-		serverName = c.server.name
+	return nil, fmt.Errorf("resource not found: %s", resourcePath)
+}
+
+// GetSamplingController provides access to the server's sampling controller.
+func (c *Context) GetSamplingController() (*SamplingController, error) {
+	if c.server == nil {
+		return nil, fmt.Errorf("server not available in context")
 	}
 
-	// Create logger name using server name and request ID
-	loggerName := fmt.Sprintf("%s:%s", serverName, c.requestID)
+	if c.server.samplingController == nil {
+		return nil, fmt.Errorf("sampling controller not initialized")
+	}
 
-	// Send log message to client
-	c.messageHandler.SendLoggingMessage(protoLevel, message, &loggerName, nil)
+	return c.server.samplingController, nil
 }
 
-// Done returns a channel that's closed when the context is canceled.
-func (c *Context) Done() <-chan struct{} {
-	return c.Context.Done()
+// RequestSampling sends a sampling request using the context's session information.
+// This is a convenience wrapper around the server's RequestSamplingFromContext method.
+func (c *Context) RequestSampling(messages []SamplingMessage, preferences SamplingModelPreferences,
+	systemPrompt string, maxTokens int) (*SamplingResponse, error) {
+
+	if c.server == nil {
+		return nil, fmt.Errorf("server not available in context")
+	}
+
+	return c.server.RequestSamplingFromContext(c, messages, preferences, systemPrompt, maxTokens)
 }
 
-// AddResponseMetadata adds metadata to be included in the response.
-func (c *Context) AddResponseMetadata(key string, value interface{}) {
-	// Implementation needed
-}
+// RequestSamplingWithPriority sends a sampling request with a specific priority level.
+// The priority affects timeout and retry behavior according to the server's configuration.
+func (c *Context) RequestSamplingWithPriority(messages []SamplingMessage, preferences SamplingModelPreferences,
+	systemPrompt string, maxTokens int, priority int) (*SamplingResponse, error) {
 
-// GetProgressToken returns the progress token associated with this context.
-func (c *Context) GetProgressToken() interface{} {
-	return c.progressToken
-}
+	if c.server == nil {
+		return nil, fmt.Errorf("server not available in context")
+	}
 
-// Info sends an info level log message.
-func (c *Context) Info(message string) {
-	c.Log("info", message)
-}
-
-// Debug sends a debug level log message.
-func (c *Context) Debug(message string) {
-	c.Log("debug", message)
-}
-
-// Warning sends a warning level log message.
-func (c *Context) Warning(message string) {
-	c.Log("warning", message)
-}
-
-// Error sends an error level log message.
-func (c *Context) Error(message string) {
-	c.Log("error", message)
-}
-
-// ReadResource reads a resource from the server's registry.
-func (c *Context) ReadResource(uri string) (protocol.ResourceContents, error) {
-	c.server.logger.Info("Context ReadResource [%s]: Reading resource %s", c.requestID, uri)
-
-	// If the context is canceled, return early
-	if err := c.Context.Err(); err != nil {
-		c.server.logger.Info("Context ReadResource [%s]: Cancelled before reading %s", c.requestID, uri)
+	// Get appropriate options based on priority
+	controller, err := c.GetSamplingController()
+	if err != nil {
 		return nil, err
 	}
 
-	// Prepare params for the request
-	params := protocol.ReadResourceRequestParams{
-		URI: uri,
+	options := controller.GetRequestOptions(priority)
+
+	// Apply rate limiting
+	sessionID := SessionID("")
+	if sessionVal, ok := c.Metadata["sessionID"]; ok {
+		if sessionIDStr, ok := sessionVal.(string); ok {
+			sessionID = SessionID(sessionIDStr)
+		}
 	}
 
-	// Generate a request ID
-	reqID := c.requestID + "-read"
+	// Check if we can process this request based on rate limits
+	if !controller.CanProcessRequest(sessionID) {
+		return nil, fmt.Errorf("request rate limit exceeded")
+	}
 
-	// Marshal params
-	paramsBytes, err := json.Marshal(params)
+	// Record the request for rate limiting purposes
+	controller.RecordRequest(sessionID)
+
+	// Set up deferred completion recording
+	defer controller.CompleteRequest(sessionID)
+
+	// Execute with appropriate options
+	return c.server.RequestSamplingWithSessionAndOptions(
+		sessionID,
+		c.Version,
+		messages,
+		preferences,
+		systemPrompt,
+		maxTokens,
+		options,
+	)
+}
+
+// ValidateSamplingRequest validates that a sampling request is valid for the current protocol version
+// and client capabilities.
+func (c *Context) ValidateSamplingRequest(messages []SamplingMessage, maxTokens int) error {
+	if c.server == nil {
+		return fmt.Errorf("server not available in context")
+	}
+
+	// Get the controller
+	controller, err := c.GetSamplingController()
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal params: %w", err)
+		return err
 	}
 
-	// Create request
-	req := &protocol.JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      reqID,
-		Method:  protocol.MethodReadResource,
-		Params:  json.RawMessage(paramsBytes),
-	}
-
-	// Register response channel
-	respChan := make(chan *protocol.JSONRPCResponse, 1)
-	c.server.MessageHandler.requestMu.Lock()
-	c.server.MessageHandler.activeRequests[reqID] = respChan
-	c.server.MessageHandler.requestMu.Unlock()
-
-	// Ensure cleanup
-	defer func() {
-		c.server.MessageHandler.requestMu.Lock()
-		delete(c.server.MessageHandler.activeRequests, reqID)
-		c.server.MessageHandler.requestMu.Unlock()
-	}()
-
-	// Send the request
-	if err := c.session.SendRequest(*req); err != nil {
-		return nil, fmt.Errorf("failed to send resource read request: %w", err)
-	}
-
-	// Wait for response with timeout
-	select {
-	case resp := <-respChan:
-		if resp == nil {
-			return nil, fmt.Errorf("response channel closed unexpectedly")
-		}
-
-		// Check for error response
-		if resp.Error != nil {
-			return nil, &protocol.MCPError{ErrorPayload: *resp.Error}
-		}
-
-		// Parse the result
-		if resp.Result == nil {
-			return nil, fmt.Errorf("empty result from resource read")
-		}
-
-		var result protocol.ReadResourceResult
-		resultBytes, err := json.Marshal(resp.Result)
-		if err != nil {
-			return nil, fmt.Errorf("failed to remarshal result: %w", err)
-		}
-
-		if err := json.Unmarshal(resultBytes, &result); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal resource result: %w", err)
-		}
-
-		// Make sure we have at least one content part
-		if len(result.Contents) == 0 {
-			return nil, fmt.Errorf("resource has no content")
-		}
-
-		// Return the first content part
-		// This expects the protocol type to match what we return
-		contents := result.Contents[0]
-
-		// Determine content type based on result.Resource.Kind
-		switch result.Resource.Kind {
-		case "audio":
-			// If it's an audio resource but not already AudioResourceContents, convert it
-			if audioContent, ok := contents.(protocol.AudioResourceContents); ok {
-				return audioContent, nil
-			} else if blobContent, ok := contents.(protocol.BlobResourceContents); ok {
-				// Convert BlobResourceContents to AudioResourceContents
-				return protocol.AudioResourceContents{
-					ContentType: blobContent.ContentType,
-					Audio:       blobContent.Blob,
-				}, nil
-			} else if textContent, ok := contents.(protocol.TextResourceContents); ok {
-				// In case the audio content somehow got returned as text, convert to Audio
-				return protocol.AudioResourceContents{
-					ContentType: textContent.ContentType,
-					Audio:       base64.StdEncoding.EncodeToString([]byte(textContent.Text)),
-				}, nil
-			}
-		case "binary", "blob", "file":
-			// If it's a binary/blob resource but not already BlobResourceContents, convert it
-			if blobContent, ok := contents.(protocol.BlobResourceContents); ok {
-				return blobContent, nil
-			} else if textContent, ok := contents.(protocol.TextResourceContents); ok {
-				// Convert TextResourceContents to BlobResourceContents (for test cases)
-				return protocol.BlobResourceContents{
-					ContentType: textContent.ContentType,
-					Blob:        base64.StdEncoding.EncodeToString([]byte(textContent.Text)),
-				}, nil
-			}
-		case "text", "static":
-			// If it's text resource but not already TextResourceContents, convert it
-			if textContent, ok := contents.(protocol.TextResourceContents); ok {
-				return textContent, nil
-			}
-		}
-
-		// Try to determine content type from URI extension
-		if strings.HasSuffix(uri, ".blob") || strings.HasSuffix(uri, ".bin") ||
-			strings.Contains(uri, "ctx_read.blob") {
-			// For test files with .blob extension, convert to BlobResourceContents
-			if textContent, ok := contents.(protocol.TextResourceContents); ok {
-				return protocol.BlobResourceContents{
-					ContentType: textContent.ContentType,
-					Blob:        base64.StdEncoding.EncodeToString([]byte(textContent.Text)),
-				}, nil
-			}
-		} else if strings.HasSuffix(uri, ".audio") ||
-			strings.HasSuffix(uri, ".mp3") ||
-			strings.HasSuffix(uri, ".wav") ||
-			strings.HasSuffix(uri, ".ogg") ||
-			strings.Contains(uri, "ctx_read.audio") {
-			// For audio files, convert to AudioResourceContents
-			if textContent, ok := contents.(protocol.TextResourceContents); ok {
-				return protocol.AudioResourceContents{
-					ContentType: textContent.ContentType,
-					Audio:       base64.StdEncoding.EncodeToString([]byte(textContent.Text)),
-				}, nil
-			} else if blobContent, ok := contents.(protocol.BlobResourceContents); ok {
-				return protocol.AudioResourceContents{
-					ContentType: blobContent.ContentType,
-					Audio:       blobContent.Blob,
-				}, nil
-			}
-		}
-
-		// Return as-is if we couldn't determine a conversion
-		return contents, nil
-
-	case <-c.Context.Done():
-		return nil, c.Context.Err()
-
-	case <-time.After(30 * time.Second):
-		return nil, fmt.Errorf("timeout waiting for resource read response")
-	}
+	// Validate against protocol constraints
+	return controller.ValidateForProtocol(c.Version, messages, maxTokens)
 }
-
-// ReportProgress reports the progress of a long-running operation.
-func (c *Context) ReportProgress(message string, current, total int) {
-	// Check for cancellation before sending progress
-	select {
-	case <-c.Done():
-		if c.logger != nil {
-			c.logger.Info("Context ReportProgress [%s]: Cancelled before reporting progress", c.requestID)
-		}
-		return // Don't report progress if cancelled
-	default:
-		// Continue if not cancelled
-	}
-
-	if c.progressToken == nil {
-		if c.logger != nil {
-			c.logger.Info("Context ReportProgress [%s]: No progress token, skipping notification", c.requestID)
-		}
-		return
-	}
-
-	// Convert progressToken to string for logging/debugging if needed
-	tokenStr := fmt.Sprintf("%v", c.progressToken)
-
-	if c.logger != nil {
-		c.logger.Info("Context ReportProgress [%s] (Token: %s): %s (%d/%d)", c.requestID, tokenStr, message, current, total)
-	}
-
-	// Construct the progress value payload
-	progressValue := map[string]interface{}{
-		"message": message,
-		"current": current,
-		"total":   total,
-	}
-
-	// Construct the progress notification parameters
-	// Convert token to string as protocol.ProgressParams expects string
-	tokenStr = fmt.Sprintf("%v", c.progressToken)
-	progressParams := protocol.ProgressParams{
-		Token: tokenStr,
-		Value: progressValue,
-	}
-
-	// Construct the JSON-RPC notification
-	notification := protocol.NewNotification("$/progress", progressParams)
-
-	// Send the notification to the specific connection
-	// Use the session stored in the context
-	c.session.SendNotification(*notification) // Use session.SendNotification directly
-}
-
-// CreateMessage sends a sampling/createMessage request to the connected client and waits for a response.
-// This allows server-side logic (e.g., a tool) to request an LLM completion via the client.
-func (c *Context) CreateMessage(messages []protocol.SamplingMessage, opts *protocol.SamplingRequestParams) (*protocol.SamplingResult, error) {
-	// Check if the client supports the sampling method (using negotiated version for now)
-	if c.session.GetNegotiatedVersion() != protocol.CurrentProtocolVersion {
-		return nil, fmt.Errorf("sampling/createMessage is not supported by the negotiated protocol version (%s)", c.session.GetNegotiatedVersion())
-	}
-
-	// Check if the transport supports sending requests (SSE does not)
-	if _, isSSE := c.session.(interface {
-		SendRequest(protocol.JSONRPCRequest) error
-	}); !isSSE {
-		// We can try a type assertion to the concrete type if we know it,
-		// but a cleaner way might be to add a capability flag or method to the interface.
-		// For now, let's assume any session that doesn't cause the interface check above to fail
-		// implicitly means it's an SSE session or similar that doesn't support SendRequest fully.
-		// Let's refine this check. Check if SendRequest returns the specific SSE error.
-		if err := c.session.SendRequest(protocol.JSONRPCRequest{}); err != nil && err.Error() == "sending requests from server to client is not supported over SSE transport" {
-			return nil, fmt.Errorf("sampling/createMessage cannot be sent: underlying transport (SSE) does not support server-to-client requests")
-		}
-		// If SendRequest exists but doesn't return the specific SSE error, we proceed, assuming it's implemented.
-	}
-
-	// Construct Params
-	params := protocol.SamplingRequestParams{
-		Messages: messages,
-	}
-	if opts != nil {
-		params.ModelPreferences = opts.ModelPreferences
-		params.SystemPrompt = opts.SystemPrompt
-		params.MaxTokens = opts.MaxTokens
-		// Copy other relevant fields from opts if necessary
-	}
-
-	// Generate unique request ID using UUID
-	reqID := uuid.NewString()
-
-	// Create response channel & register
-	respChan := make(chan *protocol.JSONRPCResponse, 1)
-	c.messageHandler.requestMu.Lock()
-	c.messageHandler.activeRequests[reqID] = respChan
-	c.messageHandler.requestMu.Unlock()
-
-	// Ensure channel is removed if function exits unexpectedly (e.g., panic)
-	// Or if request times out
-	defer func() {
-		c.messageHandler.requestMu.Lock()
-		delete(c.messageHandler.activeRequests, reqID)
-		c.messageHandler.requestMu.Unlock()
-	}()
-
-	// Construct request
-	req := protocol.JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      reqID,
-		Method:  protocol.MethodSamplingCreateMessage,
-		Params:  params,
-	}
-
-	// Send request via session
-	if err := c.session.SendRequest(req); err != nil {
-		return nil, fmt.Errorf("failed to send sampling/createMessage request to client: %w", err)
-	}
-
-	// Wait for response (with timeout based on context? Add config?)
-	// Use a default timeout for now, maybe make configurable later
-	select {
-	case resp := <-respChan:
-		if resp == nil {
-			// Channel closed unexpectedly
-			return nil, fmt.Errorf("response channel closed unexpectedly for request ID %s", reqID)
-		}
-
-		// Process response
-		if resp.Error != nil {
-			return nil, fmt.Errorf("client returned error for sampling request (ID: %s): Code=%d, Message='%s'", reqID, resp.Error.Code, resp.Error.Message)
-		}
-
-		// Unmarshal result
-		var result protocol.SamplingResult
-		if err := protocol.UnmarshalPayload(resp.Result, &result); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal sampling result from client (ID: %s): %w", reqID, err)
-		}
-		return &result, nil
-
-	case <-c.Context.Done(): // Check if the parent context (e.g., original request) was cancelled
-		return nil, fmt.Errorf("context cancelled while waiting for sampling response (ID: %s): %w", reqID, c.Context.Err())
-	case <-time.After(30 * time.Second): // Default 30-second timeout
-		return nil, fmt.Errorf("timed out waiting for sampling response from client (ID: %s)", reqID)
-	}
-}
-
-// CallTool sends a 'tools/call' request to the client and waits for the result.
-// This allows a server-side tool to invoke a client-side tool.
-// Input is marshalled to JSON.
-// Returns the raw JSON output from the client tool and any tool execution error reported by the client.
-func (c *Context) CallTool(toolName string, input interface{}) (json.RawMessage, *protocol.ToolError, error) {
-	// 1. Generate unique request ID
-	// Note: Using google/uuid requires adding it to go.mod
-	// requestID := uuid.New().String() // Requires import "github.com/google/uuid"
-	// Simple alternative for now:
-	requestID := fmt.Sprintf("server-tool-call-%d", time.Now().UnixNano())
-
-	// 2. Marshal input
-	inputBytes, err := json.Marshal(input)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal tool input for %s: %w", toolName, err)
-	}
-
-	// 3. Construct ToolCall and Params
-	toolCall := &protocol.ToolCall{
-		// ID:       uuid.New().String(), // Unique ID for the tool call instance itself
-		ID:       fmt.Sprintf("tc-%d", time.Now().UnixNano()), // Simple alternative
-		ToolName: toolName,
-		Input:    json.RawMessage(inputBytes),
-	}
-	params := protocol.CallToolRequestParams{
-		ToolCall: toolCall,
-		// Meta: Can be added if needed, e.g., to propagate progress token back
-	}
-
-	// 4. Create JSON-RPC Request
-	// req := protocol.NewRequest(requestID, protocol.MethodCallTool, params) // Helper doesn't exist
-	paramsBytes, err := json.Marshal(params)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal CallToolRequestParams: %w", err)
-	}
-	req := &protocol.JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      requestID,
-		Method:  protocol.MethodCallTool,
-		Params:  json.RawMessage(paramsBytes),
-	}
-
-	// 5. Register response channel
-	respChan := make(chan *protocol.JSONRPCResponse, 1)
-	c.server.MessageHandler.requestMu.Lock()
-	if _, exists := c.server.MessageHandler.activeRequests[requestID]; exists {
-		// Very unlikely due to timestamp nano, but handle collision just in case
-		c.server.MessageHandler.requestMu.Unlock()
-		return nil, nil, fmt.Errorf("internal error: request ID collision for %s", requestID)
-	}
-	c.server.MessageHandler.activeRequests[requestID] = respChan
-	c.server.MessageHandler.requestMu.Unlock()
-
-	// Cleanup function to remove the channel
-	cleanup := func() {
-		c.server.MessageHandler.requestMu.Lock()
-		delete(c.server.MessageHandler.activeRequests, requestID)
-		c.server.MessageHandler.requestMu.Unlock()
-		// Don't close respChan here, the select block handles it or sender closes
-	}
-	defer cleanup() // Ensure cleanup happens
-
-	// 6. Send Request via Session
-	if err := c.session.SendRequest(*req); err != nil {
-		// cleanup() // defer handles cleanup
-		return nil, nil, fmt.Errorf("failed to send tools/call request to client: %w", err)
-	}
-
-	// 7. Wait for Response (with timeout and context cancellation)
-	// TODO: Make timeout configurable via server options or context
-	timeoutDuration := 30 * time.Second
-	select {
-	case resp := <-respChan:
-		if resp == nil {
-			return nil, nil, fmt.Errorf("response channel closed unexpectedly for tools/call request %s", requestID)
-		}
-
-		// 8. Process Response
-		if resp.Error != nil {
-			// Top-level JSON-RPC error from client
-			return nil, nil, fmt.Errorf("client returned JSON-RPC error for tools/call request %s: code=%d, msg=%s",
-				requestID, resp.Error.Code, resp.Error.Message)
-		}
-
-		if resp.Result == nil {
-			return nil, nil, fmt.Errorf("client returned nil result for tools/call request %s", requestID)
-		}
-
-		// Marshal the result interface{} before unmarshalling into CallToolResult
-		resultBytes, err := json.Marshal(resp.Result)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to marshal client response result for %s: %w", requestID, err)
-		}
-
-		var toolResult protocol.CallToolResult
-		if err := json.Unmarshal(resultBytes, &toolResult); err != nil {
-			// TODO: Handle potential V2024 result format from client?
-			// For now, assume client responds with V2025 format.
-			return nil, nil, fmt.Errorf("failed to unmarshal CallToolResult from client for %s: %w", requestID, err)
-		}
-
-		// Check if the ToolCallID matches (optional but good practice)
-		if toolResult.ToolCallID != toolCall.ID {
-			c.server.logger.Warn("Mismatched ToolCallID in client response for request %s: expected %s, got %s",
-				requestID, toolCall.ID, toolResult.ToolCallID)
-			// Depending on strictness, could return an error here
-		}
-
-		return toolResult.Output, toolResult.Error, nil // Return output and potential tool error
-
-	case <-time.After(timeoutDuration):
-		// cleanup() // defer handles cleanup
-		return nil, nil, fmt.Errorf("timeout waiting for client response to tools/call request %s after %v", requestID, timeoutDuration)
-	case <-c.Done(): // Access the embedded context directly
-		// cleanup() // defer handles cleanup
-		return nil, nil, fmt.Errorf("context cancelled while waiting for client response to tools/call request %s: %w", requestID, c.Err())
-	}
-}
-
-// TODO: Add methods for CallTool, Sample, etc.

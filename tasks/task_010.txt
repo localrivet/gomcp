@@ -1,53 +1,96 @@
 # Task ID: 10
-# Title: Implement Progress Reporting
-# Status: pending
-# Dependencies: 3, 4, 5
-# Priority: medium
-# Description: Add support for progress reporting in long-running operations.
+# Title: Implement Server Core
+# Status: done
+# Dependencies: 5, 6, 7, 8, 9
+# Priority: high
+# Description: Implement the core server functionality in the server package, including the server struct and basic methods.
 # Details:
-Implement progress reporting for long-running operations:
+Implement the core server functionality:
 
-1. Define progress report types and interfaces
-2. Create progress update channels and handlers
-3. Implement progress reporting in server-side tool execution
-4. Add progress handling in client implementations
-5. Support progress reporting across all transport types
-
-Example implementation:
 ```go
-// In protocol package
-type ProgressReport struct {
-    OperationID string  `json:"operation_id"`
-    Progress    float64 `json:"progress"`    // 0.0 to 1.0
-    Status      string  `json:"status,omitempty"`
-    Message     string  `json:"message,omitempty"`
+// server/server.go
+package server
+
+// Server represents an MCP server
+type Server struct {
+	name        string
+	tools       map[string]*Tool
+	resources   map[string]*Resource
+	prompts     map[string]*Prompt
+	root        RootHandler
+	transport   Transport
+	logger      *slog.Logger
+	versionDetector *mcp.VersionDetector
+	// Additional fields
 }
 
-type ProgressReporter interface {
-    ReportProgress(report ProgressReport) error
+// NewServer creates a new MCP server
+func NewServer(name string, options ...Option) *Server {
+	// Implementation
 }
 
-// In server package
-func (s *Server) executeToolWithProgress(ctx context.Context, tool protocol.Tool, args interface{}, reporter protocol.ProgressReporter) (interface{}, error) {
-    // Implementation that calls tool and reports progress
-    // ...
-    
-    // Example progress reporting
-    reporter.ReportProgress(protocol.ProgressReport{
-        OperationID: "op123",
-        Progress:    0.5,
-        Status:      "processing",
-        Message:     "Processing data...",
-    })
-    
-    // Continue execution
-    // ...
-    
-    return result, nil
+// Option represents a server configuration option
+type Option func(*Server)
+
+// WithLogger sets the server's logger
+func WithLogger(logger *slog.Logger) Option {
+	// Implementation
 }
 
-// Additional implementations for client-side handling
+// Tool registers a tool with the server
+func (s *Server) Tool(name, description string, handler ToolHandler) *Server {
+	// Implementation
+	return s
+}
+
+// Resource registers a resource with the server
+func (s *Server) Resource(path, description string, handler ResourceHandler) *Server {
+	// Implementation
+	return s
+}
+
+// Prompt registers a prompt with the server
+func (s *Server) Prompt(name, description string, templates ...PromptTemplate) *Server {
+	// Implementation
+	return s
+}
+
+// Root sets the root resource handler
+func (s *Server) Root(handler RootHandler) *Server {
+	// Implementation
+	return s
+}
+
+// Run starts the server
+func (s *Server) Run() error {
+	// Implementation
+}
+```
+
+Implement the server context:
+
+```go
+// server/context.go
+package server
+
+// Context represents the context for a server request
+type Context struct {
+	Request  *Request
+	Response *Response
+	Logger   *slog.Logger
+	// Additional fields
+}
+
+// Request represents an incoming request
+type Request struct {
+	// Implementation
+}
+
+// Response represents an outgoing response
+type Response struct {
+	// Implementation
+}
 ```
 
 # Test Strategy:
-Create unit tests for progress reporting mechanisms. Test progress updates with various transports. Verify progress reporting works with concurrent operations. Test error handling during progress reporting. Create integration tests with long-running operations to ensure progress is reported correctly.
+Create unit tests for server creation and configuration. Test registering tools, resources, and prompts. Test the server context. Mock the transport layer for testing.

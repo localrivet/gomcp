@@ -1,45 +1,73 @@
 # Task ID: 15
-# Title: Create Comprehensive Documentation
-# Status: pending
-# Dependencies: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
-# Priority: medium
-# Description: Develop comprehensive documentation including API docs, tutorials, and guides.
+# Title: Implement Stdio Transport
+# Status: done
+# Dependencies: 14
+# Priority: high
+# Description: Implement the Standard I/O transport in the transport/stdio package.
 # Details:
-Create comprehensive documentation for the library:
+Implement the Standard I/O transport:
 
-1. Generate API documentation using godoc
-2. Create README with installation and quick start guide
-3. Develop tutorials for common use cases
-4. Write guides for advanced features
-5. Create documentation website with navigation
+```go
+// transport/stdio/stdio.go
+package stdio
 
-Documentation structure:
+// Transport implements the transport.Transport interface for Standard I/O
+type Transport struct {
+	transport.BaseTransport
+	reader *bufio.Reader
+	writer *bufio.Writer
+	done   chan struct{}
+	// Additional fields
+}
+
+// NewTransport creates a new Standard I/O transport
+func NewTransport() *Transport {
+	return &Transport{
+		reader: bufio.NewReader(os.Stdin),
+		writer: bufio.NewWriter(os.Stdout),
+		done:   make(chan struct{}),
+	}
+}
+
+// Initialize initializes the transport
+func (t *Transport) Initialize() error {
+	// Implementation
+}
+
+// Start starts the transport
+func (t *Transport) Start() error {
+	// Start a goroutine to read from stdin
+	go t.readLoop()
+	return nil
+}
+
+// Stop stops the transport
+func (t *Transport) Stop() error {
+	// Signal the read loop to stop
+	close(t.done)
+	return nil
+}
+
+// Send sends a message
+func (t *Transport) Send(message []byte) error {
+	// Write the message to stdout
+	_, err := t.writer.Write(message)
+	if err != nil {
+		return err
+	}
+	return t.writer.Flush()
+}
+
+// Receive is not used in the stdio transport
+func (t *Transport) Receive() ([]byte, error) {
+	return nil, errors.New("not implemented")
+}
+
+// readLoop reads messages from stdin
+func (t *Transport) readLoop() {
+	// Read messages from stdin and pass them to the handler
+}
 ```
-docs/
-  README.md - Overview and installation
-  quickstart.md - Quick start guide
-  tutorials/
-    creating-a-server.md
-    connecting-to-a-server.md
-    registering-tools.md
-    accessing-resources.md
-  guides/
-    transports.md - Transport options and configuration
-    schema.md - Schema generation and validation
-    hooks.md - Using the hook system
-    progress.md - Progress reporting
-    cancellation.md - Operation cancellation
-  api/
-    protocol.md - Protocol package documentation
-    server.md - Server package documentation
-    client.md - Client package documentation
-    transport.md - Transport packages documentation
-    schema.md - Schema package documentation
-    util.md - Utility packages documentation
-  examples.md - Examples overview and explanation
-```
-
-Ensure documentation includes code snippets, diagrams, and clear explanations.
 
 # Test Strategy:
-Review documentation for accuracy and completeness. Verify all code snippets compile and run correctly. Test documentation with users unfamiliar with the library to ensure clarity. Check for broken links and references. Ensure documentation is up-to-date with the latest code changes.
+Create unit tests for the stdio transport. Test initialization, starting, and stopping. Test sending messages. Test the read loop with mock stdin/stdout. Test error handling for I/O errors.

@@ -1,607 +1,316 @@
-// Package client provides a high-level client API for interacting with MCP servers.
-// It builds on the existing transport and hooks infrastructure to provide a
-// simple, fluent interface for client applications.
+// Package client provides the client-side implementation of the MCP protocol.
+//
+// This package contains the Client interface and implementation for communicating with MCP services.
+// It enables Go applications to interact with MCP servers through a clean, type-safe API that handles
+// all aspects of the protocol, including version negotiation, connection management, and request/response
+// handling.
+//
+// # Basic Usage
+//
+//	// Create a new client and connect to an MCP server
+//	client, err := client.NewClient("my-client",
+//		client.WithProtocolVersion("2025-03-26"),
+//		client.WithLogger(logger),
+//	)
+//	if err != nil {
+//		log.Fatalf("Failed to connect: %v", err)
+//	}
+//	defer client.Close()
+//
+//	// Call a tool
+//	result, err := client.CallTool("calculate", map[string]interface{}{
+//		"operation": "add",
+//		"values": []float64{1.5, 2.5, 3.0},
+//	})
+//
+// # Client Options
+//
+// The NewClient function accepts various options to customize client behavior:
+//
+//   - WithProtocolVersion: Set a specific protocol version
+//   - WithProtocolNegotiation: Enable/disable automatic protocol negotiation
+//   - WithLogger: Configure a custom logger
+//   - WithTransport: Specify a custom transport implementation
+//   - WithRequestTimeout: Set request timeout duration
+//   - WithConnectionTimeout: Set connection timeout duration
+//   - WithSamplingOptimizations: Configure sampling performance optimizations
+//
+// # Thread Safety
+//
+// All Client methods are thread-safe and can be called concurrently from multiple goroutines.
 package client
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/url"
+	"log/slog"
 	"os"
-	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/localrivet/gomcp/hooks"
-	"github.com/localrivet/gomcp/logx"
-	"github.com/localrivet/gomcp/protocol"
-	"github.com/localrivet/gomcp/types"
+	"github.com/localrivet/gomcp/mcp"
 )
 
-// Protocol version constants
-const (
-	ProtocolVersion2024   = "2024-11-05"
-	ProtocolVersion2025   = "2025-03-26"
-	LatestProtocolVersion = ProtocolVersion2025
-)
-
-// Client is the interface for a single MCP server connection
+// Client represents an MCP client for communicating with MCP servers.
+// It provides methods for all MCP operations including tool calls, resource access,
+// prompt rendering, root management, and sampling functionality.
 type Client interface {
-	// Connection Management
-	Connect(ctx context.Context) error
+	// CallTool invokes a tool on the connected MCP server.
+	//
+	// The name parameter specifies the tool to call. The args parameter contains
+	// the arguments to pass to the tool as key-value pairs. The returned interface{}
+	// contains the tool's output, which can be any JSON-serializable value.
+	//
+	// Example:
+	//  result, err := client.CallTool("translate", map[string]interface{}{
+	//      "text": "Hello world",
+	//      "target_language": "Spanish",
+	//  })
+	CallTool(name string, args map[string]interface{}) (interface{}, error)
+
+	// GetResource retrieves a resource from the server by its path.
+	//
+	// The path parameter specifies the resource to retrieve. The returned interface{}
+	// contains the resource content, which can be any JSON-serializable value.
+	//
+	// Example:
+	//  resource, err := client.GetResource("/users/123")
+	GetResource(path string) (interface{}, error)
+
+	// GetPrompt retrieves and renders a prompt from the server.
+	//
+	// The name parameter specifies the prompt to render. The variables parameter
+	// contains the variables to substitute in the prompt template.
+	//
+	// Example:
+	//  prompt, err := client.GetPrompt("greeting", map[string]interface{}{
+	//      "name": "Alice",
+	//      "time_of_day": "morning",
+	//  })
+	GetPrompt(name string, variables map[string]interface{}) (interface{}, error)
+
+	// GetRoot retrieves the root resource from the server.
+	//
+	// This is a convenience method equivalent to calling GetResource("/").
+	//
+	// Example:
+	//  root, err := client.GetRoot()
+	GetRoot() (interface{}, error)
+
+	// Close closes the client connection to the server and releases all resources.
+	//
+	// After calling Close, the client cannot be used for further operations.
+	// It is good practice to defer this call after creating a client.
+	//
+	// Example:
+	//  client, err := client.NewClient("my-client")
+	//  if err != nil {
+	//      log.Fatal(err)
+	//  }
+	//  defer client.Close()
 	Close() error
+
+	// AddRoot registers a new root endpoint with the server.
+	//
+	// The uri parameter specifies the path of the root. The name parameter
+	// provides a human-readable name for the root.
+	//
+	// Example:
+	//  err := client.AddRoot("/api/v2", "API Version 2")
+	AddRoot(uri string, name string) error
+
+	// RemoveRoot unregisters a root endpoint from the server.
+	//
+	// The uri parameter specifies the path of the root to remove.
+	//
+	// Example:
+	//  err := client.RemoveRoot("/api/v1")
+	RemoveRoot(uri string) error
+
+	// GetRoots retrieves the list of root endpoints from the server.
+	//
+	// The returned slice contains all registered roots with their URIs and names.
+	//
+	// Example:
+	//  roots, err := client.GetRoots()
+	//  for _, root := range roots {
+	//      fmt.Printf("Root: %s (%s)\n", root.URI, root.Name)
+	//  }
+	GetRoots() ([]Root, error)
+
+	// Version returns the negotiated protocol version with the server.
+	//
+	// This returns one of the standardized version strings: "draft", "2024-11-05",
+	// or "2025-03-26".
+	//
+	// Example:
+	//  version := client.Version()
+	//  fmt.Printf("Connected using MCP protocol version %s\n", version)
+	Version() string
+
+	// IsInitialized returns whether the client has been initialized.
+	//
+	// Initialization occurs during the first operation that requires
+	// server communication.
+	IsInitialized() bool
+
+	// IsConnected returns whether the client is currently connected to the server.
+	//
+	// Example:
+	//  if client.IsConnected() {
+	//      fmt.Println("Client is connected to the server")
+	//  } else {
+	//      fmt.Println("Client is not connected")
+	//  }
 	IsConnected() bool
-	Run(ctx context.Context) error
-	Cleanup() // New method for explicit graceful cleanup
 
-	// MCP Methods - High-level API
-	ListTools(ctx context.Context) ([]protocol.Tool, error)
-	CallTool(ctx context.Context, name string, args map[string]interface{}, progressCh chan<- protocol.ProgressParams) ([]protocol.Content, error)
-	ListResources(ctx context.Context) ([]protocol.Resource, error)
-	ReadResource(ctx context.Context, uri string) ([]protocol.ResourceContents, error)
-	ListPrompts(ctx context.Context) ([]protocol.Prompt, error)
-	GetPrompt(ctx context.Context, name string, args map[string]interface{}) ([]protocol.PromptMessage, error)
+	// WithSamplingHandler registers a handler for sampling requests.
+	//
+	// The handler will be called when the server requests sampling (e.g., for LLM interactions).
+	// Returns the client instance for method chaining.
+	//
+	// Example:
+	//  client = client.WithSamplingHandler(func(params SamplingCreateMessageParams) (SamplingResponse, error) {
+	//      // Process sampling request
+	//      return SamplingResponse{...}, nil
+	//  })
+	WithSamplingHandler(handler SamplingHandler) Client
 
-	// Server Information
-	ServerInfo() protocol.Implementation
-	ServerCapabilities() protocol.ServerCapabilities
+	// GetSamplingHandler returns the currently registered sampling handler.
+	GetSamplingHandler() SamplingHandler
 
-	// Raw Protocol Access
-	SendRequest(ctx context.Context, method string, params interface{}) (*protocol.JSONRPCResponse, error)
+	// RequestSampling initiates a sampling request to the server.
+	//
+	// This is typically used by advanced clients that need to request
+	// sampling capabilities from the server.
+	RequestSampling(req *SamplingRequest) (*SamplingResponse, error)
 
-	// Configuration methods (fluent interface)
-	WithTimeout(timeout time.Duration) Client
-	WithRetry(maxAttempts int, backoff BackoffStrategy) Client
-	WithMiddleware(middleware ClientMiddleware) Client
-	WithAuth(auth AuthProvider) Client
-	WithLogger(logger logx.Logger) Client
-
-	// Notification registration methods
-	OnNotification(method string, handler NotificationHandler) Client
-	OnProgress(handler ProgressHandler) Client
-	OnResourceUpdate(uri string, handler ResourceUpdateHandler) Client
-	OnLog(handler LogHandler) Client
-	OnConnectionStatus(handler ConnectionStatusHandler) Client
+	// RequestStreamingSampling initiates a streaming sampling request to the server.
+	//
+	// The streaming API is available only in protocol version 2025-03-26 and later.
+	// The handler is called for each chunk of the streaming response.
+	RequestStreamingSampling(req *StreamingSamplingRequest, handler StreamingResponseHandler) (*StreamingSamplingSession, error)
 }
 
-// MCP provides a simple interface for working with multiple MCP servers
-type MCP struct {
-	Servers map[string]Client
-	config  *McpConfig
-	logger  logx.Logger
-	roots   []string
-	ctx     context.Context
+// clientImpl is the concrete implementation of the Client interface.
+type clientImpl struct {
+	url               string
+	transport         Transport
+	logger            *slog.Logger
+	versionDetector   *mcp.VersionDetector
+	negotiatedVersion string
+	requestTimeout    time.Duration
+	connectionTimeout time.Duration
+	requestIDCounter  atomic.Int64
+	initialized       bool
+	connected         bool
+	mu                sync.RWMutex
+	ctx               context.Context
+	cancel            context.CancelFunc
+	roots             []Root
+	rootsMu           sync.RWMutex
+	capabilities      ClientCapabilities
+	samplingHandler   SamplingHandler
 
-	// Channel for connection errors
-	connectionErrors chan ServerConnectionError
-	errMutex         sync.RWMutex
+	// Server management
+	serverRegistry *ServerRegistry
+	serverName     string
+
+	// Performance optimization fields
+	samplingCache   *SamplingCache
+	sizeAnalyzer    *ContentSizeAnalyzer
+	samplingMetrics *SamplingPerformanceMetrics
 }
 
-// ServerConnectionError represents an error connecting to a specific server
-type ServerConnectionError struct {
-	ServerName string
-	Err        error // Changed from Error to Err to avoid conflict
-}
-
-// ClientConfig holds the configuration for a client
-type ClientConfig struct {
-	Name                     string
-	Logger                   logx.Logger
-	Capabilities             protocol.ClientCapabilities
-	PreferredProtocolVersion string
-	TransportOptions         types.TransportOptions
-	DefaultTimeout           time.Duration
-	RetryStrategy            BackoffStrategy
-	Middleware               []ClientMiddleware
-	Hooks                    ClientHooks
-	AuthProvider             AuthProvider
-	Endpoint                 string
-	ServerName               string
-}
-
-// ClientHooks holds the various hook functions for the client
-type ClientHooks struct {
-	BeforeSendRequest        []hooks.ClientBeforeSendRequestHook
-	BeforeSendNotification   []hooks.ClientBeforeSendNotificationHook
-	OnReceiveRawMessage      []hooks.OnReceiveRawMessageHook
-	BeforeHandleResponse     []hooks.ClientBeforeHandleResponseHook
-	BeforeHandleNotification []hooks.ClientBeforeHandleNotificationHook
-	BeforeHandleRequest      []hooks.ClientBeforeHandleRequestHook
-}
-
-// ClientOption is a function that configures a ClientConfig
-type ClientOption func(*ClientConfig)
-
-// Server configuration from config file
-type MCPServerConfig struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
-}
-
-// Configuration file structure
-type MCPConfig struct {
-	MCPServers map[string]MCPServerConfig `json:"mcpServers"`
-}
-
-// New creates a new MCP client manager from a config
+// NewClient creates a new MCP client with the given URL and options.
+// The client will automatically detect and adapt to the server's MCP specification version.
+// It immediately establishes a connection to the server and returns an error if the connection fails.
+//
+// The url parameter is interpreted based on its format:
+//   - "stdio:///": Uses Standard I/O for communication (useful for child processes)
+//   - "ws://host:port/path": Uses WebSocket protocol
+//   - "http://host:port/path": Uses HTTP protocol
+//   - "sse://host:port/path": Uses Server-Sent Events protocol
+//   - Custom schemes can be handled with a custom Transport implementation
+//
+// Errors returned by NewClient may include:
+//   - Connection failures (e.g., server unreachable)
+//   - Protocol negotiation failures
+//   - Transport initialization errors
 //
 // Example:
 //
-//	config, err := client.LoadFromFile(configPath, nil)
-//	mcp, err := client.New(config, client.WithTimeout(30*time.Second))
+//	// Basic client with default options
+//	client, err := client.NewClient("ws://localhost:8080/mcp")
+//	if err != nil {
+//		log.Fatalf("Failed to create client: %v", err)
+//	}
 //
-//	// Configure with fluent interface
-//	mcp.Roots([]string{"./path1", "./path2"}).
-//		Logger(logx.NewDefaultLogger()).
-//		WithContext(ctx)
-//
-//	// Connect and use
-//	mcp.Connect()
-//	tools := mcp.ListTools()
-func New(config *McpConfig, options ...ClientOption) (*MCP, error) {
-	// Create the MCP instance
-	mcp := &MCP{
-		Servers:          make(map[string]Client),
-		config:           config,
-		logger:           logx.NewDefaultLogger(),
-		ctx:              context.Background(),
-		roots:            []string{},
-		connectionErrors: make(chan ServerConnectionError, 10), // Buffer for up to 10 errors
+//	// Client with custom options
+//	client, err := client.NewClient("http://api.example.com/mcp",
+//		client.WithProtocolVersion("2025-03-26"),
+//		client.WithLogger(myCustomLogger),
+//		client.WithRequestTimeout(time.Second * 20),
+//	)
+func NewClient(url string, options ...Option) (Client, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	c := &clientImpl{
+		url:               url,
+		logger:            slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		versionDetector:   mcp.NewVersionDetector(),
+		requestTimeout:    30 * time.Second,
+		connectionTimeout: 10 * time.Second,
+		ctx:               ctx,
+		cancel:            cancel,
+		roots:             []Root{},
+		capabilities: ClientCapabilities{
+			Roots: RootsCapability{
+				ListChanged: true,
+			},
+		},
 	}
 
-	// Create a default client config to apply options to
-	clientConfig := &ClientConfig{
-		Name:                     getEnvOrDefault("MCP_CLIENT_NAME", "GoMCPClient"),
-		Logger:                   mcp.logger,
-		PreferredProtocolVersion: LatestProtocolVersion,
-		DefaultTimeout:           30 * time.Second,
-		RetryStrategy:            NewExponentialBackoff(500*time.Millisecond, 3*time.Second, 3),
-	}
-
-	// Apply any client options
+	// Apply options
 	for _, option := range options {
-		option(clientConfig)
+		option(c)
 	}
 
-	// Create clients for each server in the config
-	for name, serverConfig := range config.McpServers {
-		client, err := NewClientFromServer(serverConfig,
-			// Apply the common options from the client config
-			WithLogger(clientConfig.Logger),
-			WithTimeout(clientConfig.DefaultTimeout),
-			WithRetryStrategy(clientConfig.RetryStrategy),
-		)
-		if err != nil {
-			return nil, err
-		}
+	// If no transport is provided, one will be selected based on the URL
+	// when Connect() is called
 
-		mcp.Servers[name] = client
+	// Immediately connect to the server
+	if err := c.Connect(); err != nil {
+		cancel() // Clean up resources
+		return nil, fmt.Errorf("failed to connect to MCP server: %w", err)
 	}
 
-	return mcp, nil
+	return c, nil
 }
 
-// Roots sets the root directories for the MCP
-func (m *MCP) Roots(paths []string) *MCP {
-	m.roots = paths
-	return m
+// generateRequestID generates a unique request ID.
+func (c *clientImpl) generateRequestID() int64 {
+	return c.requestIDCounter.Add(1)
 }
 
-// Logger sets the logger for the MCP
-func (m *MCP) Logger(logger logx.Logger) *MCP {
-	m.logger = logger
-
-	// Also set the logger for each server
-	for _, client := range m.Servers {
-		client.WithLogger(logger)
-	}
-
-	return m
+// Version returns the negotiated protocol version.
+func (c *clientImpl) Version() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.negotiatedVersion
 }
 
-// Connect connects to all servers
-// This is now non-blocking and will attempt connections in the background
-func (m *MCP) Connect() error {
-	// Clear any previous connection errors
-	for len(m.connectionErrors) > 0 {
-		<-m.connectionErrors // Drain the channel
-	}
-
-	// Start the connection process in a background goroutine
-	// go func() {
-	// var wg sync.WaitGroup
-	var totalServers = len(m.Servers)
-
-	// Connect to each server in parallel
-	for name, client := range m.Servers {
-		go func(name string, client Client) {
-			// defer wg.Done()
-			if err := client.Connect(m.ctx); err != nil {
-				m.logger.Error("Failed to connect to server %s: %v", name, err)
-				// Send error to the connection errors channel
-				select {
-				case m.connectionErrors <- ServerConnectionError{
-					ServerName: name,
-					Err:        err,
-				}:
-					// Successfully sent
-				default:
-					// Channel is full, just log
-					m.logger.Error("Connection error channel full, discarding error from %s: %v", name, err)
-				}
-			} else {
-
-				m.logger.Info("Successfully connected to server %s", name)
-			}
-		}(name, client)
-	}
-
-	// Log a message for ongoing connection attempts
-	m.logger.Info("Connection attempts started for %d servers", totalServers)
-	// }()
-
-	// Return immediately while connections happen in background
-	return nil
+// IsInitialized returns whether the client has been initialized.
+func (c *clientImpl) IsInitialized() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.initialized
 }
 
-// IsConnected returns true if at least one server is connected
-func (m *MCP) IsConnected() bool {
-	// Check if any underlying client reports as connected
-	for _, client := range m.Servers {
-		if client.IsConnected() {
-			return true
-		}
-	}
-	return false
-}
-
-// ConnectionErrors returns a read-only channel that receives connection errors
-// Callers can use this to monitor which servers failed to connect
-func (m *MCP) ConnectionErrors() <-chan ServerConnectionError {
-	return m.connectionErrors
-}
-
-// WaitForConnections blocks until all servers have attempted to connect
-// with an optional timeout. Returns true if all servers connected successfully,
-// false if there were errors or the timeout was reached.
-func (m *MCP) WaitForConnections(timeout time.Duration) bool {
-	// Create a timer for the timeout
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	// Use a channel to signal completion from a goroutine
-	done := make(chan bool, 1)
-
-	// Start a goroutine to check server connections
-	go func() {
-		// Check each server's connection status
-		allConnected := true
-		for name, server := range m.Servers {
-			if !server.IsConnected() {
-				m.logger.Warn("Server %s is not connected", name)
-				allConnected = false
-			}
-		}
-		done <- allConnected
-	}()
-
-	// Wait for either completion or timeout
-	select {
-	case result := <-done:
-		return result
-	case <-timer.C:
-		m.logger.Warn("Timeout waiting for server connections")
-		return false
-	}
-}
-
-// Close disconnects from all servers
-func (m *MCP) Close() {
-	for _, client := range m.Servers {
-		client.Close()
-	}
-}
-
-// WithContext sets the context for all operations
-func (m *MCP) WithContext(ctx context.Context) *MCP {
-	m.ctx = ctx
-	return m
-}
-
-// ListTools returns all tools from all servers
-// This is a convenience method that calls ListTools on each server
-func (m *MCP) ListTools() map[string][]protocol.Tool {
-	result := make(map[string][]protocol.Tool)
-
-	// Check each server individually
-	for name, server := range m.Servers {
-		// Check if this specific server is connected before trying to list its tools
-		if server.IsConnected() {
-			tools, err := server.ListTools(m.ctx)
-			if err == nil {
-				result[name] = tools
-				m.logger.Debug("Listed %d tools from server %s", len(tools), name)
-			} else {
-				m.logger.Debug("Error listing tools from connected server %s: %v", name, err)
-			}
-		} else {
-			// Log that we are skipping this server because it's not connected
-			m.logger.Debug("Skipping tool listing for server %s as it is not connected", name)
-		}
-	}
-
-	return result
-}
-
-// ListToolsWithTimeout returns all tools from all servers with a timeout
-// This is a convenience method that calls ListTools on each server with a timeout
-func (m *MCP) ListToolsWithTimeout(timeout time.Duration) map[string][]protocol.Tool {
-	result := make(map[string][]protocol.Tool)
-	var resultMu sync.Mutex
-
-	// Create a wait group to track when all goroutines are done
-	var wg sync.WaitGroup
-
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(m.ctx, timeout)
-	defer cancel()
-
-	// Launch a goroutine for each server
-	for name, server := range m.Servers {
-		wg.Add(1)
-		go func(name string, server Client) {
-			defer wg.Done()
-
-			// Create a context with timeout for this specific call
-			toolCtx, toolCancel := context.WithTimeout(ctx, timeout)
-			defer toolCancel()
-
-			// Call ListTools with timeout
-			tools, err := server.ListTools(toolCtx)
-			if err != nil {
-				m.logger.Error("Failed to list tools from server %s: %v", name, err)
-				return
-			}
-
-			// Add tools to the result map
-			resultMu.Lock()
-			result[name] = tools
-			resultMu.Unlock()
-		}(name, server)
-	}
-
-	// Use a channel to signal when all goroutines are done or timeout
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	// Wait for completion or timeout
-	select {
-	case <-done:
-		// All servers have completed
-		m.logger.Debug("All servers completed tool listing")
-	case <-ctx.Done():
-		// Timeout occurred
-		m.logger.Warn("Timeout occurred while listing tools from servers")
-	}
-
-	return result
-}
-
-// ListToolsAsync lists tools from all servers asynchronously
-// It returns immediately with an empty map and pushes results to the provided channel as they arrive
-func (m *MCP) ListToolsAsync(resultCh chan<- map[string][]protocol.Tool, timeout time.Duration) {
-	// Create a context with timeout for the overall operation
-	ctx, cancel := context.WithTimeout(m.ctx, timeout)
-
-	// Start a goroutine to handle the async operation
-	go func() {
-		defer cancel() // Ensure context is cancelled when done
-
-		// Intermediate results will be collected here
-		tempResult := make(map[string][]protocol.Tool)
-		var resultMu sync.Mutex
-
-		// Create a wait group to track when all servers are done
-		var wg sync.WaitGroup
-
-		// Launch a goroutine for each server
-		for name, server := range m.Servers {
-			wg.Add(1)
-			go func(name string, server Client) {
-				defer wg.Done()
-
-				// Create a context with timeout for this specific server
-				serverCtx, serverCancel := context.WithTimeout(ctx, timeout/2) // Use half the timeout for the individual call
-				defer serverCancel()
-
-				// Try to list tools from this server
-				tools, err := server.ListTools(serverCtx)
-				if err != nil {
-					m.logger.Error("Failed to list tools from server %s: %v", name, err)
-					return
-				}
-
-				// Add tools to the result map and send a copy
-				resultMu.Lock()
-				tempResult[name] = tools
-
-				// Make a deep copy of the current results to send
-				currentResult := make(map[string][]protocol.Tool)
-				for k, v := range tempResult {
-					currentResult[k] = v
-				}
-				resultMu.Unlock()
-
-				// Send the current results through the channel
-				select {
-				case resultCh <- currentResult:
-					// Successfully sent
-				case <-ctx.Done():
-					// Context cancelled, stop
-					return
-				}
-			}(name, server)
-		}
-
-		// Wait for all servers to complete
-		wg.Wait()
-
-		// Send final results
-		select {
-		case resultCh <- tempResult:
-			// Successfully sent final results
-		case <-ctx.Done():
-			// Context cancelled, stop
-		}
-	}()
-}
-
-// ListResources returns all resources from all servers
-// This is a convenience method that calls ListResources on each server
-func (m *MCP) ListResources() map[string][]protocol.Resource {
-	result := make(map[string][]protocol.Resource)
-	for name, server := range m.Servers {
-		resources, err := server.ListResources(m.ctx)
-		if err == nil {
-			result[name] = resources
-		}
-	}
-	return result
-}
-
-// ReadResource reads a resource from a specific server
-func (m *MCP) ReadResource(serverName, uri string) ([]protocol.ResourceContents, error) {
-	server, ok := m.Servers[serverName]
-	if !ok {
-		return nil, ErrServerNotFound
-	}
-
-	return server.ReadResource(m.ctx, uri)
-}
-
-// CallTool calls a tool on a specific server
-func (m *MCP) CallTool(serverName, toolName string, args map[string]interface{}) ([]protocol.Content, error) {
-	server, ok := m.Servers[serverName]
-	if !ok {
-		return nil, ErrServerNotFound
-	}
-
-	return server.CallTool(m.ctx, toolName, args, nil)
-}
-
-// ErrServerNotFound is returned when a specified server is not found
-var ErrServerNotFound = fmt.Errorf("server not found")
-
-// Helper function to create a WebSocket client
-func createWebSocketClient(config *ClientConfig, endpoint string) (Client, error) {
-	return NewWebSocketClient(
-		config.Name,
-		endpoint,
-		WithTimeout(config.DefaultTimeout),
-		WithRetryStrategy(config.RetryStrategy),
-		WithLogger(config.Logger),
-	)
-}
-
-// Helper function to create an SSE client
-func createSSEClient(config *ClientConfig, endpoint string) (Client, error) {
-	parsedURL, urlErr := url.Parse(endpoint)
-	if urlErr != nil {
-		return nil, fmt.Errorf("invalid URL: %w", urlErr)
-	}
-
-	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
-	path := parsedURL.Path
-	if path == "" {
-		path = "/mcp"
-	}
-
-	return NewSSEClient(
-		config.Name,
-		baseURL,
-		path,
-		WithTimeout(config.DefaultTimeout),
-		WithLogger(config.Logger),
-	)
-}
-
-// Helper function to create a Stdio client
-func createStdioClient(config *ClientConfig, endpoint string) (Client, error) {
-	return NewStdioClient(
-		endpoint,
-		WithTimeout(config.DefaultTimeout),
-		WithLogger(config.Logger),
-	)
-}
-
-// Helper function to get environment variable or default value
-func getEnvOrDefault(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return defaultValue
-}
-
-// findServerConfig looks for server configuration in ~/.cursor/mcp.json
-func findServerConfig(serverName string) (command string, args []string, found bool) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", nil, false
-	}
-
-	configPath := filepath.Join(homeDir, ".cursor", "mcp.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return "", nil, false
-	}
-
-	var config MCPConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return "", nil, false
-	}
-
-	serverConfig, exists := config.MCPServers[serverName]
-	if !exists {
-		return "", nil, false
-	}
-
-	return serverConfig.Command, serverConfig.Args, true
-}
-
-// createStdioClientWithCommand creates a stdio client with the given command and args
-func createStdioClientWithCommand(config *ClientConfig, command string, args []string) (Client, error) {
-	// We'll use the existing NewStdioClient but with the command set in environment
-	// This avoids implementing a custom transport for this example
-	return NewStdioClient(
-		config.Name,
-		WithTimeout(config.DefaultTimeout),
-		WithLogger(config.Logger),
-		WithRetryStrategy(config.RetryStrategy),
-	)
-}
-
-// WithEndpoint sets the endpoint for the client
-func WithEndpoint(endpoint string) ClientOption {
-	return func(config *ClientConfig) {
-		config.Endpoint = endpoint
-	}
-}
-
-// WithServer sets the server name to connect to from the config file
-func WithServer(serverName string) ClientOption {
-	return func(config *ClientConfig) {
-		config.ServerName = serverName
-	}
-}
-
-// CheckConnectionStatus logs detailed information about the connection status of all servers
-func (m *MCP) CheckConnectionStatus() {
-	for name, client := range m.Servers {
-		connected := client.IsConnected()
-		m.logger.Info("Server %s connection status: %v", name, connected)
-	}
+// IsConnected returns whether the client is connected.
+func (c *clientImpl) IsConnected() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.connected
 }

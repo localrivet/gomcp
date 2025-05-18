@@ -1,59 +1,28 @@
 # Task ID: 4
-# Title: Implement Client Package
-# Status: pending
-# Dependencies: 1, 2
-# Priority: high
-# Description: Create the client-side package that allows applications to connect to MCP servers and utilize their tools, resources, and prompts.
+# Title: Implement Core MCP Types for Draft Version
+# Status: done
+# Dependencies: 1
+# Priority: medium
+# Description: Define all core protocol types for the latest draft specification version in the mcp/draft package.
 # Details:
-Implement the client package for connecting to MCP servers:
+Create type definitions for all MCP message types according to the latest draft specification, following the same pattern as the previous implementations but with any draft specification differences incorporated:
 
-1. Create a Client struct that implements the MCPClient interface
-2. Implement methods for discovering available tools, resources, and prompts
-3. Add methods for calling tools and accessing resources
-4. Implement error handling and response parsing
-5. Support protocol version negotiation
-
-Example implementation:
 ```go
-package client
+// mcp/draft/types.go
+package draft
 
-import (
-    "github.com/your-org/gomcp/protocol"
-    "github.com/your-org/gomcp/schema"
-)
-
-type Client struct {
-    transport protocol.Transport
-    version   string
+// Message represents the base MCP message structure
+type Message struct {
+	Type    string          `json:"type"`
+	Version string          `json:"version"`
+	ID      string          `json:"id,omitempty"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
-func NewClient(transport protocol.Transport, options ...Option) *Client {
-    c := &Client{
-        transport: transport,
-        version:   protocol.VersionLatest,
-    }
-    
-    for _, opt := range options {
-        opt(c)
-    }
-    
-    return c
-}
-
-func (c *Client) ListTools() ([]protocol.ToolInfo, error) {
-    // Implementation
-    // ...
-    return nil, nil
-}
-
-func (c *Client) CallTool(name string, args interface{}) (interface{}, error) {
-    // Implementation with validation
-    // ...
-    return nil, nil
-}
-
-// Additional methods
+// Define all message types with any draft-specific changes
 ```
 
+Implement marshaling/unmarshaling functions for all types. Ensure all types are properly documented with comments that will appear in godoc.
+
 # Test Strategy:
-Create unit tests for client creation and configuration. Test tool discovery and calling with mock responses. Verify error handling works correctly. Test with different protocol versions to ensure compatibility. Use mock transports to simulate various server responses and error conditions.
+Create comprehensive unit tests for each type, including marshaling and unmarshaling tests with sample JSON data. Test edge cases and ensure compatibility with previous versions where appropriate.

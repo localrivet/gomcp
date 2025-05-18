@@ -1,67 +1,67 @@
 # Task ID: 6
-# Title: Implement HTTP/SSE Transport
-# Status: pending
-# Dependencies: 1, 5
+# Title: Implement Structured Logging (slog) Package
+# Status: done
+# Dependencies: 1
 # Priority: medium
-# Description: Create the HTTP/SSE transport implementation for network communication, supporting streaming responses.
+# Description: Implement or refine the structured logging package (util/slog) to provide flexible, configurable logging for the library.
 # Details:
-Implement HTTP/SSE transport for network communication:
+Implement a structured logging package that supports:
 
-1. Create client and server implementations for HTTP/SSE transport
-2. Support POST requests for sending data
-3. Implement Server-Sent Events (SSE) for streaming responses
-4. Handle connection management and reconnection
-5. Support proper error propagation
-
-Example implementation:
 ```go
-package httpsse
+// util/slog/logger.go
+package slog
 
-import (
-    "bytes"
-    "encoding/json"
-    "net/http"
-    "github.com/your-org/gomcp/protocol"
+// LogLevel represents logging severity levels
+type LogLevel int
+
+const (
+	LevelDebug LogLevel = iota
+	LevelInfo
+	LevelWarn
+	LevelError
 )
 
-type ClientTransport struct {
-    baseURL    string
-    httpClient *http.Client
-    // Additional fields
+// Logger provides structured logging capabilities
+type Logger struct {
+	// Implementation details
 }
 
-func NewClientTransport(baseURL string) *ClientTransport {
-    return &ClientTransport{
-        baseURL:    baseURL,
-        httpClient: &http.Client{},
-    }
+// NewLogger creates a new logger with the given options
+func NewLogger(options ...Option) *Logger {
+	// Implementation
 }
 
-func (t *ClientTransport) Connect() error {
-    // Implementation
-    return nil
+// Option represents a logger configuration option
+type Option func(*Logger)
+
+// WithLevel sets the logger's level
+func WithLevel(level LogLevel) Option {
+	// Implementation
 }
 
-func (t *ClientTransport) Send(message interface{}) error {
-    data, err := json.Marshal(message)
-    if err != nil {
-        return err
-    }
-    
-    resp, err := t.httpClient.Post(t.baseURL+"/request", "application/json", bytes.NewReader(data))
-    if err != nil {
-        return err
-    }
-    defer resp.Body.Close()
-    
-    // Process response
-    // ...
-    
-    return nil
+// WithOutput sets the logger's output destination
+func WithOutput(output io.Writer) Option {
+	// Implementation
 }
 
-// Additional methods and server implementation
+// WithFormat sets the logger's output format
+func WithFormat(format string) Option {
+	// Implementation
+}
+
+// Log methods
+func (l *Logger) Debug(msg string, fields ...Field) {}
+func (l *Logger) Info(msg string, fields ...Field) {}
+func (l *Logger) Warn(msg string, fields ...Field) {}
+func (l *Logger) Error(msg string, fields ...Field) {}
 ```
 
+Implement support for:
+- Multiple output formats (JSON, text)
+- File, stdout, stderr output options
+- Log file rotation with timestamps
+- Runtime log level adjustment
+- Structured fields for context
+
 # Test Strategy:
-Create unit tests using httptest package to mock HTTP servers and clients. Test request/response cycle with various payload sizes. Verify SSE streaming works correctly for long-running operations. Test reconnection logic with simulated network failures. Ensure proper error handling for various HTTP status codes.
+Create unit tests for all logger functionality. Test different output formats, log levels, and output destinations. Test log rotation functionality. Test concurrent logging from multiple goroutines.

@@ -2,130 +2,177 @@ package stdio
 
 import (
 	"bytes"
-	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"strings"
-	"sync"
 	"testing"
 	"time"
-
-	"github.com/localrivet/gomcp/logx" // Use centralized logger
-	"github.com/localrivet/gomcp/types"
 )
 
-// TestStdioTransportSendReceive tests basic message exchange using pipes.
-func TestStdioTransportSendReceive(t *testing.T) {
-	// Use pipes to simulate stdin/stdout for testing
-	clientReader, serverWriter := io.Pipe()
-	serverReader, clientWriter := io.Pipe()
-
-	var wg sync.WaitGroup
-	wg.Add(2) // One for server, one for client
-
-	var serverErr error
-	var clientErr error
-
-	// Create transports with pipes
-	logger := logx.NewDefaultLogger() // Use logx logger
-	serverOpts := types.TransportOptions{Logger: logger}
-	clientOpts := types.TransportOptions{Logger: logger}
-	serverTransport := NewStdioTransportWithReadWriter(serverReader, serverWriter, serverOpts)
-	clientTransport := NewStdioTransportWithReadWriter(clientReader, clientWriter, clientOpts)
-
-	// Server Goroutine
-	go func() {
-		defer wg.Done()
-		defer serverWriter.Close() // Close writer when done
-		defer serverReader.Close() // Close reader when done
-
-		// Server Receive
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		receivedBytes, err := serverTransport.Receive(ctx) // Use Receive
-		if err != nil {
-			serverErr = err
-			if !errors.Is(err, io.EOF) && !errors.Is(err, context.DeadlineExceeded) { // EOF is expected if client closes pipe
-				t.Errorf("Server failed to receive message: %v", err)
-			}
-			return
-		}
-		// Verify received message (sent by client below)
-		testMsg := map[string]interface{}{"jsonrpc": "2.0", "id": "client-to-server", "method": "test"}
-		testMsgBytes, _ := json.Marshal(testMsg)
-		testMsgBytesWithNL := append(testMsgBytes, '\n')
-		if !bytes.Equal(receivedBytes, testMsgBytesWithNL) {
-			serverErr = err
-			t.Errorf("Server received wrong message.\nExpected: %s\nGot:      %s", string(testMsgBytesWithNL), string(receivedBytes))
-			return
-		}
-		t.Log("Server received message correctly.")
-
-		// Server Send
-		testMsgServer := map[string]interface{}{"jsonrpc": "2.0", "id": "server-to-client", "method": "test"}
-		testMsgServerBytes, _ := json.Marshal(testMsgServer)
-		// testMsgServerBytesWithNL := append(testMsgServerBytes, '\n') // Send already adds newline
-		t.Log("Server sending message...")
-		if err := serverTransport.Send(ctx, testMsgServerBytes); err != nil { // Use Send with context
-			serverErr = err
-			t.Errorf("Server failed to send message: %v", err)
-			return
-		}
-		t.Log("Server message sent.")
-	}()
-
-	// Client Goroutine
-	go func() {
-		defer wg.Done()
-		defer clientWriter.Close() // Close writer when done
-		defer clientReader.Close() // Close reader when done
-
-		// Client Send
-		testMsgClient := map[string]interface{}{"jsonrpc": "2.0", "id": "client-to-server", "method": "test"}
-		testMsgClientBytes, _ := json.Marshal(testMsgClient)
-		// testMsgClientBytesWithNL := append(testMsgClientBytes, '\n') // Send already adds newline
-		t.Log("Client sending message...")
-		ctxSend, cancelSend := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancelSend()
-		if err := clientTransport.Send(ctxSend, testMsgClientBytes); err != nil { // Use Send with context
-			clientErr = err
-			t.Errorf("Client failed to send message: %v", err)
-			return
-		}
-		t.Log("Client message sent.")
-
-		// Client Receive
-		ctxRecv, cancelRecv := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancelRecv()
-		receivedBytes, err := clientTransport.Receive(ctxRecv) // Use Receive
-		if err != nil {
-			clientErr = err
-			if !errors.Is(err, io.EOF) && !errors.Is(err, context.DeadlineExceeded) { // EOF is expected if server closes pipe
-				t.Errorf("Client failed to receive message: %v", err)
-			}
-			return
-		}
-		// Verify received message (sent by server above)
-		testMsg := map[string]interface{}{"jsonrpc": "2.0", "id": "server-to-client", "method": "test"}
-		testMsgBytes, _ := json.Marshal(testMsg)
-		testMsgBytesWithNL := append(testMsgBytes, '\n')
-		if !bytes.Equal(receivedBytes, testMsgBytesWithNL) {
-			clientErr = err
-			t.Errorf("Client received wrong message.\nExpected: %s\nGot:      %s", string(testMsgBytesWithNL), string(receivedBytes))
-			return
-		}
-		t.Log("Client received message correctly.")
-	}()
-
-	// Wait for goroutines
-	wg.Wait()
-
-	// Final check for unexpected errors
-	if serverErr != nil && !errors.Is(serverErr, io.EOF) && !errors.Is(serverErr, context.DeadlineExceeded) && !strings.Contains(serverErr.Error(), "pipe closed") {
-		t.Fatalf("Server goroutine encountered unexpected error: %v", serverErr)
+func TestNewTransport(t *testing.T) {
+	// Test the default constructor
+	transport := NewTransport()
+	if transport.reader == nil {
+		t.Error("Expected reader to be initialized, got nil")
 	}
-	if clientErr != nil && !errors.Is(clientErr, io.EOF) && !errors.Is(clientErr, context.DeadlineExceeded) && !strings.Contains(clientErr.Error(), "pipe closed") {
-		t.Fatalf("Client goroutine encountered unexpected error: %v", clientErr)
+	if transport.writer == nil {
+		t.Error("Expected writer to be initialized, got nil")
 	}
+	if transport.done == nil {
+		t.Error("Expected done channel to be initialized, got nil")
+	}
+}
+
+func TestNewTransportWithIO(t *testing.T) {
+	// Test with custom IO
+	in := strings.NewReader("test input")
+	out := new(bytes.Buffer)
+
+	transport := NewTransportWithIO(in, out)
+	if transport.reader == nil {
+		t.Error("Expected reader to be initialized, got nil")
+	}
+	if transport.writer == nil {
+		t.Error("Expected writer to be initialized, got nil")
+	}
+}
+
+func TestInitialize(t *testing.T) {
+	in := strings.NewReader("")
+	out := new(bytes.Buffer)
+	transport := NewTransportWithIO(in, out)
+
+	err := transport.Initialize()
+	if err != nil {
+		t.Errorf("Expected no error on Initialize, got %v", err)
+	}
+}
+
+func TestSend(t *testing.T) {
+	out := new(bytes.Buffer)
+	transport := NewTransportWithIO(strings.NewReader(""), out)
+
+	message := []byte("test message")
+	err := transport.Send(message)
+	if err != nil {
+		t.Errorf("Unexpected error on Send: %v", err)
+	}
+
+	// Should include a newline by default
+	expected := "test message\n"
+	if out.String() != expected {
+		t.Errorf("Expected output %q, got %q", expected, out.String())
+	}
+
+	// Test without newline
+	out.Reset()
+	transport.SetNewline(false)
+	err = transport.Send(message)
+	if err != nil {
+		t.Errorf("Unexpected error on Send: %v", err)
+	}
+
+	expected = "test message"
+	if out.String() != expected {
+		t.Errorf("Expected output %q, got %q", expected, out.String())
+	}
+}
+
+func TestReceive(t *testing.T) {
+	transport := NewTransport()
+
+	_, err := transport.Receive()
+	if err == nil {
+		t.Error("Expected error on Receive, got nil")
+	}
+	if !strings.Contains(err.Error(), "not implemented") {
+		t.Errorf("Expected 'not implemented' error, got %v", err)
+	}
+}
+
+func TestReadLoop(t *testing.T) {
+	// Create transport with mock IO
+	input := "test message\n"
+	in := strings.NewReader(input)
+	out := new(bytes.Buffer)
+	transport := NewTransportWithIO(in, out)
+
+	// Set up a handler that echoes the message
+	transport.SetMessageHandler(func(message []byte) ([]byte, error) {
+		return message, nil
+	})
+
+	// Start the transport
+	err := transport.Start()
+	if err != nil {
+		t.Errorf("Unexpected error on Start: %v", err)
+	}
+
+	// Wait a short time for the message to be processed
+	time.Sleep(50 * time.Millisecond)
+
+	// Check that the message was echoed
+	expected := "test message\n"
+	if out.String() != expected {
+		t.Errorf("Expected output %q, got %q", expected, out.String())
+	}
+
+	// Clean up
+	transport.Stop()
+}
+
+func TestReadLoopWithError(t *testing.T) {
+	// Create transport with mock IO
+	input := "test message\n"
+	in := strings.NewReader(input)
+	out := new(bytes.Buffer)
+	transport := NewTransportWithIO(in, out)
+
+	// Set up a handler that returns an error
+	expectedErr := errors.New("handler error")
+	transport.SetMessageHandler(func(message []byte) ([]byte, error) {
+		return nil, expectedErr
+	})
+
+	// Start the transport
+	transport.Start()
+
+	// Wait a short time for the message to be processed
+	time.Sleep(50 * time.Millisecond)
+
+	// Check that no output was produced
+	if out.String() != "" {
+		t.Errorf("Expected empty output, got %q", out.String())
+	}
+
+	// Clean up
+	transport.Stop()
+}
+
+func TestReadLoopWithEOF(t *testing.T) {
+	// Create a reader that immediately returns EOF
+	in := &eofReader{}
+	out := new(bytes.Buffer)
+	transport := NewTransportWithIO(in, out)
+
+	// Start the transport
+	transport.Start()
+
+	// Wait a short time for EOF to be detected
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify EOF was detected
+	if !transport.readEOF {
+		t.Error("Expected readEOF to be true")
+	}
+
+	// Clean up
+	transport.Stop()
+}
+
+// eofReader is a mock reader that always returns EOF
+type eofReader struct{}
+
+func (r *eofReader) Read(p []byte) (n int, err error) {
+	return 0, io.EOF
 }

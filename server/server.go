@@ -1,384 +1,617 @@
 package server
 
 import (
-	"strings"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"os"
 	"sync"
+	"time"
 
-	// "github.com/localrivet/gomcp/logx" // No longer needed here
-	"github.com/localrivet/gomcp/logx"
-	"github.com/localrivet/gomcp/protocol"
+	"github.com/localrivet/gomcp/mcp"
+	"github.com/localrivet/gomcp/transport"
+	"github.com/localrivet/gomcp/transport/stdio"
 )
 
-const ServerVersion = "0.1.0" // Define server version constant
+// Server represents an MCP server with fluent configuration methods.
+// It provides a builder-style API for configuring all aspects of an MCP server
+// including tools, resources, prompts, and transport options.
+type Server interface {
+	// Run starts the server and blocks until it exits.
+	//
+	// This method initializes the server, starts listening for connections,
+	// and processes incoming requests. It blocks until the server encounters
+	// an error or is explicitly stopped.
+	//
+	// Example:
+	//  if err := server.Run(); err != nil {
+	//      log.Fatalf("Server error: %v", err)
+	//  }
+	Run() error
 
-// ResourceDetails holds the details for adding a resource.
-type ResourceDetails struct {
-	URI         string
-	Kind        string
-	Name        string
-	Description string
+	// Tool registers a tool with the server.
+	//
+	// The name parameter is the unique identifier for the tool. The description
+	// parameter provides human-readable documentation. The handler parameter is
+	// a function that implements the tool's logic.
+	//
+	// Tool handlers can have one of the following signatures:
+	//  func(ctx *Context) (interface{}, error)
+	//  func(ctx *Context, args T) (interface{}, error)
+	//  func(ctx *Context) error
+	//  func(ctx *Context, args T) error
+	//
+	// Where T is any struct type that can be unmarshaled from JSON. The struct
+	// fields should use `json` tags to map to JSON property names.
+	//
+	// Example:
+	//  server.Tool("add", "Add two numbers", func(ctx *server.Context, args struct {
+	//      X float64 `json:"x" required:"true"`
+	//      Y float64 `json:"y" required:"true"`
+	//  }) (float64, error) {
+	//      return args.X + args.Y, nil
+	//  })
+	Tool(name string, description string, handler interface{}) Server
+
+	// WithAnnotations adds annotations to a tool.
+	//
+	// Annotations provide additional metadata about a tool, such as examples,
+	// parameter descriptions, or usage notes.
+	//
+	// Example:
+	//  server.Tool("greet", "Greet a user", greetHandler).
+	//      WithAnnotations("greet", map[string]interface{}{
+	//          "examples": []map[string]interface{}{
+	//              {
+	//                  "description": "Greet a user by name",
+	//                  "args": map[string]interface{}{
+	//                      "name": "Alice",
+	//                  },
+	//              },
+	//          },
+	//      })
+	WithAnnotations(toolName string, annotations map[string]interface{}) Server
+
+	// Resource registers a resource with the server.
+	//
+	// The path parameter defines the resource path, which can include path
+	// parameters in the format {paramName}. The description parameter provides
+	// human-readable documentation. The handler parameter is a function that
+	// implements the resource's logic.
+	//
+	// Example:
+	//  server.Resource("/users/{id}", "Get user information", func(ctx *server.Context, params struct {
+	//      ID string `path:"id"`
+	//  }) (interface{}, error) {
+	//      return getUserById(params.ID)
+	//  })
+	Resource(path string, description string, handler interface{}) Server
+
+	// Prompt registers a prompt with the server.
+	//
+	// The name parameter is the unique identifier for the prompt. The description
+	// parameter provides human-readable documentation. The template parameters
+	// define the prompt template and can be either a string or a function that
+	// generates the template.
+	//
+	// Example:
+	//  server.Prompt("greeting", "Greeting template",
+	//      "Hello, {{name}}! Welcome to {{service}}.")
+	Prompt(name string, description string, template ...interface{}) Server
+
+	// Root sets the allowed root paths.
+	//
+	// Root paths are the entry points for resource navigation. At least one
+	// root path must be defined for resources to be accessible.
+	//
+	// Example:
+	//  server.Root("/api/v1", "/api/v2")
+	Root(paths ...string) Server
+
+	// AsStdio configures the server to use Standard I/O for communication.
+	//
+	// This is useful for child processes or integration with other MCP systems.
+	// An optional logFile parameter can be provided to redirect stdio logs.
+	//
+	// Example:
+	//  server.AsStdio("./mcp-server.log")
+	AsStdio(logFile ...string) Server
+
+	// AsWebsocket configures the server to use WebSocket for communication.
+	//
+	// The address parameter specifies the host and port to listen on.
+	//
+	// Example:
+	//  server.AsWebsocket("localhost:8080")
+	AsWebsocket(address string) Server
+
+	// AsSSE configures the server to use Server-Sent Events for communication.
+	//
+	// The address parameter specifies the host and port to listen on.
+	//
+	// Example:
+	//  server.AsSSE("localhost:8080")
+	AsSSE(address string) Server
+
+	// AsHTTP configures the server to use HTTP for communication.
+	//
+	// The address parameter specifies the host and port to listen on.
+	//
+	// Example:
+	//  server.AsHTTP("localhost:8080")
+	AsHTTP(address string) Server
+
+	// GetServer returns the underlying server implementation.
+	//
+	// This is primarily used for advanced configuration or testing.
+	GetServer() *serverImpl
+
+	// GetRoots returns the list of registered root paths.
+	GetRoots() []string
+
+	// IsPathInRoots checks if a path is within any registered root.
+	IsPathInRoots(path string) bool
+
+	// WithSamplingConfig sets the sampling configuration for the server.
+	//
+	// Sampling configuration controls how sampling requests are handled,
+	// including rate limits, caching, and other performance parameters.
+	//
+	// Example:
+	//  config := server.NewSamplingConfig().WithRateLimit(10)
+	//  server.WithSamplingConfig(config)
+	WithSamplingConfig(config *SamplingConfig) Server
+
+	// WithSamplingController sets a custom sampling controller for the server.
+	//
+	// This is an advanced method for applications that need fine-grained
+	// control over sampling behavior.
+	WithSamplingController(controller *SamplingController) Server
+
+	// Logger returns the server's configured logger.
+	//
+	// This can be used to access the logger for custom logging needs.
+	Logger() *slog.Logger
 }
 
-// RootDetails holds the details for adding a root.
-type RootDetails struct {
-	URI         string
-	Kind        string
-	Name        string
-	Description string
+// Option represents a server configuration option.
+// Server options are used to customize the behavior and configuration of a server instance
+// when it is created with NewServer.
+type Option func(*serverImpl)
+
+// serverImpl is the concrete implementation of the Server interface.
+type serverImpl struct {
+	// name is the unique identifier for this server instance, used in logs and server info.
+	name string
+
+	// tools is a map of registered tool handlers keyed by tool name.
+	tools map[string]*Tool
+
+	// resources is a map of registered resource handlers keyed by path pattern.
+	resources map[string]*Resource
+
+	// prompts is a map of registered prompt templates keyed by prompt name.
+	prompts map[string]*Prompt
+
+	// roots is a slice of registered root paths for resource navigation.
+	roots []string
+
+	// transport is the communication transport used by this server (stdio, websocket, etc.).
+	transport transport.Transport
+
+	// logger is the structured logger used for server logs.
+	logger *slog.Logger
+
+	// versionDetector handles MCP protocol version detection and negotiation.
+	versionDetector *mcp.VersionDetector
+
+	// mu protects concurrent access to server state.
+	mu sync.RWMutex
+
+	// protocolVersion is the negotiated MCP protocol version for this server.
+	protocolVersion string
+
+	// requestTracker manages pending requests and matches responses to requests.
+	requestTracker *requestTracker
+
+	// sessionManager handles client session creation, retrieval, and management.
+	sessionManager *SessionManager
+
+	// defaultSession is a session used for simple implementations that don't track
+	// multiple client sessions explicitly.
+	defaultSession *ClientSession
+
+	// lastRequestID tracks the last used request ID for generating unique request IDs.
+	// This is used in the sampling.go file to generate sequential request identifiers
+	// for JSON-RPC requests, particularly for sampling operations.
+	lastRequestID int64
+
+	// Sampling configuration and controller
+	// samplingConfig defines the parameters for sampling behavior (rate limits, caching, etc.).
+	samplingConfig *SamplingConfig
+
+	// samplingController manages sampling requests and applies sampling configuration.
+	samplingController *SamplingController
 }
 
-// Server represents the main MCP server instance.
-type Server struct {
-	name   string
-	*Hooks // Embed Hooks struct
-
-	// Logging
-	logger       logx.Logger           // Use interface type
-	loggingLevel protocol.LoggingLevel // Store the current level requested by client
-
-	// Transport Management
-	TransportManager *TransportManager
-
-	// State Management
-	Registry            *Registry
-	SubscriptionManager *SubscriptionManager
-	MessageHandler      *MessageHandler
-
-	// Capability Flags (reflect server implementation status)
-	ImplementsResourceSubscription bool
-	ImplementsResourceListChanged  bool
-	ImplementsPromptListChanged    bool
-	ImplementsToolListChanged      bool
-	ImplementsLogging              bool
-	ImplementsCompletions          bool // Tracks if completion/complete (V2024) is implemented
-	ImplementsSampling             bool // Tracks if sampling/createMessage (V2025) can be sent
-	ImplementsAuthorization        bool
-
-	// Used by LifecycleHandler for graceful shutdown
-	shutdownSignal chan struct{}
-	shutdownOnce   sync.Once
-
-	// Add mutexes for concurrent access if necessary
-	done chan struct{}  // Channel to signal server termination
-	wg   sync.WaitGroup // WaitGroup to wait for goroutines to finish
+// GetName returns the server's name.
+//
+// The server name is set during initialization and is typically used
+// in logging and protocol messages.
+func (s *serverImpl) GetName() string {
+	return s.name
 }
 
-// NewServer creates a new Server instance.
-func NewServer(name string) *Server {
-	srv := &Server{
-		name: name,
-		// Initialize the embedded Hooks struct.
-		Hooks: NewHooks(),
-
-		// Initialize capability tracking fields based on current implementation status
-		ImplementsResourceSubscription: true,  // Phase 3.3
-		ImplementsResourceListChanged:  false, // Phase 3.3 (infrastructure in place, BUT notification sending logic missing)
-		ImplementsPromptListChanged:    true,  // Phase 3.4 (infrastructure in place)
-		ImplementsToolListChanged:      true,  // Set to true as callback exists
-		ImplementsLogging:              true,  // Phase 5.3 (basic handlers added)
-		ImplementsCompletions:          true,  // Phase 4.1 (V2024 method handled)
-		ImplementsSampling:             true,  // Phase 5.1 (Context.CreateMessage implemented)
-		ImplementsAuthorization:        false, // Phase 7.1 (TODO)
-
-		// Initialize logger using the interface
-		logger:       logx.NewLogger("stdout"), // Returns Logger interface
-		loggingLevel: protocol.LogLevelInfo,    // Default level
-
-		// Initialize other components
-		Registry:            NewRegistry(),
-		SubscriptionManager: NewSubscriptionManager(),
-		TransportManager:    NewTransportManager(),
-		shutdownSignal:      make(chan struct{}),
-		done:                make(chan struct{}),
-	}
-
-	// Initialize the logger using the factory function
-	// We store it as the interface type types.Logger
-	srv.logger = logx.NewLogger(name) // Initialize logger with server name prefix
-
-	// Setup registry callbacks to notify MessageHandler about changes
-	srv.Registry.SetResourceChangedCallback(func(uri string) {
-		// Get all subscribers for this URI
-		subscribers := srv.SubscriptionManager.GetSubscribedConnectionIDs(uri) // Corrected method name
-
-		// Handle resource list change notification for all sessions supporting it
-		notifyListChangedSessions := []string{}
-		allSessions := srv.TransportManager.GetAllSessionIDs()
-		for _, sessionID := range allSessions {
-			_, caps, ok := srv.TransportManager.GetSession(sessionID)
-			if ok && caps != nil && caps.Resources != nil && caps.Resources.ListChanged {
-				notifyListChangedSessions = append(notifyListChangedSessions, sessionID)
-			}
-		}
-		if len(notifyListChangedSessions) > 0 {
-			srv.handleResourceListChange(notifyListChangedSessions) // Pass slice of IDs
-		}
-
-		// Handle resource update notification only for direct subscribers
-		if len(subscribers) > 0 {
-			srv.handleResourceUpdate(subscribers, uri) // Pass subscriber slice and URI
-		}
-	})
-	srv.Registry.SetPromptChangedCallback(func() {
-		srv.logger.Debug("Prompt change callback triggered")
-		notifySessionIDs := []string{}
-		allSessionIDs := srv.TransportManager.GetAllSessionIDs()
-		for _, sessionID := range allSessionIDs {
-			_, caps, ok := srv.TransportManager.GetSession(sessionID)
-			if ok && caps != nil && caps.Prompts != nil && caps.Prompts.ListChanged {
-				notifySessionIDs = append(notifySessionIDs, sessionID)
-			}
-		}
-		if len(notifySessionIDs) > 0 {
-			srv.handlePromptListChange(notifySessionIDs)
-		} else {
-			srv.logger.Debug("Prompt change callback: No sessions support prompt list changes.")
-		}
-	})
-	srv.Registry.SetToolChangedCallback(func() {
-		srv.logger.Debug("Tool change callback triggered")
-		notifySessionIDs := []string{}
-		allSessionIDs := srv.TransportManager.GetAllSessionIDs()
-		for _, sessionID := range allSessionIDs {
-			_, caps, ok := srv.TransportManager.GetSession(sessionID)
-			if ok && caps != nil && caps.Tools != nil && caps.Tools.ListChanged {
-				notifySessionIDs = append(notifySessionIDs, sessionID)
-			}
-		}
-		if len(notifySessionIDs) > 0 {
-			srv.handleToolListChange(notifySessionIDs)
-		}
-	})
-
-	// Initialize the embedded MessageHandler struct.
-	srv.MessageHandler = NewMessageHandler(srv)
-
-	// Initialize the embedded SubscriptionManager.
-	srv.SubscriptionManager = NewSubscriptionManager()
-
-	return srv
+// GetTools returns a map of all registered tools.
+//
+// The map keys are tool names, and the values are the corresponding Tool objects
+// containing metadata and handler functions.
+func (s *serverImpl) GetTools() map[string]*Tool {
+	return s.tools
 }
 
-// --- Notification Sending Helpers (Callbacks call these) ---
-
-// handleResourceListChange sends notifications/resources/list_changed to the provided session IDs.
-func (s *Server) handleResourceListChange(sessionIDs []string) {
-	if len(sessionIDs) == 0 {
-		return
-	}
-	s.logger.Info("Sending notifications/resources/list_changed to %d sessions", len(sessionIDs))
-	notification := protocol.NewNotification(protocol.MethodNotifyResourcesListChanged, nil)
-	s.MessageHandler.SendNotificationToConnections(sessionIDs, notification)
+// GetResources returns a map of all registered resources.
+//
+// The map keys are resource path patterns, and the values are the corresponding
+// Resource objects containing metadata and handler functions.
+func (s *serverImpl) GetResources() map[string]*Resource {
+	return s.resources
 }
 
-// handleResourceUpdate sends notifications/resources/updated to the provided session IDs for the given URI.
-func (s *Server) handleResourceUpdate(sessionIDs []string, uri string) {
-	if len(sessionIDs) == 0 {
-		return
-	}
-	resource, exists := s.Registry.GetResource(uri)
-	if !exists {
-		// Resource was likely deleted, list_changed notification already covers this.
-		s.logger.Debug("Resource %s not found for update notification (likely deleted).", uri)
-		return
-	}
-	s.logger.Info("Sending notifications/resources/updated for %s to %d sessions", uri, len(sessionIDs))
-	params := protocol.ResourceUpdatedParams{Resource: resource}
-	notification := protocol.NewNotification(protocol.MethodNotifyResourceUpdated, params)
-	s.MessageHandler.SendNotificationToConnections(sessionIDs, notification)
+// GetPrompts returns a map of all registered prompts.
+//
+// The map keys are prompt names, and the values are the corresponding Prompt
+// objects containing metadata and template functions.
+func (s *serverImpl) GetPrompts() map[string]*Prompt {
+	return s.prompts
 }
 
-// handlePromptListChange sends notifications/prompts/list_changed to the provided session IDs.
-func (s *Server) handlePromptListChange(sessionIDs []string) {
-	if len(sessionIDs) == 0 {
-		return
-	}
-	s.logger.Info("Sending notifications/prompts/list_changed to %d sessions: %v", len(sessionIDs), sessionIDs)
-	notification := protocol.NewNotification(protocol.MethodNotifyPromptsListChanged, nil)
-	s.MessageHandler.SendNotificationToConnections(sessionIDs, notification)
+// GetTransport returns the server's configured transport.
+//
+// The transport is responsible for communication between the server and clients
+// (e.g., stdio, WebSocket, HTTP).
+func (s *serverImpl) GetTransport() transport.Transport {
+	return s.transport
 }
 
-// handleToolListChange sends notifications/tools/list_changed to the provided session IDs.
-func (s *Server) handleToolListChange(sessionIDs []string) {
-	if len(sessionIDs) == 0 {
-		return
-	}
-	s.logger.Info("Sending notifications/tools/list_changed to %d sessions", len(sessionIDs))
-	notification := protocol.NewNotification(protocol.MethodNotifyToolsListChanged, nil)
-	s.MessageHandler.SendNotificationToConnections(sessionIDs, notification)
-}
-
-// Close gracefully shuts down the server.
-func (s *Server) Close() error {
-	s.logger.Info("Server received close signal")
-	// Close the done channel to signal termination
-	close(s.done)
-	// Wait for all goroutines (transports, handlers) to finish
-	s.wg.Wait()
-	s.logger.Info("Server shut down gracefully")
-	return nil
-}
-
-// AsStdio configures the server to use standard I/O as its transport.
-func (s *Server) AsStdio() *Server {
-	s.TransportManager.AsStdio(s) // Call the embedded method, passing self
-	return s
-}
-
-// AsWebsocket configures the server to use WebSocket as its transport.
-func (s *Server) AsWebsocket(addr string, path string) *Server {
-	s.TransportManager.AsWebsocket(s, addr, path) // Call the embedded method, passing self and parameters
-	return s
-}
-
-// AsSSE configures the server to use Server-Sent Events as its transport.
-func (s *Server) AsSSE(addr string, basePath string) *Server {
-	s.TransportManager.AsSSE(s, addr, basePath) // Call the embedded method, passing self and parameters
-	return s
-}
-
-// Resource registers a new static resource or dynamic resource template with the server's registry.
-// It uses a flexible options pattern for configuration.
+// WithSamplingConfig sets the sampling configuration for the server.
+//
+// This method configures how the server handles sampling requests, including
+// rate limits, caching behavior, and other performance parameters.
 //
 // Example:
 //
-//	server.Resource("/static/data.txt", WithTextContent("Hello"), WithMimeType("text/plain"))
-//	server.Resource("/api/users/{id}", WithHandler(getUserHandler), WithDescription("Fetches user data"))
-func (s *Server) Resource(uri string, options ...ResourceOption) *Server {
-	// Create a default config
-	config := newResourceConfig()
+//	config := server.NewSamplingConfig().
+//	    WithRateLimit(10).
+//	    WithCacheSize(100)
+//	server.WithSamplingConfig(config)
+func (s *serverImpl) WithSamplingConfig(config *SamplingConfig) Server {
+	s.samplingConfig = config
+	return s
+}
 
-	// Apply all provided options
-	for _, opt := range options {
-		opt(&config)
+// WithSamplingController sets a custom sampling controller for the server.
+//
+// This is an advanced method for applications that need fine-grained control
+// over sampling behavior beyond what is provided by the standard SamplingConfig.
+func (s *serverImpl) WithSamplingController(controller *SamplingController) Server {
+	s.samplingController = controller
+	return s
+}
+
+// NewServer creates a new MCP server with the given name and options.
+//
+// The server is initialized with default settings that can be customized using
+// the provided options. By default, the server uses stdio transport and default
+// logging configuration.
+//
+// The name parameter is a human-readable identifier for the server, used in logs
+// and server information.
+//
+// Example:
+//
+//	// Create a basic server with default settings
+//	server := server.NewServer("my-service")
+//
+//	// Create a server with custom logger and sampling configuration
+//	customLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+//	samplingConfig := server.NewSamplingConfig().WithRateLimit(100)
+//
+//	server := server.NewServer("my-service",
+//	    server.WithLogger(customLogger),
+//	    server.WithSamplingConfig(samplingConfig),
+//	)
+func NewServer(name string, options ...Option) Server {
+	s := &serverImpl{
+		name:            name,
+		tools:           make(map[string]*Tool),
+		resources:       make(map[string]*Resource),
+		prompts:         make(map[string]*Prompt),
+		versionDetector: mcp.NewVersionDetector(),
+		logger:          slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		sessionManager:  NewSessionManager(),
 	}
 
-	// --- Phase 2 Implementation ---
-	// TODO: Add more validation for the config (e.g., ensure only one content source is set)
+	// Set the default transport to stdio
+	s.transport = stdio.NewTransport()
 
-	// Determine if URI is a template (basic check for now)
-	isTemplate := strings.Contains(uri, "{") && strings.Contains(uri, "}")
+	// Initialize sampling configuration with defaults
+	s.samplingConfig = NewDefaultSamplingConfig()
+	s.samplingController = NewSamplingController(s.samplingConfig, s.logger)
 
-	if isTemplate {
-		// Ensure a handler is provided for templates
-		if config.HandlerFn == nil {
-			s.logger.Error("Registration error for template URI '%s': WithHandler must be provided for resource templates.", uri)
-			// Decide on error handling: log and ignore, return error from Resource?, panic?
-			// For now, log and ignore.
-		} else {
-			err := s.Registry.RegisterResourceTemplate(uri, config)
-			if err != nil {
-				// Handle registration error - log it for now
-				s.logger.Error("Failed to register resource template '%s': %v", uri, err)
-				// Depending on desired server behavior, could panic or return the error
-			}
-		}
-	} else { // Static resource
-		// Ensure no handler is provided for static resources (or handle appropriately)
-		if config.HandlerFn != nil {
-			s.logger.Warn("Registration warning for static URI '%s': WithHandler was provided but URI is not a template. Handler will be ignored.", uri)
-			// config.HandlerFn = nil // Optionally clear the handler
-		}
-		// Ensure some content source is provided for static resources
-		if config.Content == nil && config.FilePath == "" && config.DirPath == "" && config.URL == "" {
-			s.logger.Error("Registration error for static URI '%s': No content source (WithTextContent, WithFileContent, etc.) provided.", uri)
-			// Log and ignore for now
-		} else {
-			err := s.Registry.RegisterStaticResource(uri, config)
-			if err != nil {
-				// Handle registration error - log it for now
-				s.logger.Error("Failed to register static resource '%s': %v", uri, err)
-				// Depending on desired server behavior, could panic or return the error
-			}
-		}
+	// Apply options
+	for _, option := range options {
+		option(s)
 	}
 
-	return s
-}
-
-// Root registers a new root with the server's registry.
-func (s *Server) Root(root protocol.Root) *Server {
-	s.Registry.AddRoot(root) // Delegate to embedded Registry
-	return s
-}
-
-// Prompt registers a new prompt with the server's registry.
-func (s *Server) Prompt(name, description string, messages ...protocol.PromptMessage) *Server {
-	s.Registry.AddPrompt(protocol.Prompt{
-		URI:         name, // Set URI to the same as name for lookup consistency
-		Name:        name,
-		Description: description,
-		Messages:    messages,
-	})
-	return s
-}
-
-// Tool registers a new tool with the server's registry.
-// The fn parameter should be a function with a single struct argument and returns (any, error).
-func (s *Server) Tool(
-	name, desc string,
-	fn any, // Using any for now due to Go method generic limitations
-) *Server {
-	s.Registry.Tool(name, desc, fn)
-	return s
-}
-
-// NotifyResourceUpdated triggers a resource update notification for subscribers.
-func (s *Server) NotifyResourceUpdated(uri string) {
-	subscribers := s.SubscriptionManager.GetSubscribedConnectionIDs(uri) // Corrected method name
-	if len(subscribers) > 0 {
-		s.handleResourceUpdate(subscribers, uri)
+	// Set up default session for simple implementations
+	defaultClientInfo := ClientInfo{
+		SamplingSupported: true,
+		SamplingCaps: SamplingCapabilities{
+			Supported:    true,
+			TextSupport:  true,
+			ImageSupport: true,
+			AudioSupport: false, // Will be updated based on protocol version
+		},
+		ProtocolVersion: s.protocolVersion,
 	}
+	s.defaultSession = s.sessionManager.CreateSession(defaultClientInfo, "draft")
+
+	return s
 }
 
-// WithLogger sets a custom logger for the server.
-// This allows using an external logger implementation that implements the logx.Logger interface.
-func (s *Server) WithLogger(logger logx.Logger) *Server {
-	if logger != nil {
+// WithLogger sets the server's logger.
+//
+// This option configures the structured logger used by the server for logging events,
+// errors, and debug information.
+//
+// Example:
+//
+//	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+//	    Level: slog.LevelDebug,
+//	})
+//	logger := slog.New(jsonHandler)
+//
+//	server := server.NewServer("my-service",
+//	    server.WithLogger(logger),
+//	)
+func WithLogger(logger *slog.Logger) Option {
+	return func(s *serverImpl) {
 		s.logger = logger
-
-		// Propagate logger to components that have their own logger instance
-		if s.Registry != nil {
-			s.Registry.SetLogger(logger)
-		}
-
-		if s.MessageHandler != nil {
-			s.MessageHandler.SetLogger(logger)
-		}
-
-		if s.SubscriptionManager != nil {
-			s.SubscriptionManager.SetLogger(logger)
-		}
-
-		if s.TransportManager != nil {
-			s.TransportManager.SetLogger(logger)
-		}
 	}
+}
+
+// Logger returns the server's logger.
+//
+// This method provides access to the server's configured logger for custom logging needs.
+// It can be used to log additional information or to reconfigure logging at runtime.
+//
+// Example:
+//
+//	// Log a custom message with the server's logger
+//	server.Logger().Info("custom event occurred",
+//	    "correlation_id", correlationID,
+//	    "user_id", userID,
+//	)
+func (s *serverImpl) Logger() *slog.Logger {
+	return s.logger
+}
+
+// ProcessInitialize processes an initialize request.
+//
+// This method handles the initial handshake between client and server, including
+// protocol version negotiation, capability exchange, and session creation.
+//
+// The ctx parameter contains the client's initialization request. The method returns
+// a response containing the negotiated protocol version and server capabilities.
+func (s *serverImpl) ProcessInitialize(ctx *Context) (interface{}, error) {
+	// Extract the client's requested protocol version
+	clientProtocolVersion, err := ExtractProtocolVersion(ctx.Request.Params)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate and potentially normalize the protocol version
+	protocolVersion, err := s.ValidateProtocolVersion(clientProtocolVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store the validated protocol version
+	s.mu.Lock()
+	s.protocolVersion = protocolVersion
+	s.mu.Unlock()
+
+	// Determine sampling capabilities based on protocol version
+	samplingCaps := DetectClientCapabilities(protocolVersion)
+
+	// Update or create client info
+	clientInfo := ClientInfo{
+		SamplingSupported: samplingCaps.Supported,
+		SamplingCaps:      samplingCaps,
+		ProtocolVersion:   protocolVersion,
+	}
+
+	// Create a new session for this client
+	session := s.sessionManager.CreateSession(clientInfo, protocolVersion)
+
+	// Store the session ID in the context metadata
+	if ctx.Metadata == nil {
+		ctx.Metadata = make(map[string]interface{})
+	}
+	ctx.Metadata["sessionID"] = string(session.ID)
+
+	// For simple implementations that don't track multiple sessions, update the default session
+	s.mu.Lock()
+	s.defaultSession = session
+	s.mu.Unlock()
+
+	// Log the session creation
+	s.logger.Info("client connected",
+		"sessionID", string(session.ID),
+		"protocolVersion", protocolVersion,
+		"samplingSupported", samplingCaps.Supported,
+		"audioSupport", samplingCaps.AudioSupport)
+
+	// Prepare the sampling capabilities for the response based on protocol version
+	samplingCapabilities := map[string]interface{}{
+		"supported": true,
+		"contentTypes": map[string]bool{
+			"text":  true,
+			"image": samplingCaps.ImageSupport,
+		},
+	}
+
+	// Audio is only supported in draft and 2025-03-26 versions
+	if protocolVersion == "draft" || protocolVersion == "2025-03-26" {
+		samplingCapabilities["contentTypes"].(map[string]bool)["audio"] = samplingCaps.AudioSupport
+	}
+
+	// Return response with the validated protocol version
+	return map[string]interface{}{
+		"protocolVersion": protocolVersion,
+		"capabilities": map[string]interface{}{
+			"logging": map[string]interface{}{},
+			"prompts": map[string]interface{}{
+				"listChanged": true,
+			},
+			"resources": map[string]interface{}{
+				"subscribe":   true,
+				"listChanged": true,
+			},
+			"tools": map[string]interface{}{
+				"listChanged": true,
+			},
+			"sampling": samplingCapabilities,
+		},
+		"serverInfo": map[string]interface{}{
+			"name":    s.name,
+			"version": "1.0.0",
+		},
+	}, nil
+}
+
+// ProcessShutdown processes a shutdown request.
+//
+// This method handles graceful shutdown requests from clients. It returns a success
+// response to the client and initiates server shutdown.
+//
+// The ctx parameter contains the shutdown request. The method returns a simple
+// response indicating whether the shutdown was initiated successfully.
+func (s *serverImpl) ProcessShutdown(ctx *Context) (interface{}, error) {
+	// TODO: Implement proper shutdown handling
+	go func() {
+		s.logger.Info("shutdown requested, will exit soon")
+		// Give time for the response to be sent before actually shutting down
+		time.Sleep(100 * time.Millisecond)
+		// TODO: Implement clean shutdown
+	}()
+	return map[string]interface{}{"success": true}, nil
+}
+
+// Run starts the server and blocks until it exits.
+//
+// This method initializes the server's transport, sets up message handling,
+// and begins processing client requests. It blocks until an error occurs or
+// the server is explicitly stopped.
+//
+// Run returns an error if the server fails to start or encounters a fatal error
+// during operation. Common error scenarios include transport initialization failure
+// or missing transport configuration.
+//
+// Example:
+//
+//	server := server.NewServer("my-service").AsStdio()
+//
+//	// Add tools, resources, etc.
+//	server.Tool("add", "Add two numbers", addHandler)
+//
+//	// Start the server (this will block until exit)
+//	if err := server.Run(); err != nil {
+//	    log.Fatalf("Server error: %v", err)
+//	}
+func (s *serverImpl) Run() error {
+	s.mu.RLock()
+	t := s.transport
+	s.mu.RUnlock()
+
+	if t == nil {
+		return fmt.Errorf("no transport configured, use AsStdio(), AsWebsocket(), AsSSE(), or AsHTTP()")
+	}
+
+	// Initialize the request tracker
+	s.mu.Lock()
+	s.requestTracker = newRequestTracker()
+	s.mu.Unlock()
+
+	// Set the message handler using the non-exported handleMessage method
+	t.SetMessageHandler(s.handleMessage)
+
+	// Initialize the transport
+	if err := t.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize transport: %w", err)
+	}
+
+	// Start the transport
+	if err := t.Start(); err != nil {
+		return fmt.Errorf("failed to start transport: %w", err)
+	}
+
+	s.logger.Info("server started", "name", s.name)
+
+	// Block until the transport is done
+	// TODO: Implement proper shutdown handling
+	select {}
+}
+
+// GetServer returns the underlying server implementation.
+//
+// This method provides access to the concrete serverImpl instance, which can be
+// used for advanced configuration and testing. In most cases, interacting with
+// the Server interface is preferred.
+//
+// Example:
+//
+//	// Access the underlying implementation for testing or advanced configuration
+//	impl := server.GetServer()
+//	tools := impl.GetTools()
+func (s *serverImpl) GetServer() *serverImpl {
 	return s
 }
 
-// Run starts the configured transport(s) and blocks until the server is closed.
-func (s *Server) Run() error {
-	s.logger.Info("Starting server...")
-	// Add 1 to WaitGroup for the main server loop/signal handling
-	s.wg.Add(1)
-
-	// Start configured transports in goroutines
-	if err := s.TransportManager.Run(s); err != nil { // Corrected method name
-		s.logger.Error("Failed to start transports: %v", err)
-		return err // Return error if transports fail to start
+// sendNotification sends a notification message to the client.
+//
+// Notifications are one-way messages from the server to the client that do not
+// require a response. They are used for events like resource changes, tool list
+// updates, and other asynchronous events.
+//
+// The method parameter specifies the notification type (e.g., "notifications/tools/list_changed").
+// The params parameter contains any additional data to include with the notification.
+//
+// If the notification cannot be sent, an error is logged but not returned to the caller.
+func (s *serverImpl) sendNotification(method string, params interface{}) {
+	if s.transport == nil {
+		return
 	}
 
-	// Wait for termination signal (e.g., from Close() or OS signal)
-	<-s.done
+	notification := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  method,
+	}
 
-	// Signal transports to stop
-	s.TransportManager.Shutdown() // Corrected method name
+	if params != nil {
+		notification["params"] = params
+	}
 
-	// Signal completion of the main server loop
-	s.wg.Done()
-	s.logger.Info("Server Run loop finished")
-	return nil
+	// Convert to JSON
+	message, err := json.Marshal(notification)
+	if err != nil {
+		s.logger.Error("failed to marshal notification", "error", err)
+		return
+	}
+
+	// Send the notification
+	if err := s.transport.Send(message); err != nil {
+		s.logger.Error("failed to send notification", "error", err)
+	}
 }
-
-// TODO: Add methods for AddPrompt, AddTool, RunStdio, etc.

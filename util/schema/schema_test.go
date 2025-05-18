@@ -1,258 +1,380 @@
 package schema
 
 import (
-	"reflect"
-	"sort"
-	"strings"
+	"encoding/json"
 	"testing"
-
-	"github.com/localrivet/gomcp/protocol"
-	// Assuming validator might be needed if we test validation failures
-	// "github.com/localrivet/gomcp/util/validator"
 )
 
-// Sample struct for testing HandleArgs
-type testArgsStruct struct {
-	Name     string  `json:"name"`
-	Count    int     `json:"count"`
-	Optional *string `json:"optional,omitempty"`
-	Nested   struct {
-		Value float64 `json:"value"`
-	} `json:"nested"`
-	// Add a field for validation testing if validator package is used
-	// ValidatedField string `json:"validatedField" validate:"required"`
+type TestStruct struct {
+	Name            string   `json:"name" required:"true" description:"The name field" minLength:"3" maxLength:"50"`
+	Age             int      `json:"age" min:"0" max:"120" description:"Age in years"`
+	Email           string   `json:"email" format:"email" description:"Contact email address"`
+	Role            string   `json:"role" enum:"admin,user,guest" description:"User role"`
+	Score           float64  `json:"score" min:"0" max:"100" description:"User score" default:"50"`
+	Tags            []string `json:"tags,omitempty" description:"Optional tags"`
+	UnexportedField string   `json:"-"`
+}
+
+func TestFromStruct(t *testing.T) {
+	schema := FromStruct(TestStruct{})
+
+	// Check type
+	if schema.Type != "object" {
+		t.Errorf("Expected schema type to be 'object', got '%s'", schema.Type)
+	}
+
+	// Check required fields
+	requiredFound := false
+	for _, req := range schema.Required {
+		if req == "name" {
+			requiredFound = true
+			break
+		}
+	}
+	if !requiredFound {
+		t.Error("Expected 'name' to be in required fields list")
+	}
+
+	// Check properties
+	// Name field
+	name, ok := schema.Properties["name"]
+	if !ok {
+		t.Fatal("Expected 'name' property to exist")
+	}
+	if name.Type != "string" {
+		t.Errorf("Expected 'name' type to be 'string', got '%s'", name.Type)
+	}
+	if name.Description != "The name field" {
+		t.Errorf("Expected correct description for 'name', got '%s'", name.Description)
+	}
+	if *name.MinLength != 3 {
+		t.Errorf("Expected 'name' minLength to be 3, got %d", *name.MinLength)
+	}
+	if *name.MaxLength != 50 {
+		t.Errorf("Expected 'name' maxLength to be 50, got %d", *name.MaxLength)
+	}
+
+	// Age field
+	age, ok := schema.Properties["age"]
+	if !ok {
+		t.Fatal("Expected 'age' property to exist")
+	}
+	if age.Type != "integer" {
+		t.Errorf("Expected 'age' type to be 'integer', got '%s'", age.Type)
+	}
+	if *age.Minimum != 0 {
+		t.Errorf("Expected 'age' minimum to be 0, got %f", *age.Minimum)
+	}
+	if *age.Maximum != 120 {
+		t.Errorf("Expected 'age' maximum to be 120, got %f", *age.Maximum)
+	}
+
+	// Role field (enum)
+	role, ok := schema.Properties["role"]
+	if !ok {
+		t.Fatal("Expected 'role' property to exist")
+	}
+	if role.Type != "string" {
+		t.Errorf("Expected 'role' type to be 'string', got '%s'", role.Type)
+	}
+	if len(role.Enum) != 3 {
+		t.Errorf("Expected 'role' to have 3 enum values, got %d", len(role.Enum))
+	}
+	enumValues := make([]string, len(role.Enum))
+	for i, v := range role.Enum {
+		enumValues[i] = v.(string)
+	}
+	expectedEnums := []string{"admin", "user", "guest"}
+	for _, expected := range expectedEnums {
+		found := false
+		for _, actual := range enumValues {
+			if expected == actual {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected enum value '%s' not found", expected)
+		}
+	}
+
+	// Email field (format)
+	email, ok := schema.Properties["email"]
+	if !ok {
+		t.Fatal("Expected 'email' property to exist")
+	}
+	if email.Format != "email" {
+		t.Errorf("Expected 'email' format to be 'email', got '%s'", email.Format)
+	}
+
+	// Score field (default)
+	score, ok := schema.Properties["score"]
+	if !ok {
+		t.Fatal("Expected 'score' property to exist")
+	}
+	if score.Default != float64(50) {
+		t.Errorf("Expected 'score' default to be 50, got %v", score.Default)
+	}
+
+	// Check for unexported field
+	if _, ok := schema.Properties["unexportedField"]; ok {
+		t.Error("Unexported fields should not be included in schema")
+	}
+}
+
+func TestValidateStruct(t *testing.T) {
+	// Valid struct
+	valid := TestStruct{
+		Name:  "John Doe",
+		Age:   30,
+		Email: "john@example.com",
+		Role:  "admin",
+		Score: 85.5,
+	}
+
+	if err := ValidateStruct(valid); err != nil {
+		t.Errorf("Expected no validation errors for valid struct, got: %v", err)
+	}
+
+	// Invalid struct - required field missing
+	invalid1 := TestStruct{
+		Age:   30,
+		Email: "john@example.com",
+		Role:  "admin",
+	}
+
+	if err := ValidateStruct(invalid1); err == nil {
+		t.Error("Expected validation error for missing required field 'name'")
+	}
+
+	// Invalid struct - min value violation
+	invalid2 := TestStruct{
+		Name:  "John Doe",
+		Age:   -5, // Negative age should fail min validation
+		Email: "john@example.com",
+		Role:  "admin",
+	}
+
+	if err := ValidateStruct(invalid2); err == nil {
+		t.Error("Expected validation error for age < 0")
+	}
+
+	// Invalid struct - enum violation
+	invalid3 := TestStruct{
+		Name:  "John Doe",
+		Age:   30,
+		Email: "john@example.com",
+		Role:  "manager", // Invalid role
+	}
+
+	if err := ValidateStruct(invalid3); err == nil {
+		t.Error("Expected validation error for invalid role")
+	}
+
+	// Invalid struct - format violation
+	invalid4 := TestStruct{
+		Name:  "John Doe",
+		Age:   30,
+		Email: "invalid-email", // Invalid email
+		Role:  "admin",
+	}
+
+	if err := ValidateStruct(invalid4); err == nil {
+		t.Error("Expected validation error for invalid email format")
+	}
+
+	// Invalid struct - minLength violation
+	invalid5 := TestStruct{
+		Name:  "Jo", // Too short
+		Age:   30,
+		Email: "john@example.com",
+		Role:  "admin",
+	}
+
+	if err := ValidateStruct(invalid5); err == nil {
+		t.Error("Expected validation error for name too short")
+	}
+}
+
+func TestGenerateSchema(t *testing.T) {
+	g := NewGenerator()
+	schema, err := g.GenerateSchema(TestStruct{})
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	// Check the top-level schema structure
+	expected := map[string]interface{}{
+		"type": "object",
+	}
+
+	for k, v := range expected {
+		if schema[k] != v {
+			t.Errorf("Expected schema[%s] to be %v, got %v", k, v, schema[k])
+		}
+	}
+
+	// Verify properties exists
+	if _, ok := schema["properties"]; !ok {
+		t.Fatal("Expected 'properties' key in schema")
+	}
+
+	// Verify required exists
+	if _, ok := schema["required"]; !ok {
+		t.Fatal("Expected 'required' key in schema")
+	}
 }
 
 func TestHandleArgs(t *testing.T) {
-	testCases := []struct {
-		name          string
-		inputArgs     any
-		expectedArgs  *testArgsStruct
-		expectError   bool
-		expectedError string // Substring to check in error message
-	}{
-		{
-			name: "Valid Full Input",
-			inputArgs: map[string]interface{}{
-				"name":  "Test Name",
-				"count": float64(10), // JSON numbers are float64
-				"nested": map[string]interface{}{
-					"value": float64(1.23),
-				},
-				"optional": "present",
-			},
-			expectedArgs: &testArgsStruct{
-				Name:  "Test Name",
-				Count: 10,
-				Nested: struct {
-					Value float64 `json:"value"`
-				}{Value: 1.23},
-				Optional: func() *string { s := "present"; return &s }(),
-			},
-			expectError: false,
-		},
-		{
-			name: "Valid Partial Input (Missing Optional)",
-			inputArgs: map[string]interface{}{
-				"name":  "Partial Test",
-				"count": float64(5),
-				"nested": map[string]interface{}{
-					"value": float64(4.56),
-				},
-				// "optional" field is missing
-			},
-			expectedArgs: &testArgsStruct{
-				Name:  "Partial Test",
-				Count: 5,
-				Nested: struct {
-					Value float64 `json:"value"`
-				}{Value: 4.56},
-				Optional: nil, // Expect nil
-			},
-			expectError: false,
-		},
-		{
-			name: "Input with Extra Field",
-			inputArgs: map[string]interface{}{
-				"name":       "Extra Field Test",
-				"count":      float64(1),
-				"nested":     map[string]interface{}{"value": 0.0},
-				"extraField": "should be ignored",
-			},
-			expectedArgs: &testArgsStruct{
-				Name:  "Extra Field Test",
-				Count: 1,
-				Nested: struct {
-					Value float64 `json:"value"`
-				}{Value: 0.0},
-			},
-			expectError: false, // Default mapstructure ignores extra fields
-		},
-		{
-			name: "Input with Type Mismatch (String for Int)",
-			inputArgs: map[string]interface{}{
-				"name":  "Type Mismatch",
-				"count": "not-an-int", // String instead of number
-				"nested": map[string]interface{}{
-					"value": float64(1.0),
-				},
-			},
-			expectError:   true,
-			expectedError: "Error parsing arguments", // mapstructure should error
-		},
-		{
-			name: "Invalid Input Type (Slice)",
-			inputArgs: []interface{}{
-				"not", "a", "map",
-			},
-			expectError:   true,
-			expectedError: "Invalid arguments format",
-		},
-		{
-			name:         "Nil Input",
-			inputArgs:    nil,
-			expectedArgs: &testArgsStruct{}, // Expect zero-value struct
-			expectError:  false,
-		},
-		// Add validation test case if validator is set up
-		// {
-		// 	name: "Validation Failure",
-		// 	inputArgs: map[string]interface{}{
-		// 		"name":  "Validation Test",
-		// 		"count": 1,
-		// 		"nested": map[string]interface{}{"value": 1.0},
-		// 		// Missing "validatedField" which is required
-		// 	},
-		// 	expectError:   true,
-		// 	expectedError: "Invalid arguments: Key: 'testArgsStruct.ValidatedField' Error:Field validation for 'ValidatedField' failed on the 'required' tag",
-		// },
+	// Valid arguments
+	validArgs := map[string]interface{}{
+		"name":  "John Doe",
+		"age":   30,
+		"email": "john@example.com",
+		"role":  "admin",
+		"score": 85.5,
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			resultArgs, errContent, isErr := HandleArgs[testArgsStruct](tc.inputArgs)
+	result, err := HandleArgs[TestStruct](validArgs)
+	if err != nil {
+		t.Errorf("Unexpected error for valid args: %v", err)
+	}
 
-			if isErr != tc.expectError {
-				t.Errorf("Expected error: %v, but got: %v. Error content: %+v", tc.expectError, isErr, errContent)
-			}
+	if result.Name != "John Doe" {
+		t.Errorf("Expected Name to be 'John Doe', got '%s'", result.Name)
+	}
 
-			if tc.expectError {
-				if !isErr {
-					t.Errorf("Expected an error, but got none.")
-				} else if len(errContent) > 0 {
-					// Check if the actual error message contains the expected substring
-					actualError := errContent[0].(protocol.TextContent).Text
-					if tc.expectedError != "" && !strings.Contains(actualError, tc.expectedError) {
-						t.Errorf("Expected error message to contain '%s', but got '%s'", tc.expectedError, actualError)
-					}
-				} else {
-					t.Errorf("Expected error content, but got nil")
-				}
-			} else {
-				if isErr {
-					t.Errorf("Did not expect an error, but got one: %+v", errContent)
-				}
-				if !reflect.DeepEqual(resultArgs, tc.expectedArgs) {
-					t.Errorf("Argument mismatch:\nExpected: %+v\nGot:      %+v", tc.expectedArgs, resultArgs)
-				}
-			}
-		})
+	// Invalid arguments - missing required field
+	invalidArgs := map[string]interface{}{
+		"age":   30,
+		"email": "john@example.com",
+		"role":  "admin",
+	}
+
+	_, err = HandleArgs[TestStruct](invalidArgs)
+	if err == nil {
+		t.Error("Expected validation error for missing required field")
 	}
 }
 
-// TestFromStructRequiredFields verifies that FromStruct correctly identifies required fields.
-func TestFromStructRequiredFields(t *testing.T) {
-	type requiredTestStruct struct {
-		RequiredField1 string `json:"req1"`
-		OptionalField1 *int   `json:"opt1,omitempty"`
-		RequiredField2 bool   `json:"req2"`
-		OptionalField2 *struct {
-			Inner string `json:"inner"`
-		} `json:"opt2,omitempty"`
-		IgnoredField   string `json:"-"`
-		NoJsonTag      string
-		RequiredField3 float64 `json:"req3"`
+func TestValidator(t *testing.T) {
+	v := NewValidator()
+
+	// Test Required
+	v.Required("name", "")
+	if !v.HasErrors() {
+		t.Error("Expected error for empty required field")
 	}
 
-	schema := FromStruct(requiredTestStruct{})
+	// Reset validator
+	v = NewValidator()
 
-	expectedRequired := []string{"req1", "req2", "req3"}
-	// Sort both slices for consistent comparison
-	sort.Strings(schema.Required)
-	sort.Strings(expectedRequired)
-
-	if !reflect.DeepEqual(schema.Required, expectedRequired) {
-		t.Errorf("Required fields mismatch.\nExpected: %v\nGot:      %v", expectedRequired, schema.Required)
+	// Test Min
+	v.Min("age", 5, 10)
+	if !v.HasErrors() {
+		t.Error("Expected error for value below minimum")
 	}
 
-	// Check that properties exist for all fields except ignored fields
-	expectedProps := []string{"req1", "opt1", "req2", "opt2", "nojsontag", "req3"}
-	actualProps := make([]string, 0, len(schema.Properties))
-	for k := range schema.Properties {
-		actualProps = append(actualProps, k)
-	}
-	sort.Strings(actualProps)
-	sort.Strings(expectedProps)
+	// Reset validator
+	v = NewValidator()
 
-	// Also check a couple of properties for basic correctness
-	if prop, ok := schema.Properties["req1"]; !ok || prop.Type != "string" {
-		t.Errorf("Property 'req1' missing or has wrong type: %+v", prop)
+	// Test Max
+	v.Max("score", 150, 100)
+	if !v.HasErrors() {
+		t.Error("Expected error for value above maximum")
 	}
-	if prop, ok := schema.Properties["opt1"]; !ok || prop.Type != "integer" { // Type should be underlying type (int)
-		t.Errorf("Property 'opt1' missing or has wrong type: %+v", prop)
+
+	// Reset validator
+	v = NewValidator()
+
+	// Test MinLength
+	v.MinLength("name", "Jo", 3)
+	if !v.HasErrors() {
+		t.Error("Expected error for string below minimum length")
 	}
-	if _, ok := schema.Properties["IgnoredField"]; ok {
-		t.Errorf("Property 'IgnoredField' should not be present")
+
+	// Reset validator
+	v = NewValidator()
+
+	// Test MaxLength
+	v.MaxLength("description", "This is a very long description", 10)
+	if !v.HasErrors() {
+		t.Error("Expected error for string above maximum length")
 	}
-	// Fields without JSON tags should still be included in properties but with lowercase names
-	if _, ok := schema.Properties["nojsontag"]; !ok {
-		t.Errorf("Property 'nojsontag' should be present in properties")
+
+	// Reset validator
+	v = NewValidator()
+
+	// Test Enum
+	v.Enum("role", "supervisor", []string{"admin", "user", "guest"})
+	if !v.HasErrors() {
+		t.Error("Expected error for value not in enum")
+	}
+
+	// Reset validator
+	v = NewValidator()
+
+	// Test Format
+	v.Format("email", "invalid-email", "email")
+	if !v.HasErrors() {
+		t.Error("Expected error for invalid email format")
 	}
 }
 
-// TestFromStructEnumField verifies that FromStruct correctly parses the enum tag.
-func TestFromStructEnumField(t *testing.T) {
-	type enumTestStruct struct {
-		Color string  `json:"color" description:"A color" enum:"red,green, blue"` // Note space around blue
-		Shape *string `json:"shape" enum:"circle,square"`                         // Optional enum
-		Mode  int     `json:"mode" enum:"1,2,3"`                                  // Enum on non-string (values treated as strings)
+func TestPropertyDetailJson(t *testing.T) {
+	// Test that PropertyDetail correctly serializes to JSON
+	prop := PropertyDetail{
+		Type:        "string",
+		Description: "Test field",
+		Format:      "email",
+		Enum:        []interface{}{"a", "b", "c"},
+		Minimum:     float64Ptr(5),
+		Maximum:     float64Ptr(10),
+		MinLength:   intPtr(3),
+		MaxLength:   intPtr(50),
+		Pattern:     "^test",
+		Default:     "default",
 	}
 
-	schema := FromStruct(enumTestStruct{})
-
-	// Check Color enum
-	colorProp, ok := schema.Properties["color"]
-	if !ok {
-		t.Fatalf("Property 'color' not found in schema")
-	}
-	expectedColorEnum := []interface{}{"red", "green", "blue"} // Expect trimmed strings
-	if !reflect.DeepEqual(colorProp.Enum, expectedColorEnum) {
-		t.Errorf("Enum mismatch for 'color'.\nExpected: %v\nGot:      %v", expectedColorEnum, colorProp.Enum)
+	bytes, err := json.Marshal(prop)
+	if err != nil {
+		t.Fatalf("Failed to marshal PropertyDetail: %v", err)
 	}
 
-	// Check Shape enum
-	shapeProp, ok := schema.Properties["shape"]
-	if !ok {
-		t.Fatalf("Property 'shape' not found in schema")
-	}
-	expectedShapeEnum := []interface{}{"circle", "square"}
-	if !reflect.DeepEqual(shapeProp.Enum, expectedShapeEnum) {
-		t.Errorf("Enum mismatch for 'shape'.\nExpected: %v\nGot:      %v", expectedShapeEnum, shapeProp.Enum)
-	}
-	if shapeProp.Type != "string" { // Ensure type is still correct (underlying string)
-		t.Errorf("Expected type 'string' for 'shape', got '%s'", shapeProp.Type)
+	// Unmarshal to map to check fields
+	var m map[string]interface{}
+	if err := json.Unmarshal(bytes, &m); err != nil {
+		t.Fatalf("Failed to unmarshal JSON: %v", err)
 	}
 
-	// Check Mode enum (values are strings even though Go type is int)
-	modeProp, ok := schema.Properties["mode"]
-	if !ok {
-		t.Fatalf("Property 'mode' not found in schema")
+	// Check that all fields are serialized correctly
+	if m["type"] != "string" {
+		t.Errorf("Expected type to be 'string', got %v", m["type"])
 	}
-	expectedModeEnum := []interface{}{"1", "2", "3"}
-	if !reflect.DeepEqual(modeProp.Enum, expectedModeEnum) {
-		t.Errorf("Enum mismatch for 'mode'.\nExpected: %v\nGot:      %v", expectedModeEnum, modeProp.Enum)
+
+	if m["description"] != "Test field" {
+		t.Errorf("Expected description to be 'Test field', got %v", m["description"])
 	}
-	if modeProp.Type != "integer" { // Ensure type is still correct (integer)
-		t.Errorf("Expected type 'integer' for 'mode', got '%s'", modeProp.Type)
+
+	if m["format"] != "email" {
+		t.Errorf("Expected format to be 'email', got %v", m["format"])
 	}
+
+	if m["pattern"] != "^test" {
+		t.Errorf("Expected pattern to be '^test', got %v", m["pattern"])
+	}
+
+	if m["default"] != "default" {
+		t.Errorf("Expected default to be 'default', got %v", m["default"])
+	}
+}
+
+// Helper functions for creating pointers
+func float64Ptr(v float64) *float64 {
+	return &v
+}
+
+func intPtr(v int) *int {
+	return &v
 }

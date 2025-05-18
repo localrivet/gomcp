@@ -1,51 +1,59 @@
 # Task ID: 14
-# Title: Create Comprehensive Examples
-# Status: pending
-# Dependencies: 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
-# Priority: low
-# Description: Develop a set of comprehensive examples demonstrating various use cases of the library.
+# Title: Implement Transport Interface
+# Status: done
+# Dependencies: 5
+# Priority: high
+# Description: Define the transport interface and implement common transport functionality.
 # Details:
-Create comprehensive examples for various use cases:
+Define the transport interface:
 
-1. Basic server and client examples
-2. Examples for each transport type
-3. Tool, resource, and prompt registration examples
-4. Progress reporting and cancellation examples
-5. Advanced usage with hooks and customization
+```go
+// transport/transport.go
+package transport
 
-Example structure:
+// Transport represents a transport layer for MCP communication
+type Transport interface {
+	// Initialize initializes the transport
+	Initialize() error
+	
+	// Start starts the transport
+	Start() error
+	
+	// Stop stops the transport
+	Stop() error
+	
+	// Send sends a message
+	Send(message []byte) error
+	
+	// Receive receives a message
+	Receive() ([]byte, error)
+	
+	// SetMessageHandler sets the message handler
+	SetMessageHandler(handler MessageHandler)
+}
+
+// MessageHandler represents a function that handles incoming messages
+type MessageHandler func(message []byte) ([]byte, error)
+
+// BaseTransport provides common transport functionality
+type BaseTransport struct {
+	handler MessageHandler
+	// Additional fields
+}
+
+// SetMessageHandler sets the message handler
+func (t *BaseTransport) SetMessageHandler(handler MessageHandler) {
+	t.handler = handler
+}
+
+// HandleMessage handles an incoming message
+func (t *BaseTransport) HandleMessage(message []byte) ([]byte, error) {
+	if t.handler == nil {
+		return nil, errors.New("no message handler set")
+	}
+	return t.handler(message)
+}
 ```
-examples/
-  basic/
-    server.go - Basic server implementation
-    client.go - Basic client implementation
-  transports/
-    stdio/
-      server.go - Stdio server example
-      client.go - Stdio client example
-    http/
-      server.go - HTTP server example
-      client.go - HTTP client example
-    websocket/
-      server.go - WebSocket server example
-      client.go - WebSocket client example
-    tcp/
-      server.go - TCP server example
-      client.go - TCP client example
-  tools/
-    calculator.go - Example calculator tool
-    weather.go - Example weather API tool
-  resources/
-    document.go - Example document resource
-  prompts/
-    chatbot.go - Example chatbot prompt
-  advanced/
-    progress.go - Progress reporting example
-    cancellation.go - Cancellation example
-    hooks.go - Hook system example
-```
-
-Each example should include detailed comments explaining the code and usage patterns.
 
 # Test Strategy:
-Ensure all examples compile and run correctly. Create automated tests that run the examples and verify their output. Test examples with different Go versions to ensure compatibility. Create documentation that references and explains the examples. Verify examples cover all major features of the library.
+Create unit tests for the base transport functionality. Test message handling with various message types. Test error handling for missing handlers.
