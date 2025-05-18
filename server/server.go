@@ -484,10 +484,8 @@ func (s *serverImpl) ProcessInitialize(ctx *Context) (interface{}, error) {
 		return nil, err
 	}
 
-	// Store the validated protocol version
-	s.mu.Lock()
+	// Store the validated protocol version without locking
 	s.protocolVersion = protocolVersion
-	s.mu.Unlock()
 
 	// Determine sampling capabilities based on protocol version
 	samplingCaps := DetectClientCapabilities(protocolVersion)
@@ -508,10 +506,8 @@ func (s *serverImpl) ProcessInitialize(ctx *Context) (interface{}, error) {
 	}
 	ctx.Metadata["sessionID"] = string(session.ID)
 
-	// For simple implementations that don't track multiple sessions, update the default session
-	s.mu.Lock()
+	// For simple implementations that don't track multiple sessions, update the default session without locking
 	s.defaultSession = session
-	s.mu.Unlock()
 
 	// Log the session creation
 	s.logger.Info("client connected",
