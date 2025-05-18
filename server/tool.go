@@ -95,14 +95,10 @@ func (s *serverImpl) registerTool(name, description string, handler ToolHandler,
 
 	s.logger.Debug("registered tool", "name", name)
 
-	// If this is a new tool or an update to an existing one, send a notification
+	// Mark that tools have changed, but don't send a notification immediately
+	// We'll send a single notification after all tools are registered
 	if !exists || isUpdate {
-		// Send notification asynchronously to avoid blocking
-		go func() {
-			if err := s.SendToolsListChangedNotification(); err != nil {
-				s.logger.Error("failed to send tools list changed notification", "error", err)
-			}
-		}()
+		s.toolsChanged = true
 	}
 
 	return s
@@ -427,6 +423,20 @@ func (s *serverImpl) SendToolsListChangedNotification() error {
 		return fmt.Errorf("failed to marshal notification: %w", err)
 	}
 
+	// Check if the server is initialized
+	s.mu.RLock()
+	initialized := s.initialized
+	s.mu.RUnlock()
+
+	// If the server is not initialized, queue the notification for later
+	if !initialized {
+		s.mu.Lock()
+		s.pendingNotifications = append(s.pendingNotifications, notificationBytes)
+		s.mu.Unlock()
+		s.logger.Debug("queued tools/list_changed notification for after initialization")
+		return nil
+	}
+
 	// Send the notification through the configured transport
 	if s.transport != nil {
 		if err := s.transport.Send(notificationBytes); err != nil {
@@ -459,12 +469,8 @@ func (s *serverImpl) WithAnnotations(toolName string, annotations map[string]int
 		tool.Annotations[k] = v
 	}
 
-	// Send notification asynchronously to avoid blocking
-	go func() {
-		if err := s.SendToolsListChangedNotification(); err != nil {
-			s.logger.Error("failed to send tools list changed notification", "error", err)
-		}
-	}()
+	// Mark that tools have changed, but don't send a notification immediately
+	s.toolsChanged = true
 
 	return s
 }

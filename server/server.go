@@ -79,6 +79,18 @@ type Server interface {
 	//      })
 	WithAnnotations(toolName string, annotations map[string]interface{}) Server
 
+	// FinalizeToolRegistration completes the tool registration process and sends a single
+	// tools/list_changed notification if any tools were added or modified.
+	//
+	// Call this method after registering all tools to ensure notifications are batched properly.
+	//
+	// Example:
+	//  server.Tool("tool1", "First tool", tool1Handler)
+	//  server.Tool("tool2", "Second tool", tool2Handler)
+	//  server.Tool("tool3", "Third tool", tool3Handler)
+	//  server.FinalizeToolRegistration() // Sends a single notification for all three tools
+	FinalizeToolRegistration() Server
+
 	// Resource registers a resource with the server.
 	//
 	// The path parameter defines the resource path, which can include path
@@ -347,6 +359,9 @@ type serverImpl struct {
 	// requestTracker manages pending requests and matches responses to requests.
 	requestTracker *requestTracker
 
+	// requestCanceller manages cancellable requests and processes cancellation notifications.
+	requestCanceller *RequestCanceller
+
 	// sessionManager handles client session creation, retrieval, and management.
 	sessionManager *SessionManager
 
@@ -365,6 +380,16 @@ type serverImpl struct {
 
 	// samplingController manages sampling requests and applies sampling configuration.
 	samplingController *SamplingController
+
+	// initialized indicates whether the client has sent the initialized notification
+	// Only after receiving this notification should the server send feature-specific notifications
+	initialized bool
+
+	// pendingNotifications stores notifications that should be sent after initialization
+	pendingNotifications [][]byte
+
+	// toolsChanged indicates if tools have been modified since the last notification
+	toolsChanged bool
 }
 
 // GetName returns the server's name.
@@ -455,40 +480,45 @@ func (s *serverImpl) WithSamplingController(controller *SamplingController) Serv
 //	    server.WithSamplingConfig(samplingConfig),
 //	)
 func NewServer(name string, options ...Option) Server {
+	// Create a new server instance
 	s := &serverImpl{
-		name:            name,
-		tools:           make(map[string]*Tool),
-		resources:       make(map[string]*Resource),
-		prompts:         make(map[string]*Prompt),
-		versionDetector: mcp.NewVersionDetector(),
-		logger:          slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
-		sessionManager:  NewSessionManager(),
+		name:                 name,
+		tools:                make(map[string]*Tool),
+		resources:            make(map[string]*Resource),
+		prompts:              make(map[string]*Prompt),
+		roots:                []string{},
+		logger:               slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		versionDetector:      mcp.NewVersionDetector(),
+		sessionManager:       NewSessionManager(),
+		initialized:          false,
+		pendingNotifications: [][]byte{},
+		toolsChanged:         false,
 	}
 
 	// Set the default transport to stdio
 	s.transport = stdio.NewTransport()
 
-	// Initialize sampling configuration with defaults
-	s.samplingConfig = NewDefaultSamplingConfig()
-	s.samplingController = NewSamplingController(s.samplingConfig, s.logger)
-
-	// Apply options
-	for _, option := range options {
-		option(s)
-	}
-
-	// Set up default session for simple implementations
+	// Create a default session for simple implementations
 	defaultClientInfo := ClientInfo{
 		SamplingSupported: true,
 		SamplingCaps: SamplingCapabilities{
 			Supported:    true,
 			TextSupport:  true,
 			ImageSupport: true,
-			AudioSupport: false, // Will be updated based on protocol version
+			AudioSupport: false,
 		},
-		ProtocolVersion: s.protocolVersion,
+		ProtocolVersion: "draft",
 	}
 	s.defaultSession = s.sessionManager.CreateSession(defaultClientInfo, "draft")
+
+	// Initialize sampling configuration with defaults
+	s.samplingConfig = NewDefaultSamplingConfig()
+	s.samplingController = NewSamplingController(s.samplingConfig, s.logger)
+
+	// Apply all options
+	for _, option := range options {
+		option(s)
+	}
 
 	return s
 }
@@ -747,4 +777,62 @@ func (s *serverImpl) sendNotification(method string, params interface{}) {
 	if err := s.transport.Send(message); err != nil {
 		s.logger.Error("failed to send notification", "error", err)
 	}
+}
+
+// handleInitializedNotification processes the initialized notification from the client
+// and sends any pending notifications that were queued during the initialization phase.
+func (s *serverImpl) handleInitializedNotification() {
+	s.mu.Lock()
+	s.initialized = true
+
+	// Process any pending notifications
+	pendingNotifications := s.pendingNotifications
+	s.pendingNotifications = nil
+	s.mu.Unlock()
+
+	s.logger.Debug("client initialized, processing pending notifications",
+		"count", len(pendingNotifications))
+
+	// Send any pending notifications
+	for _, notification := range pendingNotifications {
+		if s.transport != nil {
+			if err := s.transport.Send(notification); err != nil {
+				s.logger.Error("failed to send pending notification after initialization", "error", err)
+			}
+		}
+	}
+
+	// If tools were changed during initialization but no notification was queued,
+	// send a tools/list_changed notification now
+	s.mu.Lock()
+	toolsChanged := s.toolsChanged
+	s.toolsChanged = false
+	s.mu.Unlock()
+
+	if toolsChanged {
+		// Send a tools list changed notification
+		go func() {
+			if err := s.SendToolsListChangedNotification(); err != nil {
+				s.logger.Error("failed to send tools list changed notification after initialization", "error", err)
+			}
+		}()
+	}
+}
+
+// FinalizeToolRegistration completes the tool registration process and sends a single
+// tools/list_changed notification if any tools were added or modified.
+// Call this method after registering all tools to ensure notifications are batched properly.
+func (s *serverImpl) FinalizeToolRegistration() Server {
+	s.mu.Lock()
+	toolsChanged := s.toolsChanged
+	s.toolsChanged = false
+	s.mu.Unlock()
+
+	if toolsChanged {
+		if err := s.SendToolsListChangedNotification(); err != nil {
+			s.logger.Error("failed to send tools list changed notification", "error", err)
+		}
+	}
+
+	return s
 }

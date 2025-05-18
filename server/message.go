@@ -92,6 +92,9 @@ func HandleMessage(s *serverImpl, message []byte) ([]byte, error) {
 
 	// Notifications
 	case "notifications/initialized":
+		// The client has finished initialization, process any pending notifications
+		s.handleInitializedNotification()
+		return nil, nil
 	case "notifications/cancelled":
 	case "notifications/progress":
 	case "notifications/message":
