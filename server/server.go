@@ -45,78 +45,69 @@ type Server interface {
 	// Tool handlers can have one of the following signatures:
 	//  func(ctx *Context) (interface{}, error)
 	//  func(ctx *Context, args T) (interface{}, error)
-	//  func(ctx *Context) error
-	//  func(ctx *Context, args T) error
 	//
-	// Where T is any struct type that can be unmarshaled from JSON. The struct
-	// fields should use `json` tags to map to JSON property names.
+	// Where T is a struct type that defines the expected arguments for the tool.
 	//
 	// Example:
-	//  server.Tool("add", "Add two numbers", func(ctx *server.Context, args struct {
-	//      X float64 `json:"x" required:"true"`
-	//      Y float64 `json:"y" required:"true"`
-	//  }) (float64, error) {
-	//      return args.X + args.Y, nil
+	//  server.Tool("echo", "Echo the input text", func(ctx *Context, args struct {
+	//      Text string `json:"text" required:"true" description:"Text to echo"`
+	//  }) (string, error) {
+	//      return args.Text, nil
 	//  })
-	Tool(name string, description string, handler interface{}) Server
+	Tool(name, description string, handler interface{}) Server
+
+	// WithSchema adds a JSON Schema to a registered tool.
+	//
+	// The schema parameter must be a valid JSON Schema object that describes
+	// the expected arguments for the tool. This schema is used for client-side
+	// validation and documentation.
+	//
+	// Example:
+	//  server.WithSchema("echo", map[string]interface{}{
+	//      "type": "object",
+	//      "properties": map[string]interface{}{
+	//          "text": map[string]interface{}{
+	//              "type": "string",
+	//              "description": "Text to echo",
+	//          },
+	//      },
+	//      "required": []string{"text"},
+	//  })
+	WithSchema(toolName string, schema interface{}) Server
 
 	// WithAnnotations adds annotations to a tool.
 	//
-	// Annotations provide additional metadata about a tool, such as examples,
-	// parameter descriptions, or usage notes.
+	// Annotations provide additional metadata that can be used by clients.
 	//
 	// Example:
-	//  server.Tool("greet", "Greet a user", greetHandler).
-	//      WithAnnotations("greet", map[string]interface{}{
-	//          "examples": []map[string]interface{}{
-	//              {
-	//                  "description": "Greet a user by name",
-	//                  "args": map[string]interface{}{
-	//                      "name": "Alice",
-	//                  },
-	//              },
-	//          },
-	//      })
+	//  server.WithAnnotations("echo", map[string]interface{}{
+	//      "icon": "microphone",
+	//      "category": "utility",
+	//  })
 	WithAnnotations(toolName string, annotations map[string]interface{}) Server
-
-	// FinalizeToolRegistration completes the tool registration process and sends a single
-	// tools/list_changed notification if any tools were added or modified.
-	//
-	// Call this method after registering all tools to ensure notifications are batched properly.
-	//
-	// Example:
-	//  server.Tool("tool1", "First tool", tool1Handler)
-	//  server.Tool("tool2", "Second tool", tool2Handler)
-	//  server.Tool("tool3", "Third tool", tool3Handler)
-	//  server.FinalizeToolRegistration() // Sends a single notification for all three tools
-	FinalizeToolRegistration() Server
 
 	// Resource registers a resource with the server.
 	//
-	// The path parameter defines the resource path, which can include path
-	// parameters in the format {paramName}. The description parameter provides
-	// human-readable documentation. The handler parameter is a function that
-	// implements the resource's logic.
+	// The pattern parameter is a URL path pattern that matches requests to this
+	// resource. The description parameter provides human-readable documentation.
+	// The handler parameter is a function that implements the resource's logic.
 	//
 	// Example:
-	//  server.Resource("/users/{id}", "Get user information", func(ctx *server.Context, params struct {
-	//      ID string `path:"id"`
-	//  }) (interface{}, error) {
-	//      return getUserById(params.ID)
+	//  server.Resource("/users/:id", "Get user information", func(ctx *Context) (interface{}, error) {
+	//      userId := ctx.Params["id"]
+	//      return getUserById(userId)
 	//  })
 	Resource(path string, description string, handler interface{}) Server
 
-	// Prompt registers a prompt with the server.
+	// Prompt registers a prompt template with the server.
 	//
 	// The name parameter is the unique identifier for the prompt. The description
-	// parameter provides human-readable documentation. The template parameters
-	// define the prompt template and can be either a string or a function that
-	// generates the template.
+	// parameter provides human-readable documentation. The template parameter is
+	// a string with placeholders for variables.
 	//
 	// Example:
-	//  server.Prompt("greeting", "Greeting template",
-	//      "Hello, {{name}}! Welcome to {{service}}.")
-	Prompt(name string, description string, template ...interface{}) Server
+	//  server.Prompt("greeting", "A friendly greeting", "Hello, {{name}}! How are you today?")
+	Prompt(name, description string, template ...interface{}) Server
 
 	// Root sets the allowed root paths.
 	//
@@ -127,14 +118,13 @@ type Server interface {
 	//  server.Root("/api/v1", "/api/v2")
 	Root(paths ...string) Server
 
-	// AsStdio configures the server to use Standard I/O for communication.
+	// AsHTTP configures the server to use HTTP for communication.
 	//
-	// This is useful for child processes or integration with other MCP systems.
-	// An optional logFile parameter can be provided to redirect stdio logs.
+	// The address parameter specifies the host and port to listen on.
 	//
 	// Example:
-	//  server.AsStdio("./mcp-server.log")
-	AsStdio(logFile ...string) Server
+	//  server.AsHTTP("localhost:8080")
+	AsHTTP(address string) Server
 
 	// AsWebsocket configures the server to use WebSocket for communication.
 	//
@@ -144,13 +134,6 @@ type Server interface {
 	//  server.AsWebsocket("localhost:8080")
 	AsWebsocket(address string) Server
 
-	// AsWebsocketWithPaths configures the server to use WebSocket for communication with custom paths.
-	//
-	// Example:
-	//
-	//	server.AsWebsocketWithPaths("localhost:8080", "/api/v1", "/socket")
-	AsWebsocketWithPaths(address, pathPrefix, wsPath string) Server
-
 	// AsSSE configures the server to use Server-Sent Events for communication.
 	//
 	// The address parameter specifies the host and port to listen on.
@@ -158,21 +141,6 @@ type Server interface {
 	// Example:
 	//  server.AsSSE("localhost:8080")
 	AsSSE(address string) Server
-
-	// AsHTTP configures the server to use HTTP for communication.
-	//
-	// The address parameter specifies the host and port to listen on.
-	//
-	// Example:
-	//  server.AsHTTP("localhost:8080")
-	AsHTTP(address string) Server
-
-	// AsHTTPWithPaths configures the server to use HTTP for communication with custom paths.
-	//
-	// Example:
-	//
-	//	server.AsHTTPWithPaths("localhost:8080", "/api/v1", "/rpc")
-	AsHTTPWithPaths(address, pathPrefix, apiPath string) Server
 
 	// AsUnixSocket configures the server to use Unix Domain Sockets for communication.
 	//
@@ -216,36 +184,14 @@ type Server interface {
 	//	    mqtt.WithTopicPrefix("custom/topic/prefix"))
 	AsMQTT(brokerURL string, options ...mqtt.MQTTOption) Server
 
-	// AsMQTTWithClientID configures the server to use MQTT with a specific client ID
-	// along with optional configuration options.
+	// AsStdio configures the server to use Standard I/O for communication.
 	//
-	// This is useful when you need to control the client ID to implement
-	// features like persistent sessions or shared subscriptions.
-	//
-	// Example:
-	//
-	//	server.AsMQTTWithClientID("tcp://broker.example.com:1883", "mcp-server-1")
-	//	// With options:
-	//	server.AsMQTTWithClientID("tcp://broker.example.com:1883", "mcp-server-1",
-	//	    mqtt.WithQoS(2),
-	//	    mqtt.WithTopicPrefix("my-org/mcp"))
-	AsMQTTWithClientID(brokerURL string, clientID string, options ...mqtt.MQTTOption) Server
-
-	// AsMQTTWithTLS configures the server to use MQTT with TLS security
-	// along with optional configuration options.
-	//
-	// This is recommended for production environments to encrypt
-	// communications between the server and the MQTT broker.
+	// This is useful for child processes or integration with other MCP systems.
+	// An optional logFile parameter can be provided to redirect stdio logs.
 	//
 	// Example:
-	//
-	//	server.AsMQTTWithTLS("ssl://broker.example.com:8883",
-	//	    mqtt.TLSConfig{
-	//	        CertFile: "/path/to/cert.pem",
-	//	        KeyFile: "/path/to/key.pem",
-	//	        CAFile: "/path/to/ca.pem",
-	//	    })
-	AsMQTTWithTLS(brokerURL string, tlsConfig mqtt.TLSConfig, options ...mqtt.MQTTOption) Server
+	//  server.AsStdio("./mcp-server.log")
+	AsStdio(logFile ...string) Server
 
 	// AsNATS configures the server to use NATS for communication
 	// with optional configuration options.
@@ -263,60 +209,9 @@ type Server interface {
 	//	    nats.WithSubjectPrefix("custom/subject/prefix"))
 	AsNATS(serverURL string, options ...nats.NATSOption) Server
 
-	// AsNATSWithClientID configures the server to use NATS with a specific client ID
-	// along with optional configuration options.
-	//
-	// Example:
-	//
-	//	server.AsNATSWithClientID("nats://localhost:4222", "mcp-server-1")
-	//	// With options:
-	//	server.AsNATSWithClientID("nats://localhost:4222", "mcp-server-1",
-	//	    nats.WithSubjectPrefix("my-org/mcp"))
-	AsNATSWithClientID(serverURL string, clientID string, options ...nats.NATSOption) Server
-
-	// AsNATSWithToken configures the server to use NATS with token authentication
-	// along with optional configuration options.
-	//
-	// Example:
-	//
-	//	server.AsNATSWithToken("nats://localhost:4222", "s3cr3t-t0k3n")
-	//	// With options:
-	//	server.AsNATSWithToken("nats://localhost:4222", "s3cr3t-t0k3n",
-	//	    nats.WithClientID("mcp-server-1"),
-	//	    nats.WithSubjectPrefix("my-org/mcp"))
-	AsNATSWithToken(serverURL string, token string, options ...nats.NATSOption) Server
-
-	// GetServer returns the underlying server implementation.
-	//
-	// This is primarily used for advanced configuration or testing.
+	// GetServer returns the underlying server implementation
+	// This is primarily for internal use and testing.
 	GetServer() *serverImpl
-
-	// GetRoots returns the list of registered root paths.
-	GetRoots() []string
-
-	// IsPathInRoots checks if a path is within any registered root.
-	IsPathInRoots(path string) bool
-
-	// WithSamplingConfig sets the sampling configuration for the server.
-	//
-	// Sampling configuration controls how sampling requests are handled,
-	// including rate limits, caching, and other performance parameters.
-	//
-	// Example:
-	//  config := server.NewSamplingConfig().WithRateLimit(10)
-	//  server.WithSamplingConfig(config)
-	WithSamplingConfig(config *SamplingConfig) Server
-
-	// WithSamplingController sets a custom sampling controller for the server.
-	//
-	// This is an advanced method for applications that need fine-grained
-	// control over sampling behavior.
-	WithSamplingController(controller *SamplingController) Server
-
-	// Logger returns the server's configured logger.
-	//
-	// This can be used to access the logger for custom logging needs.
-	Logger() *slog.Logger
 }
 
 // Option represents a server configuration option.
@@ -493,6 +388,7 @@ func NewServer(name string, options ...Option) Server {
 		initialized:          false,
 		pendingNotifications: [][]byte{},
 		toolsChanged:         false,
+		requestCanceller:     NewRequestCanceller(),
 	}
 
 	// Set the default transport to stdio
@@ -727,17 +623,8 @@ func (s *serverImpl) Run() error {
 	select {}
 }
 
-// GetServer returns the underlying server implementation.
-//
-// This method provides access to the concrete serverImpl instance, which can be
-// used for advanced configuration and testing. In most cases, interacting with
-// the Server interface is preferred.
-//
-// Example:
-//
-//	// Access the underlying implementation for testing or advanced configuration
-//	impl := server.GetServer()
-//	tools := impl.GetTools()
+// GetServer returns the underlying server implementation
+// This is primarily for internal use and testing.
 func (s *serverImpl) GetServer() *serverImpl {
 	return s
 }
@@ -788,6 +675,9 @@ func (s *serverImpl) handleInitializedNotification() {
 	// Process any pending notifications
 	pendingNotifications := s.pendingNotifications
 	s.pendingNotifications = nil
+
+	// Reset the toolsChanged flag
+	s.toolsChanged = false
 	s.mu.Unlock()
 
 	s.logger.Debug("client initialized, processing pending notifications",
@@ -802,37 +692,16 @@ func (s *serverImpl) handleInitializedNotification() {
 		}
 	}
 
-	// If tools were changed during initialization but no notification was queued,
-	// send a tools/list_changed notification now
-	s.mu.Lock()
-	toolsChanged := s.toolsChanged
-	s.toolsChanged = false
-	s.mu.Unlock()
-
-	if toolsChanged {
-		// Send a tools list changed notification
-		go func() {
-			if err := s.SendToolsListChangedNotification(); err != nil {
-				s.logger.Error("failed to send tools list changed notification after initialization", "error", err)
-			}
-		}()
-	}
-}
-
-// FinalizeToolRegistration completes the tool registration process and sends a single
-// tools/list_changed notification if any tools were added or modified.
-// Call this method after registering all tools to ensure notifications are batched properly.
-func (s *serverImpl) FinalizeToolRegistration() Server {
-	s.mu.Lock()
-	toolsChanged := s.toolsChanged
-	s.toolsChanged = false
-	s.mu.Unlock()
-
-	if toolsChanged {
+	// Always send tools/list_changed notification after initialization
+	// This ensures the client is aware of available tools even if no tools were
+	// added since the server started
+	go func() {
+		// Add slight delay to ensure client is ready to receive the notification
+		time.Sleep(50 * time.Millisecond)
 		if err := s.SendToolsListChangedNotification(); err != nil {
-			s.logger.Error("failed to send tools list changed notification", "error", err)
+			s.logger.Error("failed to send tools list changed notification after initialization", "error", err)
+		} else {
+			s.logger.Debug("sent tools/list_changed notification after client initialization")
 		}
-	}
-
-	return s
+	}()
 }

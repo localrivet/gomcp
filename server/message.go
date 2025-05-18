@@ -96,6 +96,11 @@ func HandleMessage(s *serverImpl, message []byte) ([]byte, error) {
 		s.handleInitializedNotification()
 		return nil, nil
 	case "notifications/cancelled":
+		// Handle cancellation notification
+		if err := s.HandleCancelledNotification(message); err != nil {
+			s.logger.Error("failed to handle cancellation notification", "error", err)
+		}
+		return nil, nil
 	case "notifications/progress":
 	case "notifications/message":
 	case "notifications/resources/list_changed":

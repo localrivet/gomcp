@@ -96,7 +96,7 @@ func (s *serverImpl) registerTool(name, description string, handler ToolHandler,
 	s.logger.Debug("registered tool", "name", name)
 
 	// Mark that tools have changed, but don't send a notification immediately
-	// We'll send a single notification after all tools are registered
+	// The notification will be sent after client initialization
 	if !exists || isUpdate {
 		s.toolsChanged = true
 	}
@@ -237,6 +237,9 @@ func (s *serverImpl) executeTool(ctx *Context, name string, args map[string]inte
 		return nil, fmt.Errorf("tool not found: %s", name)
 	}
 
+	// Register for cancellation notifications
+	cancelCh := ctx.RegisterForCancellation()
+
 	// Get the handler's parameter type
 	handlerType := reflect.TypeOf(tool.Handler)
 	paramType := handlerType.In(1)
@@ -247,13 +250,45 @@ func (s *serverImpl) executeTool(ctx *Context, name string, args map[string]inte
 		return nil, fmt.Errorf("invalid arguments: %w", err)
 	}
 
-	// Execute the tool handler
-	result, err := tool.Handler(ctx, convertedArgs)
-	if err != nil {
-		return nil, fmt.Errorf("tool execution failed: %w", err)
+	// Check for cancellation before executing
+	if ctx.IsCancelled() {
+		return nil, fmt.Errorf("tool execution cancelled before starting: %s", name)
 	}
 
-	return result, nil
+	// Execute the tool handler with cancellation awareness
+	resultCh := make(chan struct {
+		result interface{}
+		err    error
+	}, 1)
+
+	go func() {
+		result, err := tool.Handler(ctx, convertedArgs)
+		// Check if cancelled after execution but before sending result
+		select {
+		case <-cancelCh:
+			// Execution completed but was cancelled - don't send result
+			return
+		default:
+			// Not cancelled, send result
+			resultCh <- struct {
+				result interface{}
+				err    error
+			}{result, err}
+		}
+	}()
+
+	// Wait for either result or cancellation
+	select {
+	case <-cancelCh:
+		// Request was cancelled during execution
+		return nil, fmt.Errorf("tool execution cancelled: %s", name)
+	case res := <-resultCh:
+		// Execution completed
+		if res.err != nil {
+			return nil, fmt.Errorf("tool execution failed: %w", res.err)
+		}
+		return res.result, nil
+	}
 }
 
 // ProcessToolCall processes a tool call message and returns the result.
@@ -470,6 +505,30 @@ func (s *serverImpl) WithAnnotations(toolName string, annotations map[string]int
 	}
 
 	// Mark that tools have changed, but don't send a notification immediately
+	// The notification will be sent after client initialization
+	s.toolsChanged = true
+
+	return s
+}
+
+// WithSchema adds a JSON Schema to a registered tool.
+// The schema parameter must be a valid JSON Schema object that describes
+// the expected arguments for the tool.
+func (s *serverImpl) WithSchema(toolName string, schema interface{}) Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	tool, exists := s.tools[toolName]
+	if !exists {
+		s.logger.Error("tool not found for schema", "name", toolName)
+		return s
+	}
+
+	// Set the schema for the tool
+	tool.Schema = schema
+
+	// Mark that tools have changed, but don't send a notification immediately
+	// The notification will be sent after client initialization
 	s.toolsChanged = true
 
 	return s

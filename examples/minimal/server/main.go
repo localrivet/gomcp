@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/localrivet/gomcp/server"
 )
@@ -58,6 +59,6 @@ func main() {
 
 	// Run server with logging to file
 	if err := srv.Run(); err != nil {
-		srv.Logger().Error("Failed to run server", "error", err)
+		fmt.Fprintf(os.Stderr, "Failed to run server: %v\n", err)
 	}
 }

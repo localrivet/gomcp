@@ -507,3 +507,57 @@ func (c *Context) ValidateSamplingRequest(messages []SamplingMessage, maxTokens 
 	// Validate against protocol constraints
 	return controller.ValidateForProtocol(c.Version, messages, maxTokens)
 }
+
+// IsCancelled checks if the request associated with this context has been cancelled
+func (c *Context) IsCancelled() bool {
+	// First check the standard Go context cancellation
+	select {
+	case <-c.ctx.Done():
+		return true
+	default:
+		// Not cancelled by standard context
+	}
+
+	// Then check MCP cancellation
+	if c.RequestID != "" && c.server != nil && c.server.requestCanceller != nil {
+		return c.server.requestCanceller.IsCancelled(c.RequestID)
+	}
+
+	return false
+}
+
+// CheckCancellation checks if the context is cancelled and returns an error if it is
+// This is useful for places in the code where periodic cancellation checks are needed
+func (c *Context) CheckCancellation() error {
+	if c.IsCancelled() {
+		// Use standard Go context error if available
+		if err := c.ctx.Err(); err != nil {
+			return err
+		}
+		// Otherwise return a generic cancellation error
+		return fmt.Errorf("request cancelled")
+	}
+	return nil
+}
+
+// RegisterForCancellation registers this context's request to be cancellable
+// Returns a channel that will be closed if the request is cancelled
+func (c *Context) RegisterForCancellation() <-chan struct{} {
+	if c.RequestID == "" || c.server == nil || c.server.requestCanceller == nil {
+		// Return a never-closing channel if we can't register properly
+		ch := make(chan struct{})
+		return ch
+	}
+
+	return c.server.requestCanceller.Register(c.RequestID)
+}
+
+// CancelRequest sends a cancellation notification for this context's request
+// This is typically used when a client wants to cancel an in-progress request it made to the server
+func (c *Context) CancelRequest(reason string) error {
+	if c.RequestID == "" || c.server == nil {
+		return fmt.Errorf("cannot cancel: missing request ID or server reference")
+	}
+
+	return c.server.SendCancelledNotification(c.RequestID, reason)
+}
