@@ -534,20 +534,84 @@ func (s *serverImpl) ProcessInitialize(ctx *Context) (interface{}, error) {
 		samplingCapabilities["contentTypes"].(map[string]bool)["audio"] = samplingCaps.AudioSupport
 	}
 
-	// Return response with the validated protocol version
+	// Get the list of tools
+	toolList := make([]map[string]interface{}, 0, len(s.tools))
+	for _, tool := range s.tools {
+		toolInfo := map[string]interface{}{
+			"name":        tool.Name,
+			"description": tool.Description,
+			"inputSchema": tool.Schema,
+		}
+		// Only include annotations if they exist
+		if len(tool.Annotations) > 0 {
+			toolInfo["annotations"] = tool.Annotations
+		}
+		toolList = append(toolList, toolInfo)
+	}
+
+	// Get the list of resources
+	resourceList := make([]map[string]interface{}, 0, len(s.resources))
+	for path, resource := range s.resources {
+		// Use the full path as the name if no other name is available
+		name := resource.Path
+		if path != "" {
+			name = path
+		}
+
+		// Extract MIME type if available from schema or set a default
+		mimeType := "application/octet-stream" // Default MIME type
+		if schemaMap, ok := resource.Schema.(map[string]interface{}); ok {
+			if mt, ok := schemaMap["mimeType"].(string); ok && mt != "" {
+				mimeType = mt
+			}
+		}
+
+		resourceInfo := map[string]interface{}{
+			"uri":         resource.Path,
+			"name":        name,
+			"description": resource.Description,
+			"mimeType":    mimeType,
+		}
+
+		// Add isTemplate if this is a template resource
+		if resource.IsTemplate {
+			resourceInfo["isTemplate"] = true
+		}
+
+		resourceList = append(resourceList, resourceInfo)
+	}
+
+	// Get the list of prompts
+	promptList := make([]map[string]interface{}, 0, len(s.prompts))
+	for _, prompt := range s.prompts {
+		promptInfo := map[string]interface{}{
+			"name":        prompt.Name,
+			"description": prompt.Description,
+		}
+		// Include arguments if available
+		if len(prompt.Arguments) > 0 {
+			promptInfo["arguments"] = prompt.Arguments
+		}
+		promptList = append(promptList, promptInfo)
+	}
+
+	// Return response with the validated protocol version and complete capabilities
 	return map[string]interface{}{
 		"protocolVersion": protocolVersion,
 		"capabilities": map[string]interface{}{
 			"logging": map[string]interface{}{},
 			"prompts": map[string]interface{}{
 				"listChanged": true,
+				"prompts":     promptList,
 			},
 			"resources": map[string]interface{}{
 				"subscribe":   true,
 				"listChanged": true,
+				"resources":   resourceList,
 			},
 			"tools": map[string]interface{}{
 				"listChanged": true,
+				"tools":       toolList,
 			},
 			"sampling": samplingCapabilities,
 		},
