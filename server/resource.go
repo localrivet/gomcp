@@ -6,25 +6,44 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/localrivet/gomcp/util/schema"
 	"github.com/localrivet/wilduri"
 )
 
 // ResourceHandler is a function that handles resource requests.
+// It receives a context with the request information and arguments,
+// and returns a result and any error that occurred.
 type ResourceHandler func(ctx *Context, args interface{}) (interface{}, error)
 
 // Resource represents a resource registered with the server.
+// Resources are endpoints that clients can access to retrieve structured data.
 type Resource struct {
-	Path        string
+	// Path is the URL pattern for accessing this resource
+	Path string
+
+	// Description explains what the resource provides
 	Description string
-	Handler     ResourceHandler
-	Schema      interface{}
-	Template    *wilduri.Template
-	IsTemplate  bool // Whether this resource is a template with parameters
+
+	// Handler is the function that executes when the resource is accessed
+	Handler ResourceHandler
+
+	// Schema defines the expected format of the resource data
+	Schema interface{}
+
+	// Template is the parsed path template used for matching URLs
+	Template *wilduri.Template
+
+	// IsTemplate indicates whether this resource path contains parameters
+	IsTemplate bool // Whether this resource is a template with parameters
 }
 
 // Resource registers a resource with the server.
+// The function returns the server instance to allow for method chaining.
+// The path parameter defines the resource URL pattern, which can include parameters in {braces}.
+// The description parameter provides human-readable documentation.
+// The handler parameter is a function that implements the resource's logic.
 func (s *serverImpl) Resource(path string, description string, handler interface{}) Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -78,18 +97,24 @@ func (s *serverImpl) Resource(path string, description string, handler interface
 }
 
 // ProcessResourceSubscribe processes a resource subscription request.
+// Resource subscriptions allow clients to receive notifications when resource data changes.
+// Returns a response indicating whether the subscription was successful.
 func (s *serverImpl) ProcessResourceSubscribe(ctx *Context) (interface{}, error) {
 	// TODO: Implement resource subscription
 	return map[string]interface{}{"subscribed": true}, nil
 }
 
 // ProcessResourceUnsubscribe processes a resource unsubscription request.
+// This allows clients to stop receiving notifications for a previously subscribed resource.
+// Returns a response indicating whether the unsubscription was successful.
 func (s *serverImpl) ProcessResourceUnsubscribe(ctx *Context) (interface{}, error) {
 	// TODO: Implement resource unsubscription
 	return map[string]interface{}{"unsubscribed": true}, nil
 }
 
 // ProcessResourceTemplatesList processes a resource templates list request.
+// This returns a list of all resource templates (resources with path parameters)
+// registered with the server. Supports pagination through an optional cursor parameter.
 func (s *serverImpl) ProcessResourceTemplatesList(ctx *Context) (interface{}, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -162,7 +187,10 @@ func (s *serverImpl) ProcessResourceTemplatesList(ctx *Context) (interface{}, er
 	return result, nil
 }
 
-// ensureContentsArray ensures a response has a properly formatted contents array
+// ensureContentsArray ensures a response has a properly formatted contents array.
+// This function standardizes resource response format by ensuring the contents field
+// follows the expected structure, with proper URI and content fields.
+// Returns the properly formatted response.
 func ensureContentsArray(response map[string]interface{}, uri string) map[string]interface{} {
 	// If it already has a properly formatted contents array, we're good
 	if contentsArr, hasContents := response["contents"].([]interface{}); hasContents && len(contentsArr) > 0 {
@@ -323,173 +351,130 @@ func ensureContentsArray(response map[string]interface{}, uri string) map[string
 	return response
 }
 
-// ensureValidContentItems ensures each content item has required fields to satisfy MCP Inspector validation
+// ensureValidContentItems validates and normalizes content items in a resource response.
+// It ensures that each content item has the required fields based on its type
+// and that all fields are properly formatted.
+// Returns a normalized array of content items that conform to the specification.
 func ensureValidContentItems(items []interface{}) []interface{} {
-	result := make([]interface{}, len(items))
+	validItems := make([]interface{}, 0, len(items))
 
-	for i, item := range items {
+	for _, item := range items {
 		if contentMap, ok := item.(map[string]interface{}); ok {
+			// Must have a type field
 			contentType, hasType := contentMap["type"].(string)
-
-			// Ensure we have a valid content type
-			if !hasType || contentType == "" {
-				contentMap["type"] = "text" // Default to text type
-				contentType = "text"
+			if !hasType {
+				// Skip items without type
+				continue
 			}
 
-			// Ensure we have required field based on type
+			// Validate based on content type
 			switch contentType {
 			case "text":
-				// Text type MUST have a text field (even if empty) to satisfy the MCP Inspector
+				// Text must have a text field
 				if _, hasText := contentMap["text"].(string); !hasText {
-					contentMap["text"] = "Empty text content" // Non-empty string to satisfy validator
+					contentMap["text"] = "Missing text"
 				}
-			case "blob":
-				// Blob type MUST have a blob field (even if empty) to satisfy the MCP Inspector
-				if _, hasBlob := contentMap["blob"].(string); !hasBlob {
-					contentMap["blob"] = "Empty blob content" // Non-empty string to satisfy validator
-				}
-				// Blob should also have a mimeType
-				if _, hasMimeType := contentMap["mimeType"].(string); !hasMimeType {
-					contentMap["mimeType"] = "application/octet-stream" // Default MIME type
-				}
-			case "image":
-				if url, hasURL := contentMap["imageUrl"].(string); !hasURL || url == "" {
-					// Convert to text type if missing required fields
-					contentMap["type"] = "text"
-					contentMap["text"] = "Image URL missing"
-				}
-			case "link":
-				if url, hasURL := contentMap["url"].(string); !hasURL || url == "" {
-					// Convert to text type if missing required fields
-					contentMap["type"] = "text"
-					contentMap["text"] = "Link URL missing"
-				}
-			default:
-				// For unknown types, ensure they have a text field
-				contentMap["type"] = "text"
-				if _, hasText := contentMap["text"].(string); !hasText {
-					contentMap["text"] = "Unknown content type converted to text"
-				}
-			}
+				validItems = append(validItems, contentMap)
 
-			result[i] = contentMap
-		} else if item == nil {
-			// Handle nil items by creating a text item
-			result[i] = map[string]interface{}{
-				"type": "text",
-				"text": "Empty content", // Non-empty string
-			}
-		} else {
-			// Convert non-map items to text items
-			result[i] = map[string]interface{}{
-				"type": "text",
-				"text": fmt.Sprintf("%v", item), // Convert to string
+			case "image":
+				// Image must have an imageUrl field
+				if _, hasURL := contentMap["imageUrl"].(string); !hasURL {
+					// Skip invalid image items
+					continue
+				}
+				validItems = append(validItems, contentMap)
+
+			case "link":
+				// Link must have a url field
+				if _, hasURL := contentMap["url"].(string); !hasURL {
+					// Skip invalid link items
+					continue
+				}
+				validItems = append(validItems, contentMap)
+
+			case "file":
+				// File must have a mimeType and data field
+				if _, hasMime := contentMap["mimeType"].(string); !hasMime {
+					// Skip invalid file items
+					continue
+				}
+				if contentMap["data"] == nil {
+					// Skip invalid file items
+					continue
+				}
+				validItems = append(validItems, contentMap)
+
+			default:
+				// Skip unknown content types
+				continue
 			}
 		}
 	}
 
-	// If there are no items, add a default text item
-	if len(result) == 0 {
-		result = append(result, map[string]interface{}{
+	// If no valid items, create a default text item
+	if len(validItems) == 0 {
+		validItems = append(validItems, map[string]interface{}{
 			"type": "text",
-			"text": "Empty content", // Non-empty string to ensure text field is present
+			"text": "No valid content",
 		})
 	}
 
-	// Double-check each content item has required fields
-	for i, item := range result {
-		if contentMap, ok := item.(map[string]interface{}); ok {
-			contentType, _ := contentMap["type"].(string)
-
-			// Final validation to ensure each item has either text or blob
-			if contentType == "text" {
-				if _, hasText := contentMap["text"].(string); !hasText {
-					contentMap["text"] = "Empty text content"
-				}
-			} else if contentType == "blob" {
-				if _, hasBlob := contentMap["blob"].(string); !hasBlob {
-					contentMap["blob"] = "Empty blob content"
-				}
-				if _, hasMimeType := contentMap["mimeType"].(string); !hasMimeType {
-					contentMap["mimeType"] = "application/octet-stream"
-				}
-			} else {
-				// For any other type, ensure it has text as a fallback
-				if _, hasText := contentMap["text"].(string); !hasText {
-					contentMap["text"] = "Content of type: " + contentType
-				}
-			}
-
-			result[i] = contentMap
-		}
-	}
-
-	return result
+	return validItems
 }
 
-// ProcessResourceRequest processes a resource request message and returns the result.
+// ProcessResourceRequest processes a resource request.
+// This method handles client requests to access resources, finding the appropriate
+// resource handler based on the URI, executing it, and formatting the response
+// according to the MCP protocol specification.
 func (s *serverImpl) ProcessResourceRequest(ctx *Context) (interface{}, error) {
-	// Get the resource URI from params
-	if ctx.Request == nil {
-		return nil, errors.New("invalid resource request")
+	// Get the resource URI from the request params
+	if ctx.Request.Params == nil {
+		return nil, errors.New("missing params in resource request")
 	}
 
-	var uri string
-	if ctx.Request.ResourcePath != "" {
-		// Use the parsed ResourcePath if available
-		uri = ctx.Request.ResourcePath
-	} else if ctx.Request.Params != nil {
-		// Try to extract the URI from params
-		var params struct {
-			URI string `json:"uri"`
-		}
-		if err := json.Unmarshal(ctx.Request.Params, &params); err != nil {
-			return nil, fmt.Errorf("invalid params: %w", err)
-		}
-		uri = params.URI
+	var params struct {
+		URI string `json:"uri"`
+	}
+	if err := json.Unmarshal(ctx.Request.Params, &params); err != nil {
+		return nil, fmt.Errorf("invalid params: %w", err)
 	}
 
+	uri := params.URI
 	if uri == "" {
-		return nil, errors.New("missing resource URI")
+		return nil, errors.New("missing or empty uri in resource request")
 	}
 
-	// Use a mutex read lock to protect the resource map
-	s.mu.RLock()
-	// Find the resource handler that matches the URI
-	resource, routeParams, exists := s.findResourceAndExtractParams(uri)
-	s.mu.RUnlock()
-
-	if !exists {
+	// Find the resource and extract params
+	resource, pathParams, found := s.findResourceAndExtractParams(uri)
+	if !found {
 		return nil, fmt.Errorf("resource not found: %s", uri)
 	}
 
-	// Prepare the arguments
-	var args interface{}
-	if len(routeParams) > 0 {
-		args = routeParams
-	} else if ctx.Request.Params != nil {
-		// Parse params separately
-		var params map[string]interface{}
-		if err := json.Unmarshal(ctx.Request.Params, &params); err != nil {
-			return nil, fmt.Errorf("invalid params: %w", err)
-		}
-		args = params
-	}
-
 	// Execute the resource handler
-	result, err := resource.Handler(ctx, args)
+	result, err := resource.Handler(ctx, pathParams)
 	if err != nil {
-		return nil, fmt.Errorf("resource execution failed: %w", err)
+		return nil, fmt.Errorf("resource handler error: %w", err)
 	}
 
-	// Format the response according to the protocol version
-	formattedResult := FormatResourceResponse(uri, result, ctx.Version)
-	return formattedResult, nil
+	// Format the response based on the protocol version
+	// Get the protocol version from the context
+	version := ctx.Version
+	if version == "" {
+		// Default to latest protocol version
+		version = "2025-03-26"
+	}
+
+	return formatResourceResponse(result, version), nil
 }
 
-// ProcessResourceList processes a resource list request and returns the list of available resources
+// ProcessResourceList processes a resource list request.
+// This method returns a list of all resources registered with the server,
+// supporting pagination through an optional cursor parameter.
+// The response includes resource metadata such as URI, description, and MIME type.
 func (s *serverImpl) ProcessResourceList(ctx *Context) (interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	// Get pagination cursor if provided
 	var cursor string
 	if ctx.Request.Params != nil {
@@ -502,42 +487,47 @@ func (s *serverImpl) ProcessResourceList(ctx *Context) (interface{}, error) {
 		cursor = params.Cursor
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	// For now, we'll use a simple pagination that returns all resources
 	const maxPageSize = 50
-	resources := make([]map[string]interface{}, 0) // Initialize as empty array, not nil
+	resources := make([]map[string]interface{}, 0)
 	var nextCursor string
 
 	// Convert resources to the expected format
 	i := 0
 	for path, resource := range s.resources {
-		// If we have a cursor, skip until we find it
+		// Skip if we haven't reached the cursor yet
 		if cursor != "" && path <= cursor {
-			continue
-		}
-
-		// Skip template resources (they should only appear in templates list)
-		if resource.IsTemplate {
 			continue
 		}
 
 		// Use the full path as the name if no other name is available
 		name := resource.Path
-		// Extract the last part of the path as the name if no other name is available
-		// This provides better identification, especially for parameterized paths
 		if path != "" {
 			name = path
 		}
 
+		// Extract MIME type if available from schema or set a default
+		mimeType := "application/octet-stream" // Default MIME type
+		if schemaMap, ok := resource.Schema.(map[string]interface{}); ok {
+			if mt, ok := schemaMap["mimeType"].(string); ok && mt != "" {
+				mimeType = mt
+			}
+		}
+
 		// Add the resource to the result
-		resources = append(resources, map[string]interface{}{
+		resourceInfo := map[string]interface{}{
 			"uri":         resource.Path,
+			"name":        name,
 			"description": resource.Description,
-			"kind":        "file", // Default kind, should be determined based on actual resource
-			"name":        name,   // Name is required by the spec
-		})
+			"mimeType":    mimeType,
+		}
+
+		// Add isTemplate if this is a template resource
+		if resource.IsTemplate {
+			resourceInfo["isTemplate"] = true
+		}
+
+		resources = append(resources, resourceInfo)
 
 		i++
 		if i >= maxPageSize {
@@ -549,7 +539,7 @@ func (s *serverImpl) ProcessResourceList(ctx *Context) (interface{}, error) {
 
 	// Return the list of resources
 	result := map[string]interface{}{
-		"resources": resources, // Changed back to "resources" to match the spec for resource list
+		"resources": resources,
 	}
 
 	// Only add nextCursor if there are more results
@@ -560,252 +550,273 @@ func (s *serverImpl) ProcessResourceList(ctx *Context) (interface{}, error) {
 	return result, nil
 }
 
-// findResourceAndExtractParams finds a resource that matches the URI and extracts path parameters
+// findResourceAndExtractParams finds a resource matching the given URI
+// and extracts any path parameters from the URI.
+// Returns the matched resource, extracted parameters, and a boolean indicating success.
 func (s *serverImpl) findResourceAndExtractParams(uri string) (*Resource, map[string]interface{}, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// First, try direct match
-	if resource, exists := s.resources[uri]; exists {
-		return resource, nil, true
+	// Check for exact match first (for non-template resources)
+	if resource, ok := s.resources[uri]; ok {
+		return resource, make(map[string]interface{}), true
 	}
 
-	// Try pattern matching for resources with path parameters
+	// For template resources, try to match against the pattern
 	for _, resource := range s.resources {
-		if resource.Template == nil {
+		if !resource.IsTemplate {
 			continue
 		}
 
-		params, matched := resource.Template.Match(uri)
-		if matched {
-			// Convert to map[string]interface{} if not already
-			if len(params) > 0 {
-				return resource, params, true
+		// Use the template to match the URI
+		matches, matched := resource.Template.Match(uri)
+		if matched && matches != nil {
+			// Convert matches to a map for the handler
+			params := make(map[string]interface{})
+			for key, value := range matches {
+				params[key] = value
 			}
-			// Matched but no parameters
-			return resource, nil, true
+			return resource, params, true
 		}
 	}
 
 	return nil, nil, false
 }
 
-// formatResourceResponse formats the resource response according to the specification version
+// formatResourceResponse formats the result of a resource handler execution
+// according to the MCP protocol specification for the given version.
+// Handles different response formats based on the type of the result.
 func formatResourceResponse(result interface{}, version string) interface{} {
-	// First check if result implements ResourceConverter
-	if converter, ok := result.(ResourceConverter); ok {
-		result = converter.ToResourceResponse()
+	// If the result is already a properly formatted resource response, handle it appropriately
+	if _, ok := result.(*ResourceResponse); ok {
+		// Since ResourceResponse.Format() is undefined, just return the result
+		return result
 	}
 
-	// Handle specialized resource types
-	switch v := result.(type) {
-	case TextResource:
-		result = v.ToResourceResponse()
-	case ImageResource:
-		result = v.ToResourceResponse()
-	case LinkResource:
-		result = v.ToResourceResponse()
-	case FileResource:
-		result = v.ToResourceResponse()
-	case JSONResource:
-		result = v.ToResourceResponse()
-	case string:
-		// Convert string to text content
-		result = SimpleTextResponse(v)
-	case []byte:
-		// Convert bytes to text content
-		result = SimpleTextResponse(string(v))
-	case map[string]interface{}:
-		// Already a map, might need structure validation/conversion
-		result = v
-	}
-
-	// Now convert to the appropriate format for the MCP version
-	if resultMap, ok := result.(map[string]interface{}); ok {
-		// Handle different versions
-		if version == "2024-11-05" {
-			// For 2024-11-05, we have a flat content array structure
-
-			// If the resource already has a properly formatted content field, just ensure it meets validation requirements
-			if content, hasContent := resultMap["content"]; hasContent {
-				// Make sure content is an array according to 2024-11-05 spec
-				contentArray, ok := content.([]interface{})
-				if !ok {
-					// Not an array, make it one
-					resultMap["content"] = []interface{}{
-						map[string]interface{}{
-							"type": "text",
-							"text": fmt.Sprintf("%v", content),
-						},
-					}
-				} else if len(contentArray) > 0 {
-					// Ensure content items are valid (have text field for text type, etc.)
-					resultMap["content"] = ensureValidContentItems(contentArray)
-				}
-				return resultMap
-			}
-
-			// If we have a contents array (from newer specs), extract the content from the first item
-			if contents, hasContents := resultMap["contents"].([]interface{}); hasContents && len(contents) > 0 {
-				firstContent, ok := contents[0].(map[string]interface{})
-				if ok {
-					if content, hasContent := firstContent["content"]; hasContent {
-						// Ensure we have a proper array of content items
-						contentArray, ok := content.([]interface{})
-						if ok && len(contentArray) > 0 {
-							// Ensure content items are valid
-							resultMap["content"] = ensureValidContentItems(contentArray)
-						} else {
-							// Not an array or empty array, create a valid content array
-							resultMap["content"] = []interface{}{
-								map[string]interface{}{
-									"type": "text",
-									"text": fmt.Sprintf("%v", content),
-								},
-							}
-						}
-					}
-					// Copy metadata if present in firstContent
-					if metadata, hasMetadata := firstContent["metadata"].(map[string]interface{}); hasMetadata {
-						if resultMap["metadata"] == nil {
-							resultMap["metadata"] = metadata
-						}
-					}
-					delete(resultMap, "contents") // Remove contents array
-				}
-			}
-
-			// If we still don't have a content field, create a default one
-			if _, hasContent := resultMap["content"]; !hasContent {
-				// Create a default content array with a text item
-				resultMap["content"] = []interface{}{
-					map[string]interface{}{
-						"type": "text",
-						"text": fmt.Sprintf("%v", resultMap),
-					},
-				}
-			}
-
-			return resultMap
-		} else if version == "2025-03-26" || version == "draft" {
-			// These versions expect a contents array with nested content
-			return ensureContentsArray(resultMap, "")
+	// For map results, check if it's a properly formatted response
+	if mapResult, ok := result.(map[string]interface{}); ok {
+		// If it has a contents field, it might be a properly formatted response
+		if _, hasContents := mapResult["contents"]; hasContents {
+			// This seems to be a formatted response already, ensure its format
+			formatted := ensureContentsArray(mapResult, "")
+			return formatted
 		}
-
-		// For any version, ensure we have content
-		return resultMap
 	}
 
-	// Default - pass it through
-	return result
+	// For other result types, convert to a generic response based on protocol version
+	switch version {
+	case "2024-11-05":
+		// 2024-11-05 uses contents directly
+		return formatResourceContentArray(result, version)
+	case "2025-03-26", "draft":
+		// 2025-03-26 and draft use structured content
+		return formatContentResponse(result, true)
+	default:
+		// Default to the latest version
+		return formatContentResponse(result, true)
+	}
 }
 
-// formatContentResponse formats a result as a content response
-func formatContentResponse(result interface{}, includeMetadata bool) map[string]interface{} {
-	response := map[string]interface{}{
-		"isError": false, // Default to false
+// formatResourceContentArray formats a resource response as a content array.
+// This is used for older protocol versions that expect a different response format.
+// Returns a properly formatted response for the appropriate protocol version.
+func formatResourceContentArray(result interface{}, version string) interface{} {
+	// Create a default content array
+	var contents []interface{}
+
+	// Convert the result to a content array based on its type
+	switch v := result.(type) {
+	case []interface{}:
+		// If it's already an array, validate each item is a content object
+		if isContentArray(v) {
+			contents = v
+		} else {
+			// Convert non-content array to JSON text
+			jsonStr, _ := json.MarshalIndent(v, "", "  ")
+			contents = []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": string(jsonStr),
+				},
+			}
+		}
+	case string:
+		// Convert string to text content
+		contents = []interface{}{
+			map[string]interface{}{
+				"type": "text",
+				"text": v,
+			},
+		}
+	default:
+		// Convert other types to JSON text
+		jsonStr, _ := json.MarshalIndent(v, "", "  ")
+		contents = []interface{}{
+			map[string]interface{}{
+				"type": "text",
+				"text": string(jsonStr),
+			},
+		}
 	}
 
-	// Handle different result types
+	// Format based on version
+	return map[string]interface{}{
+		"contents": contents,
+	}
+}
+
+// formatContentResponse formats a resource response for the latest protocol versions.
+// It creates a structured response with contents and metadata based on the result type.
+// The includeMetadata parameter controls whether to include additional metadata fields.
+func formatContentResponse(result interface{}, includeMetadata bool) map[string]interface{} {
+	var content []map[string]interface{}
+
+	// Convert the result to a content array based on its type
 	switch v := result.(type) {
 	case string:
 		// Simple text content
-		response["content"] = []map[string]interface{}{
+		content = []map[string]interface{}{
 			{
 				"type": "text",
 				"text": v,
 			},
 		}
 	case map[string]interface{}:
-		// If it already has a content field, use it
-		if contentField, ok := v["content"]; ok {
-			// Ensure content is an array
-			if contentArr, isArray := contentField.([]interface{}); isArray {
-				response["content"] = contentArr
-			} else {
-				response["content"] = []interface{}{contentField}
+		// Check for special content types
+		if imageUrl, ok := v["imageUrl"].(string); ok && imageUrl != "" {
+			// Handle image
+			contentItem := map[string]interface{}{
+				"type":     "image",
+				"imageUrl": imageUrl,
 			}
-
-			// Copy other fields like metadata and isError if present
+			if altText, ok := v["altText"].(string); ok {
+				contentItem["altText"] = altText
+			}
+			content = []map[string]interface{}{contentItem}
+		} else if url, ok := v["url"].(string); ok && url != "" {
+			// Handle link
+			contentItem := map[string]interface{}{
+				"type": "link",
+				"url":  url,
+			}
+			if title, ok := v["title"].(string); ok {
+				contentItem["title"] = title
+			}
+			content = []map[string]interface{}{contentItem}
+		} else if mimeType, ok := v["mimeType"].(string); ok && mimeType != "" && v["data"] != nil {
+			// Handle file
+			contentItem := map[string]interface{}{
+				"type":     "file",
+				"mimeType": mimeType,
+				"data":     v["data"],
+			}
+			if filename, ok := v["filename"].(string); ok {
+				contentItem["filename"] = filename
+			}
+			content = []map[string]interface{}{contentItem}
+		} else if resourceType, ok := v["resourceType"].(string); ok && resourceType != "" {
+			// Handle structured resource data
+			contentItem := make(map[string]interface{})
 			for key, value := range v {
-				if key != "content" {
-					response[key] = value
-				}
+				contentItem[key] = value
 			}
-		} else if imgURL, ok := v["imageUrl"].(string); ok {
-			// Handle image content
-			response["content"] = []map[string]interface{}{
-				{
-					"type":     "image",
-					"imageUrl": imgURL,
-					"altText":  v["altText"],
-				},
+			// Ensure it has a type field for content
+			if contentItem["type"] == nil {
+				contentItem["type"] = "resource"
 			}
+			content = []map[string]interface{}{contentItem}
 		} else {
-			// Convert the map to JSON and use as text
-			jsonData, _ := json.MarshalIndent(v, "", "  ")
-			response["content"] = []map[string]interface{}{
+			// Convert generic map to JSON text
+			jsonStr, _ := json.MarshalIndent(v, "", "  ")
+			content = []map[string]interface{}{
 				{
 					"type": "text",
-					"text": string(jsonData),
+					"text": string(jsonStr),
 				},
 			}
 		}
 	case []interface{}:
-		// If it's an array, assume it's content items or ensure they're valid content items
-		if isContentArray(v) {
-			response["content"] = v
+		// If it's an array, check if it's already a valid content array
+		if contentArray, isValid := validateContentArray(v); isValid {
+			content = contentArray
 		} else {
-			// Convert to JSON
-			jsonData, _ := json.MarshalIndent(v, "", "  ")
-			response["content"] = []map[string]interface{}{
+			// Convert generic array to JSON text
+			jsonStr, _ := json.MarshalIndent(v, "", "  ")
+			content = []map[string]interface{}{
 				{
 					"type": "text",
-					"text": string(jsonData),
+					"text": string(jsonStr),
 				},
 			}
 		}
 	default:
-		// For other types, convert to JSON
-		jsonData, _ := json.MarshalIndent(v, "", "  ")
-		response["content"] = []map[string]interface{}{
+		// Convert other types to JSON text
+		jsonStr, _ := json.MarshalIndent(v, "", "  ")
+		content = []map[string]interface{}{
 			{
 				"type": "text",
-				"text": string(jsonData),
+				"text": string(jsonStr),
 			},
 		}
 	}
 
-	// Add metadata if needed
-	if includeMetadata && response["metadata"] == nil {
+	// Create the response
+	response := map[string]interface{}{
+		"content": content,
+	}
+
+	// Add metadata if requested
+	if includeMetadata {
 		response["metadata"] = map[string]interface{}{
-			"generated": true,
+			"timestamp": fmt.Sprintf("%d", time.Now().Unix()),
 		}
 	}
 
 	return response
 }
 
-// isContentArray checks if an array is a valid content array
+// isContentArray checks if an array is a valid content array.
+// A valid content array contains maps with a "type" field indicating content type.
+// Returns true if the array is a valid content array, false otherwise.
 func isContentArray(arr []interface{}) bool {
 	if len(arr) == 0 {
 		return false
 	}
 
 	for _, item := range arr {
-		if contentMap, ok := item.(map[string]interface{}); ok {
-			if contentType, hasType := contentMap["type"].(string); hasType {
-				switch contentType {
-				case "text", "image", "link", "file", "audio":
-					// Valid content type
-					continue
-				default:
-					return false
-				}
-			} else {
+		contentMap, ok := item.(map[string]interface{})
+		if !ok {
+			return false
+		}
+
+		contentType, hasType := contentMap["type"].(string)
+		if !hasType {
+			return false
+		}
+
+		// Validate based on content type
+		switch contentType {
+		case "text":
+			if _, hasText := contentMap["text"].(string); !hasText {
 				return false
 			}
-		} else {
+		case "image":
+			if _, hasURL := contentMap["imageUrl"].(string); !hasURL {
+				return false
+			}
+		case "link":
+			if _, hasURL := contentMap["url"].(string); !hasURL {
+				return false
+			}
+		case "file":
+			if _, hasMime := contentMap["mimeType"].(string); !hasMime {
+				return false
+			}
+			if contentMap["data"] == nil {
+				return false
+			}
+		default:
+			// Unknown content type
 			return false
 		}
 	}
@@ -813,7 +824,60 @@ func isContentArray(arr []interface{}) bool {
 	return true
 }
 
-// extractSchemaFromHandler extracts a JSON Schema from a handler function.
+// validateContentArray checks and converts an array to a valid content array if possible.
+// If the array contains valid content items or can be converted to valid content items,
+// it returns the content array and true. Otherwise, it returns nil and false.
+func validateContentArray(arr []interface{}) ([]map[string]interface{}, bool) {
+	if len(arr) == 0 {
+		return nil, false
+	}
+
+	contentItems := make([]map[string]interface{}, 0, len(arr))
+
+	for _, item := range arr {
+		if contentMap, ok := item.(map[string]interface{}); ok {
+			// Verify it has a type field
+			if contentType, hasType := contentMap["type"].(string); hasType {
+				// Validate based on content type
+				isValid := false
+
+				switch contentType {
+				case "text":
+					if _, hasText := contentMap["text"].(string); hasText {
+						isValid = true
+					}
+				case "image":
+					if _, hasURL := contentMap["imageUrl"].(string); hasURL {
+						isValid = true
+					}
+				case "link":
+					if _, hasURL := contentMap["url"].(string); hasURL {
+						isValid = true
+					}
+				case "file":
+					if _, hasMime := contentMap["mimeType"].(string); hasMime && contentMap["data"] != nil {
+						isValid = true
+					}
+				}
+
+				if isValid {
+					contentItems = append(contentItems, contentMap)
+				}
+			}
+		}
+	}
+
+	if len(contentItems) > 0 {
+		return contentItems, true
+	}
+
+	return nil, false
+}
+
+// extractSchemaFromHandler extracts a JSON Schema from a resource handler function.
+// It analyzes the function's parameter structure and generates a schema
+// that describes the expected input format. This is used to inform clients
+// about the structure of arguments the resource expects.
 func extractSchemaFromHandler(handler interface{}) (map[string]interface{}, error) {
 	handlerType := reflect.TypeOf(handler)
 	if handlerType.Kind() != reflect.Func {
@@ -856,14 +920,6 @@ func extractSchemaFromHandler(handler interface{}) (map[string]interface{}, erro
 		return schemaMap, nil
 	}
 
-	// For map[string]interface{} path parameters
-	if argType == reflect.TypeOf(map[string]interface{}{}) {
-		return map[string]interface{}{
-			"type":                 "object",
-			"additionalProperties": true,
-		}, nil
-	}
-
 	// For non-struct types, return a generic schema
 	return map[string]interface{}{
 		"type": "object",
@@ -871,6 +927,9 @@ func extractSchemaFromHandler(handler interface{}) (map[string]interface{}, erro
 }
 
 // ConvertToResourceHandler converts a function to a ResourceHandler if possible.
+// It uses reflection to validate the function signature and creates a wrapper
+// that adapts the function to the ResourceHandler interface. Returns the converted
+// handler and a boolean indicating success.
 func ConvertToResourceHandler(handler interface{}) (ResourceHandler, bool) {
 	if handler == nil {
 		return nil, false
@@ -903,53 +962,34 @@ func ConvertToResourceHandler(handler interface{}) (ResourceHandler, bool) {
 		return nil, false
 	}
 
+	// Get the second parameter type (args type)
+	paramType := handlerType.In(1)
+
 	// Create a resource handler that calls the original function
 	resourceHandler := func(ctx *Context, args interface{}) (interface{}, error) {
-		// Create values for the function call
-		values := make([]reflect.Value, 2)
+		var argValue reflect.Value
 
-		// First parameter is the context
-		values[0] = reflect.ValueOf(ctx)
-
-		// Handle the second parameter (args)
-		// If args is nil, we need to create a zero value of the expected type
-		if args == nil {
-			// Create a zero value of the expected type
-			values[1] = reflect.Zero(handlerType.In(1))
-		} else {
-			// For path parameters or other args, try to convert to the expected type
-			argType := handlerType.In(1)
-			if argType.Kind() == reflect.Map {
-				// Map type is fine as is
-				values[1] = reflect.ValueOf(args)
-			} else if argType.Kind() == reflect.Struct || (argType.Kind() == reflect.Ptr && argType.Elem().Kind() == reflect.Struct) {
-				// Need to convert map to struct
-				mapArgs, ok := args.(map[string]interface{})
-				if ok {
-					// Create a placeholder schema if one wasn't explicitly provided
-					schemaMap := map[string]interface{}{
-						"type":       "object",
-						"properties": map[string]interface{}{},
-					}
-
-					// Use the schema validation and conversion utility
-					convertedArg, err := schema.ValidateAndConvertArgs(schemaMap, mapArgs, argType)
-					if err != nil {
-						return nil, fmt.Errorf("failed to convert arguments: %w", err)
-					}
-					values[1] = reflect.ValueOf(convertedArg)
-				} else {
-					// Use the args as-is
-					values[1] = reflect.ValueOf(args)
-				}
-			} else {
-				// Use the args as-is
-				values[1] = reflect.ValueOf(args)
+		// If args is already the correct type, use it directly
+		if reflect.TypeOf(args) == paramType {
+			argValue = reflect.ValueOf(args)
+		} else if mapArgs, ok := args.(map[string]interface{}); ok {
+			// For map arguments going to a struct parameter, use a more robust conversion
+			// Use the schema validation and conversion utility
+			convertedArg, err := schema.ValidateAndConvertArgs(nil, mapArgs, paramType)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert arguments: %w", err)
 			}
+			argValue = reflect.ValueOf(convertedArg)
+		} else {
+			// If types don't match and we can't convert, return an error
+			return nil, fmt.Errorf("incompatible argument type: expected %s, got %T", paramType, args)
 		}
 
-		// Call the handler function
-		results := handlerValue.Call(values)
+		// Call the handler function with the context and args
+		results := handlerValue.Call([]reflect.Value{
+			reflect.ValueOf(ctx),
+			argValue,
+		})
 
 		// Get the result values
 		result := results[0].Interface()
@@ -958,13 +998,7 @@ func ConvertToResourceHandler(handler interface{}) (ResourceHandler, bool) {
 			err = results[1].Interface().(error)
 		}
 
-		// Check if there was an error
-		if err != nil {
-			return nil, err
-		}
-
-		// Return the result directly - formatResourceResponse will handle the conversion
-		return result, nil
+		return result, err
 	}
 
 	return resourceHandler, true

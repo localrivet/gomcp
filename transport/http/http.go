@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,9 @@ import (
 // DefaultShutdownTimeout is the default timeout for graceful shutdown
 const DefaultShutdownTimeout = 10 * time.Second
 
+// DefaultAPIPath is the default endpoint path for HTTP API
+const DefaultAPIPath = "/api"
+
 // Transport implements the transport.Transport interface for HTTP
 type Transport struct {
 	transport.BaseTransport
@@ -28,6 +32,8 @@ type Transport struct {
 	server        *http.Server
 	client        *http.Client
 	asyncHandlers map[string]AsyncMessageHandler
+	pathPrefix    string // Optional prefix for endpoint paths (e.g., "/mcp")
+	apiPath       string // Path for the HTTP API endpoint
 	mu            sync.RWMutex
 }
 
@@ -40,7 +46,38 @@ func NewTransport(addr string) *Transport {
 		addr:          addr,
 		client:        &http.Client{Timeout: 30 * time.Second},
 		asyncHandlers: make(map[string]AsyncMessageHandler),
+		pathPrefix:    "", // Empty by default
+		apiPath:       DefaultAPIPath,
 	}
+}
+
+// SetPathPrefix sets a prefix for all endpoint paths
+// For example, SetPathPrefix("/mcp") will result in endpoint like "/mcp/api"
+func (t *Transport) SetPathPrefix(prefix string) *Transport {
+	// Ensure the prefix starts with a slash if not empty
+	if prefix != "" && !strings.HasPrefix(prefix, "/") {
+		prefix = "/" + prefix
+	}
+	t.pathPrefix = prefix
+	return t
+}
+
+// SetAPIPath sets the path for the HTTP API endpoint
+func (t *Transport) SetAPIPath(path string) *Transport {
+	// Ensure the path starts with a slash
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	t.apiPath = path
+	return t
+}
+
+// GetFullAPIPath returns the complete path for the HTTP API endpoint
+func (t *Transport) GetFullAPIPath() string {
+	if t.pathPrefix == "" {
+		return t.apiPath
+	}
+	return t.pathPrefix + t.apiPath
 }
 
 // Initialize initializes the transport
@@ -53,7 +90,9 @@ func (t *Transport) Initialize() error {
 func (t *Transport) Start() error {
 	// Create a new HTTP server
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", t.handleHTTPRequest)
+
+	// Register the API endpoint at the configured path
+	mux.HandleFunc(t.GetFullAPIPath(), t.handleHTTPRequest)
 
 	t.server = &http.Server{
 		Addr:    t.addr,
@@ -95,8 +134,20 @@ func (t *Transport) Send(message []byte) error {
 		return fmt.Errorf("invalid JSON-RPC message: %w", err)
 	}
 
+	// Create the full URL with API path
+	url := t.addr
+
+	// Make sure the URL includes the API path
+	if !strings.Contains(url, t.apiPath) {
+		// Add API path to the URL
+		if !strings.HasSuffix(url, "/") {
+			url += "/"
+		}
+		url = strings.TrimSuffix(url, "/") + t.GetFullAPIPath()
+	}
+
 	// Create a new HTTP request with proper reader
-	req, err := http.NewRequest("POST", t.addr, bytes.NewReader(message))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(message))
 	if err != nil {
 		return err
 	}

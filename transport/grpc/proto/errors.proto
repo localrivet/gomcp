@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package mcp;
+
+option go_package = "github.com/localrivet/gomcp/transport/grpc/proto";
+
+// ErrorCode defines standardized error codes for the MCP protocol
+enum ErrorCode {
+  // No error
+  NO_ERROR = 0;
+  
+  // JSON-RPC standard error codes mapped to gRPC
+  PARSE_ERROR = -32700;           // Parse error
+  INVALID_REQUEST = -32600;       // Invalid Request
+  METHOD_NOT_FOUND = -32601;      // Method not found
+  INVALID_PARAMS = -32602;        // Invalid params
+  INTERNAL_ERROR = -32603;        // Internal error
+  SERVER_ERROR_RANGE = -32000;    // Server error (start of range)
+  
+  // MCP specific error codes
+  INITIALIZATION_FAILED = 1000;   // Failed to initialize the MCP connection
+  AUTHENTICATION_FAILED = 1001;   // Authentication failed
+  AUTHORIZATION_FAILED = 1002;    // Authorization failed
+  SESSION_EXPIRED = 1003;         // Session expired
+  FUNCTION_EXECUTION_FAILED = 1004; // Function execution failed
+  INVALID_SESSION = 1005;         // Invalid session ID
+  RATE_LIMITED = 1006;            // Request rate limited
+  STREAM_CLOSED = 1007;           // Stream was closed
+  TIMEOUT = 1008;                 // Operation timed out
+  CONNECTION_ERROR = 1009;        // Connection error
+  PROTOCOL_ERROR = 1010;          // Protocol violation
+}
+
+// GrpcStatusCode defines a mapping to/from gRPC status codes
+enum GrpcStatusCode {
+  // Standard gRPC status codes
+  OK = 0;
+  CANCELLED = 1;
+  UNKNOWN = 2;
+  INVALID_ARGUMENT = 3;
+  DEADLINE_EXCEEDED = 4;
+  NOT_FOUND = 5;
+  ALREADY_EXISTS = 6;
+  PERMISSION_DENIED = 7;
+  RESOURCE_EXHAUSTED = 8;
+  FAILED_PRECONDITION = 9;
+  ABORTED = 10;
+  OUT_OF_RANGE = 11;
+  UNIMPLEMENTED = 12;
+  INTERNAL = 13;
+  UNAVAILABLE = 14;
+  DATA_LOSS = 15;
+  UNAUTHENTICATED = 16;
+}
+
+// ErrorMapping maps between error code systems
+message ErrorMapping {
+  ErrorCode mcp_error_code = 1;
+  GrpcStatusCode grpc_status_code = 2;
+  string description = 3;
+}
+
+// Standard error mappings
+message ErrorMappings {
+  repeated ErrorMapping mappings = 1;
+} 

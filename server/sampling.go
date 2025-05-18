@@ -9,6 +9,8 @@ import (
 )
 
 // SamplingMessageContent represents the content of a sampling message.
+// It contains the type of content (text, image, etc.) and associated data,
+// allowing for multimodal message exchanges in sampling conversations.
 type SamplingMessageContent struct {
 	Type     string `json:"type"`
 	Text     string `json:"text,omitempty"`
@@ -16,7 +18,15 @@ type SamplingMessageContent struct {
 	MimeType string `json:"mimeType,omitempty"`
 }
 
-// IsValidForVersion checks if the content type is valid for the given protocol version
+// IsValidForVersion checks if the content type is valid for the given protocol version.
+// Different protocol versions support different content types, and this method
+// validates whether the current content type is supported in the specified version.
+//
+// Parameters:
+//   - version: The protocol version to check against
+//
+// Returns:
+//   - true if the content type is supported in the specified version, false otherwise
 func (c *SamplingMessageContent) IsValidForVersion(version string) bool {
 	switch version {
 	case "draft", "2025-03-26":
@@ -32,17 +42,24 @@ func (c *SamplingMessageContent) IsValidForVersion(version string) bool {
 }
 
 // SamplingMessage represents a message in a sampling conversation.
+// This struct encapsulates a single message exchange between a user and an assistant,
+// including the role of the speaker and the content of the message.
 type SamplingMessage struct {
 	Role    string                 `json:"role"`
 	Content SamplingMessageContent `json:"content"`
 }
 
 // SamplingModelHint represents a hint for model selection in sampling requests.
+// Hints provide optional guidance to the client about which AI models might be
+// appropriate for handling a particular sampling request.
 type SamplingModelHint struct {
 	Name string `json:"name"`
 }
 
 // SamplingModelPreferences represents the model preferences for a sampling request.
+// These preferences allow the server to communicate desired characteristics for
+// the AI model that will handle the sampling request, such as optimizing for
+// cost, speed, or intelligence.
 type SamplingModelPreferences struct {
 	Hints                []SamplingModelHint `json:"hints,omitempty"`
 	CostPriority         *float64            `json:"costPriority,omitempty"`
@@ -51,6 +68,9 @@ type SamplingModelPreferences struct {
 }
 
 // SamplingCreateMessageParams represents the parameters for a sampling/createMessage request.
+// This struct contains all the information needed to make a complete sampling request
+// to the client, including the conversation history, model preferences, system prompt,
+// and token limits.
 type SamplingCreateMessageParams struct {
 	Messages         []SamplingMessage        `json:"messages"`
 	ModelPreferences SamplingModelPreferences `json:"modelPreferences"`
@@ -59,6 +79,8 @@ type SamplingCreateMessageParams struct {
 }
 
 // SamplingResponse represents the response to a sampling/createMessage request.
+// It contains the AI-generated response content, the role of the responder (typically "assistant"),
+// optional model identification, and information about why the response ended.
 type SamplingResponse struct {
 	Role       string                 `json:"role"`
 	Content    SamplingMessageContent `json:"content"`
@@ -66,18 +88,28 @@ type SamplingResponse struct {
 	StopReason string                 `json:"stopReason,omitempty"`
 }
 
-// SamplingContentHandler is the interface for all sampling content handlers
+// SamplingContentHandler is the interface for all sampling content handlers.
+// This interface defines the contract that all content type implementations must follow,
+// allowing for consistent handling of different content types (text, image, audio)
+// in the sampling system.
 type SamplingContentHandler interface {
 	ToMessageContent() SamplingMessageContent
 	Validate() error
 }
 
-// TextSamplingContent creates a text content struct for sampling messages
+// TextSamplingContent creates a text content struct for sampling messages.
+// This implementation of SamplingContentHandler manages plain text content
+// for sampling conversations.
 type TextSamplingContent struct {
 	Text string
 }
 
-// ToMessageContent converts TextSamplingContent to a SamplingMessageContent
+// ToMessageContent converts TextSamplingContent to a SamplingMessageContent.
+// This method implements the SamplingContentHandler interface for text content,
+// transforming the internal representation into the standardized message content format.
+//
+// Returns:
+//   - A SamplingMessageContent object configured for text content
 func (t *TextSamplingContent) ToMessageContent() SamplingMessageContent {
 	return SamplingMessageContent{
 		Type: "text",
@@ -85,7 +117,13 @@ func (t *TextSamplingContent) ToMessageContent() SamplingMessageContent {
 	}
 }
 
-// Validate ensures the text content is valid
+// Validate ensures the text content is valid.
+// This method checks that the text content meets the necessary requirements,
+// specifically that it is not empty.
+//
+// Returns:
+//   - nil if the content is valid
+//   - An error explaining the validation failure otherwise
 func (t *TextSamplingContent) Validate() error {
 	if t.Text == "" {
 		return fmt.Errorf("text content cannot be empty")
@@ -93,13 +131,20 @@ func (t *TextSamplingContent) Validate() error {
 	return nil
 }
 
-// ImageSamplingContent creates an image content struct for sampling messages
+// ImageSamplingContent creates an image content struct for sampling messages.
+// This implementation of SamplingContentHandler manages image content
+// for sampling conversations, storing the image data and its MIME type.
 type ImageSamplingContent struct {
 	Data     string
 	MimeType string
 }
 
-// ToMessageContent converts ImageSamplingContent to a SamplingMessageContent
+// ToMessageContent converts ImageSamplingContent to a SamplingMessageContent.
+// This method implements the SamplingContentHandler interface for image content,
+// transforming the internal representation into the standardized message content format.
+//
+// Returns:
+//   - A SamplingMessageContent object configured for image content
 func (i *ImageSamplingContent) ToMessageContent() SamplingMessageContent {
 	return SamplingMessageContent{
 		Type:     "image",
@@ -108,7 +153,13 @@ func (i *ImageSamplingContent) ToMessageContent() SamplingMessageContent {
 	}
 }
 
-// Validate ensures the image content is valid
+// Validate ensures the image content is valid.
+// This method checks that the image content meets the necessary requirements,
+// including non-empty data and MIME type.
+//
+// Returns:
+//   - nil if the content is valid
+//   - An error explaining the validation failure otherwise
 func (i *ImageSamplingContent) Validate() error {
 	if i.Data == "" {
 		return fmt.Errorf("image data cannot be empty")
@@ -119,13 +170,20 @@ func (i *ImageSamplingContent) Validate() error {
 	return nil
 }
 
-// AudioSamplingContent creates an audio content struct for sampling messages
+// AudioSamplingContent creates an audio content struct for sampling messages.
+// This implementation of SamplingContentHandler manages audio content
+// for sampling conversations, storing the audio data and its MIME type.
 type AudioSamplingContent struct {
 	Data     string
 	MimeType string
 }
 
-// ToMessageContent converts AudioSamplingContent to a SamplingMessageContent
+// ToMessageContent converts AudioSamplingContent to a SamplingMessageContent.
+// This method implements the SamplingContentHandler interface for audio content,
+// transforming the internal representation into the standardized message content format.
+//
+// Returns:
+//   - A SamplingMessageContent object configured for audio content
 func (a *AudioSamplingContent) ToMessageContent() SamplingMessageContent {
 	return SamplingMessageContent{
 		Type:     "audio",
@@ -134,7 +192,13 @@ func (a *AudioSamplingContent) ToMessageContent() SamplingMessageContent {
 	}
 }
 
-// Validate ensures the audio content is valid
+// Validate ensures the audio content is valid.
+// This method checks that the audio content meets the necessary requirements,
+// including non-empty data and MIME type.
+//
+// Returns:
+//   - nil if the content is valid
+//   - An error explaining the validation failure otherwise
 func (a *AudioSamplingContent) Validate() error {
 	if a.Data == "" {
 		return fmt.Errorf("audio data cannot be empty")
@@ -145,7 +209,17 @@ func (a *AudioSamplingContent) Validate() error {
 	return nil
 }
 
-// CreateSamplingMessage creates a sampling message with the provided content handler
+// CreateSamplingMessage creates a sampling message with the provided content handler.
+// This is a helper function for constructing properly formatted and validated
+// sampling messages for different content types.
+//
+// Parameters:
+//   - role: The role of the message sender (e.g., "user", "assistant")
+//   - content: The content handler implementation for the specific content type
+//
+// Returns:
+//   - A properly formatted SamplingMessage
+//   - An error if content validation fails
 func CreateSamplingMessage(role string, content SamplingContentHandler) (SamplingMessage, error) {
 	if err := content.Validate(); err != nil {
 		return SamplingMessage{}, fmt.Errorf("invalid content: %w", err)
@@ -157,7 +231,17 @@ func CreateSamplingMessage(role string, content SamplingContentHandler) (Samplin
 	}, nil
 }
 
-// ValidateContentForVersion checks if a content handler is valid for the given protocol version
+// ValidateContentForVersion checks if a content handler is valid for the given protocol version.
+// This function combines content validation with protocol version compatibility checking
+// to ensure that messages conform to both content-specific rules and protocol constraints.
+//
+// Parameters:
+//   - content: The content handler to validate
+//   - version: The protocol version to check against
+//
+// Returns:
+//   - nil if the content is valid for the protocol version
+//   - An error describing the validation failure otherwise
 func ValidateContentForVersion(content SamplingContentHandler, version string) error {
 	if content == nil {
 		return fmt.Errorf("content cannot be nil")
@@ -179,13 +263,23 @@ func ValidateContentForVersion(content SamplingContentHandler, version string) e
 }
 
 // ProcessSamplingCreateMessage processes a sampling create message request from the client.
-// This is typically a client-side method, so we just return an error.
+// This is typically a client-side method, so we just return an error. In the MCP protocol,
+// sampling/createMessage is a server->client request, not client->server.
+//
+// Parameters:
+//   - ctx: The request context containing client information and request details
+//
+// Returns:
+//   - Always nil for the result since this method is not meant to be called by clients
+//   - An error explaining that this method is not supported for client requests
 func (s *serverImpl) ProcessSamplingCreateMessage(ctx *Context) (interface{}, error) {
 	// This is a server->client request, so should not be called directly by clients
 	return nil, fmt.Errorf("method not supported: %s", ctx.Request.Method)
 }
 
-// RequestSamplingOptions defines options for sampling requests
+// RequestSamplingOptions defines options for sampling requests.
+// This struct configures the behavior of sampling requests, including timeouts,
+// retry behavior, and capability validation requirements.
 type RequestSamplingOptions struct {
 	Timeout          time.Duration // Maximum time to wait for a response
 	MaxRetries       int           // Maximum number of retry attempts on timeout
@@ -194,7 +288,12 @@ type RequestSamplingOptions struct {
 	ForceSession     bool          // Whether to force using the specified session
 }
 
-// DefaultSamplingOptions returns the default options for sampling requests
+// DefaultSamplingOptions returns the default options for sampling requests.
+// This function provides a standard configuration for timeout and retry behavior
+// that is suitable for most sampling operations.
+//
+// Returns:
+//   - A RequestSamplingOptions struct with sensible default values
 func DefaultSamplingOptions() RequestSamplingOptions {
 	return RequestSamplingOptions{
 		Timeout:       30 * time.Second,
@@ -203,7 +302,19 @@ func DefaultSamplingOptions() RequestSamplingOptions {
 	}
 }
 
-// RequestSampling sends a sampling request to the client with the default options
+// RequestSampling sends a sampling request to the client with the default options.
+// This is a convenience method that uses default timeout and retry settings
+// for sampling operations.
+//
+// Parameters:
+//   - messages: The conversation history as a slice of SamplingMessage objects
+//   - preferences: The model preferences to guide model selection
+//   - systemPrompt: Optional system instructions for the language model
+//   - maxTokens: The maximum number of tokens to generate in the response
+//
+// Returns:
+//   - A SamplingResponse containing the model's generated content
+//   - An error if the request fails
 func (s *serverImpl) RequestSampling(messages []SamplingMessage, preferences SamplingModelPreferences, systemPrompt string, maxTokens int) (*SamplingResponse, error) {
 	return s.RequestSamplingWithOptions(messages, preferences, systemPrompt, maxTokens, DefaultSamplingOptions())
 }

@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package mcp;
+
+option go_package = "github.com/localrivet/gomcp/transport/grpc/proto";
+
+// TransportConfig defines configuration options for the gRPC transport
+message TransportConfig {
+  // Network configuration
+  string server_address = 1;   // Host:port for the server
+  int32 port = 2;              // Server port (if not specified in address)
+  bool use_tls = 3;            // Whether to use TLS
+  TLSConfig tls_config = 4;    // TLS configuration
+
+  // Connection settings
+  int32 max_connection_attempts = 5;  // Maximum connection attempts before failing
+  int32 connection_timeout_ms = 6;    // Connection timeout in milliseconds
+  int32 keep_alive_interval_ms = 7;   // Keepalive interval in milliseconds
+  int32 keep_alive_timeout_ms = 8;    // Keepalive timeout in milliseconds
+  
+  // Stream settings
+  int32 max_concurrent_streams = 9;   // Maximum number of concurrent streams
+  int32 max_message_size_bytes = 10;  // Maximum message size in bytes
+  int32 initial_stream_buffer_size = 11; // Initial buffer size for streams
+  
+  // Authentication settings
+  AuthConfig auth_config = 12; // Authentication configuration
+  
+  // Retry settings
+  RetryConfig retry_config = 13; // Retry configuration
+  
+  // Advanced options
+  map<string, string> metadata = 14; // Additional metadata to send with requests
+  map<string, string> options = 15;  // Additional gRPC-specific options
+}
+
+// TLSConfig defines TLS configuration options
+message TLSConfig {
+  string cert_file = 1;     // Path to certificate file
+  string key_file = 2;      // Path to key file
+  string ca_file = 3;       // Path to CA certificate file
+  bool verify_client = 4;   // Whether to verify client certificates
+  bool verify_server = 5;   // Whether to verify server certificates
+  string server_name = 6;   // Server name for verification
+  repeated string alpn_protocols = 7; // ALPN protocols
+}
+
+// AuthConfig defines authentication configuration options
+message AuthConfig {
+  enum AuthType {
+    NONE = 0;
+    API_KEY = 1;
+    OAUTH2 = 2;
+    JWT = 3;
+    MTLS = 4;
+    CUSTOM = 5;
+  }
+  
+  AuthType auth_type = 1;     // Authentication type
+  string token = 2;           // Authentication token/key
+  string token_header = 3;    // Header name for token
+  OAuth2Config oauth2 = 4;    // OAuth2 configuration
+  map<string, string> custom_auth = 5; // Custom authentication parameters
+}
+
+// OAuth2Config defines OAuth2 configuration options
+message OAuth2Config {
+  string client_id = 1;
+  string client_secret = 2;
+  string token_url = 3;
+  string refresh_token = 4;
+  repeated string scopes = 5;
+}
+
+// RetryConfig defines retry configuration options
+message RetryConfig {
+  int32 max_retries = 1;           // Maximum number of retries
+  int32 base_delay_ms = 2;         // Base delay in milliseconds
+  int32 max_delay_ms = 3;          // Maximum delay in milliseconds
+  float multiplier = 4;            // Backoff multiplier
+  repeated int32 status_codes = 5; // Status codes to retry on
+} 

@@ -8,6 +8,8 @@ import (
 )
 
 // SamplingConfig defines server-side configuration options for sampling operations.
+// This comprehensive configuration structure controls all aspects of sampling behavior,
+// including rate limiting, timeouts, retry policies, prioritization, and protocol-specific settings.
 type SamplingConfig struct {
 	// Rate limiting settings
 	MaxRequestsPerMinute  int  // Maximum number of sampling requests per minute
@@ -38,6 +40,8 @@ type SamplingConfig struct {
 }
 
 // ProtocolSamplingConfig defines protocol-specific sampling configuration.
+// Different protocol versions have different capabilities and constraints,
+// and this structure captures those version-specific settings.
 type ProtocolSamplingConfig struct {
 	MaxTokens             int
 	SupportedContentTypes map[string]bool
@@ -45,6 +49,11 @@ type ProtocolSamplingConfig struct {
 }
 
 // NewDefaultSamplingConfig creates a new sampling configuration with sensible defaults.
+// This function provides a pre-configured SamplingConfig with reasonable values
+// for all settings, suitable for most server deployments without customization.
+//
+// Returns:
+//   - A pointer to a new SamplingConfig struct with default values
 func NewDefaultSamplingConfig() *SamplingConfig {
 	return &SamplingConfig{
 		MaxRequestsPerMinute:  120,  // 2 requests per second on average
@@ -101,6 +110,9 @@ func NewDefaultSamplingConfig() *SamplingConfig {
 }
 
 // SamplingController manages sampling operations with rate limiting and prioritization.
+// This component enforces rate limits, tracks request statistics, manages prioritization,
+// and validates requests against protocol-specific constraints to ensure reliable
+// and fair resource allocation for sampling operations.
 type SamplingController struct {
 	config          *SamplingConfig
 	requestCount    map[string]int     // Requests per client in current minute
@@ -112,6 +124,8 @@ type SamplingController struct {
 }
 
 // samplingRequest represents a queued sampling request with priority information.
+// This internal structure is used by the SamplingController to track individual
+// requests in the prioritization queue, including metadata needed for scheduling.
 type samplingRequest struct {
 	sessionID    SessionID
 	priority     int
@@ -121,6 +135,16 @@ type samplingRequest struct {
 }
 
 // NewSamplingController creates a new controller with the specified configuration.
+// This function initializes all components of the sampling controller, including
+// the rate limiter and request tracking system, and starts the background goroutine
+// for periodically resetting rate limits.
+//
+// Parameters:
+//   - config: The sampling configuration to use (or nil for default configuration)
+//   - logger: A structured logger for recording controller events
+//
+// Returns:
+//   - A fully initialized SamplingController ready for managing sampling requests
 func NewSamplingController(config *SamplingConfig, logger *slog.Logger) *SamplingController {
 	if config == nil {
 		config = NewDefaultSamplingConfig()
@@ -140,6 +164,9 @@ func NewSamplingController(config *SamplingConfig, logger *slog.Logger) *Samplin
 }
 
 // resetRateLimits resets rate limits every minute.
+// This method runs as a background goroutine and periodically clears the
+// per-client request count map to enforce per-minute rate limits.
+// It continues running until the controller is stopped.
 func (sc *SamplingController) resetRateLimits() {
 	for range sc.rateLimiterTick.C {
 		sc.mu.Lock()
@@ -151,6 +178,14 @@ func (sc *SamplingController) resetRateLimits() {
 }
 
 // CanProcessRequest checks if a sampling request can be processed based on rate limits.
+// This method evaluates both global concurrent request limits and per-client
+// rate limits (if enabled) to determine if a new request should be accepted or rejected.
+//
+// Parameters:
+//   - sessionID: The client session ID for per-client rate limiting
+//
+// Returns:
+//   - true if the request can be processed, false if it would exceed rate limits
 func (sc *SamplingController) CanProcessRequest(sessionID SessionID) bool {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
@@ -176,6 +211,11 @@ func (sc *SamplingController) CanProcessRequest(sessionID SessionID) bool {
 }
 
 // RecordRequest records a sampling request for rate limiting purposes.
+// This method updates the concurrent request counter and per-client request
+// counter (if enabled) when a new sampling request begins processing.
+//
+// Parameters:
+//   - sessionID: The client session ID for per-client rate tracking
 func (sc *SamplingController) RecordRequest(sessionID SessionID) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
@@ -195,6 +235,11 @@ func (sc *SamplingController) RecordRequest(sessionID SessionID) {
 }
 
 // CompleteRequest marks a request as completed, updating rate limiting counters.
+// This method decrements the concurrent request counter when a sampling request
+// finishes processing, regardless of whether it succeeded or failed.
+//
+// Parameters:
+//   - sessionID: The client session ID for the completed request
 func (sc *SamplingController) CompleteRequest(sessionID SessionID) {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
@@ -206,6 +251,15 @@ func (sc *SamplingController) CompleteRequest(sessionID SessionID) {
 }
 
 // GetRequestOptions returns appropriate request options based on configuration.
+// This method calculates timeout and retry parameters for a sampling request
+// based on its priority level, applying adjustments according to the controller's
+// configuration and prioritization settings.
+//
+// Parameters:
+//   - priority: The priority level of the request (1-10, with 10 being highest)
+//
+// Returns:
+//   - RequestSamplingOptions containing configured timeout and retry settings
 func (sc *SamplingController) GetRequestOptions(priority int) RequestSamplingOptions {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
@@ -236,6 +290,8 @@ func (sc *SamplingController) GetRequestOptions(priority int) RequestSamplingOpt
 }
 
 // Stop stops the sampling controller and cleans up resources.
+// This method should be called when shutting down the server to ensure
+// proper cleanup of background goroutines and other resources.
 func (sc *SamplingController) Stop() {
 	if sc.rateLimiterTick != nil {
 		sc.rateLimiterTick.Stop()
@@ -243,6 +299,16 @@ func (sc *SamplingController) Stop() {
 }
 
 // ValidateForProtocol validates sampling parameters against protocol constraints.
+// This method checks that a sampling request conforms to the limitations of
+// the specified protocol version, including token count limits and supported content types.
+//
+// Parameters:
+//   - protocol: The protocol version to validate against
+//   - messages: The conversation messages to validate
+//   - maxTokens: The requested maximum token count
+//
+// Returns:
+//   - nil if valid, or an error describing the validation failure
 func (sc *SamplingController) ValidateForProtocol(protocol string, messages []SamplingMessage, maxTokens int) error {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()
@@ -270,7 +336,15 @@ func (sc *SamplingController) ValidateForProtocol(protocol string, messages []Sa
 }
 
 // detectSamplingCapabilities identifies client capabilities based on protocol version.
-// Private version to avoid conflicting with the existing DetectClientCapabilities in sampling.go
+// This is a private version to avoid conflicting with the existing DetectClientCapabilities
+// in sampling.go. It determines which content types (text, image, audio) are supported
+// in each protocol version.
+//
+// Parameters:
+//   - version: The protocol version to analyze
+//
+// Returns:
+//   - A SamplingCapabilities struct describing the features supported in this version
 func detectSamplingCapabilities(version string) SamplingCapabilities {
 	switch version {
 	case "draft":
@@ -306,6 +380,14 @@ func detectSamplingCapabilities(version string) SamplingCapabilities {
 }
 
 // WithSamplingConfig returns a server option that sets the sampling configuration.
+// This function generates a server configuration option that can be passed
+// to NewServer or ServerBuilder to customize sampling behavior.
+//
+// Parameters:
+//   - config: The sampling configuration to apply to the server
+//
+// Returns:
+//   - An Option function that configures sampling when applied to a server
 func WithSamplingConfig(config *SamplingConfig) Option {
 	return func(s *serverImpl) {
 		// Update server with the sampling configuration
@@ -317,6 +399,10 @@ func WithSamplingConfig(config *SamplingConfig) Option {
 }
 
 // GetConcurrentRequestCount returns the current number of concurrent requests.
+// This method is useful for monitoring and debugging the server's sampling workload.
+//
+// Returns:
+//   - The current count of active sampling requests being processed
 func (sc *SamplingController) GetConcurrentRequestCount() int {
 	sc.mu.RLock()
 	defer sc.mu.RUnlock()

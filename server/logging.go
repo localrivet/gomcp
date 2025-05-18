@@ -6,6 +6,15 @@ import (
 )
 
 // ProcessLoggingSetLevel processes a logging set level request.
+// This method handles client requests to change the server's logging level,
+// allowing dynamic control of log verbosity during server operation.
+//
+// Parameters:
+//   - ctx: The request context containing client information and request details
+//
+// Returns:
+//   - A success response if the log level was updated
+//   - An error if the request is invalid or the operation fails
 func (s *serverImpl) ProcessLoggingSetLevel(ctx *Context) (interface{}, error) {
 	// Parse the request
 	var params struct {

@@ -5,8 +5,15 @@ import (
 )
 
 // Root sets the allowed root paths for the server.
-// This method can be called multiple times to add more roots.
-// Each path will be normalized to an absolute path.
+// Root paths define the file system boundaries that the server is allowed to access,
+// providing a security boundary for file operations. This method can be called
+// multiple times to add more roots, and each path will be normalized to prevent path traversal.
+//
+// Parameters:
+//   - paths: One or more file system paths to register as allowed roots
+//
+// Returns:
+//   - The server instance for method chaining
 func (s *serverImpl) Root(paths ...string) Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -36,6 +43,11 @@ func (s *serverImpl) Root(paths ...string) Server {
 }
 
 // GetRoots returns a copy of the registered root paths.
+// This method provides read-only access to the configured root paths
+// without exposing the internal slice that could be modified.
+//
+// Returns:
+//   - A slice containing all currently registered root paths
 func (s *serverImpl) GetRoots() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -48,6 +60,15 @@ func (s *serverImpl) GetRoots() []string {
 }
 
 // IsPathInRoots checks if the given path is within any of the registered roots.
+// This security method ensures that file operations can only access paths within
+// the authorized boundaries defined by the registered root paths, preventing
+// directory traversal attacks and unauthorized file system access.
+//
+// Parameters:
+//   - path: The path to validate against the registered roots
+//
+// Returns:
+//   - true if the path is within at least one registered root, false otherwise
 func (s *serverImpl) IsPathInRoots(path string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -5,6 +5,9 @@ import (
 )
 
 // ContentItem represents a single content item in a response.
+// In the MCP protocol, responses are structured as collections of typed content items,
+// allowing for rich, multimodal responses that can include text, images, links, files,
+// JSON data, and binary blobs with appropriate metadata.
 type ContentItem struct {
 	Type     string      `json:"type"`
 	Text     string      `json:"text,omitempty"`
@@ -19,6 +22,14 @@ type ContentItem struct {
 }
 
 // TextContent creates a new text content item.
+// This function creates a properly formatted text content item for inclusion
+// in MCP responses, handling edge cases like empty text to ensure protocol compliance.
+//
+// Parameters:
+//   - text: The text content to include in the response
+//
+// Returns:
+//   - A ContentItem of type "text" properly formatted for the MCP protocol
 func TextContent(text string) ContentItem {
 	// If text is empty, set it to a space to satisfy the MCP Inspector validation
 	if text == "" {
@@ -32,6 +43,15 @@ func TextContent(text string) ContentItem {
 }
 
 // ImageContent creates a new image content item.
+// This function creates a properly formatted image content item for inclusion in MCP responses.
+//
+// Parameters:
+//   - imageURL: The URL where the image can be accessed
+//   - altText: Accessibility description of the image content
+//   - optMimeType: Optional MIME type of the image (e.g., "image/png")
+//
+// Returns:
+//   - A ContentItem of type "image" properly formatted for the MCP protocol
 func ImageContent(imageURL string, altText string, optMimeType ...string) ContentItem {
 	content := ContentItem{
 		Type:     "image",
@@ -51,6 +71,14 @@ func ImageContent(imageURL string, altText string, optMimeType ...string) Conten
 }
 
 // LinkContent creates a new link content item.
+// This function creates a properly formatted link content item for inclusion in MCP responses.
+//
+// Parameters:
+//   - url: The target URL of the link
+//   - title: The display text or title for the link
+//
+// Returns:
+//   - A ContentItem of type "link" properly formatted for the MCP protocol
 func LinkContent(url, title string) ContentItem {
 	return ContentItem{
 		Type:  "link",

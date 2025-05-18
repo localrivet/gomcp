@@ -10,9 +10,20 @@ import (
 )
 
 // AsStdio configures the server to use the Standard I/O transport.
-// Optionally specify a log file path to direct all logs there instead of stderr.
-// This is important for MCP communication over stdin/stdout to prevent log messages
-// from corrupting the JSON-RPC protocol.
+// The stdio transport uses standard input and output streams for communication,
+// making it ideal for command-line tools, language server protocols, and
+// child processes that communicate with parent processes.
+//
+// Parameters:
+//   - logFile: Optional path to a file where standard I/O logging should be redirected.
+//     If not provided, logs will be written to io.Discard to prevent log messages
+//     from corrupting the JSON-RPC protocol communication over stdin/stdout.
+//
+// Returns:
+//   - The server instance for method chaining
+//
+// This is the default transport for MCP servers and is particularly suitable for
+// CLI applications and integration with development environments.
 func (s *serverImpl) AsStdio(logFile ...string) Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()

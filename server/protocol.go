@@ -1,4 +1,3 @@
-// Package server provides the server-side implementation of the MCP protocol.
 package server
 
 import (
@@ -6,8 +5,17 @@ import (
 	"fmt"
 )
 
-// ValidateProtocolVersion validates that the requested protocol version is supported
-// and returns the validated version or an error.
+// ValidateProtocolVersion validates that the requested protocol version is supported.
+// It checks if the clientVersion is in the list of supported versions and returns
+// either the validated version or an error. If clientVersion is empty, it returns
+// the server's default version.
+//
+// Parameters:
+//   - clientVersion: The protocol version requested by the client
+//
+// Returns:
+//   - The validated protocol version string
+//   - An error if the requested version is not supported
 func (s *serverImpl) ValidateProtocolVersion(clientVersion string) (string, error) {
 	// If no version specified, use the default version
 	if clientVersion == "" {
@@ -26,7 +34,16 @@ func (s *serverImpl) ValidateProtocolVersion(clientVersion string) (string, erro
 	return validatedVersion, nil
 }
 
-// ExtractProtocolVersion extracts the protocol version from the initialize request
+// ExtractProtocolVersion extracts the protocol version from the initialize request params.
+// It attempts to parse the protocolVersion field from JSON-RPC params, handling
+// different data types and formats that clients might send.
+//
+// Parameters:
+//   - params: The raw JSON params from an initialize request
+//
+// Returns:
+//   - The extracted protocol version as a string, or empty string if not found
+//   - An error if the params cannot be parsed
 func ExtractProtocolVersion(params json.RawMessage) (string, error) {
 	if params == nil {
 		return "", nil

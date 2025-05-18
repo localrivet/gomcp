@@ -10,3 +10,8 @@ release:
 .PHONY: test
 test:
 	go test -v ./...
+
+.PHONY: gen-grpc
+gen-grpc:
+	@echo "Generating gRPC code from Protocol Buffer definitions..."
+	@./transport/grpc/generate.sh

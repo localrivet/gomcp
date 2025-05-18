@@ -236,6 +236,11 @@ GoMCP supports multiple transport layers:
 - **WebSocket**: For web applications with bidirectional communication
 - **Server-Sent Events (SSE)**: For web applications with server-to-client streaming
 - **HTTP**: For simple RESTful interfaces
+- **Unix Socket**: For high-performance interprocess communication
+- **UDP**: For low-overhead, high-throughput communication
+- **MQTT**: For publish/subscribe messaging in IoT applications
+- **NATS**: For cloud-native, high-performance messaging
+- **gRPC**: For service-to-service communication with strong typing
 
 ### Server Management
 

@@ -21,14 +21,19 @@ import (
 // DefaultShutdownTimeout is the default timeout for graceful shutdown
 const DefaultShutdownTimeout = 10 * time.Second
 
+// DefaultWSPath is the default endpoint path for WebSocket connections
+const DefaultWSPath = "/ws"
+
 // Transport implements the transport.Transport interface for WebSocket
 type Transport struct {
 	transport.BaseTransport
-	addr     string
-	server   *http.Server
-	conns    map[net.Conn]bool
-	connsMu  sync.Mutex
-	isClient bool
+	addr       string
+	server     *http.Server
+	conns      map[net.Conn]bool
+	connsMu    sync.Mutex
+	isClient   bool
+	pathPrefix string // Optional prefix for endpoint path (e.g., "/mcp")
+	wsPath     string // Endpoint path for WebSocket connections
 
 	// For client mode
 	clientConn net.Conn
@@ -44,9 +49,11 @@ func NewTransport(addr string) *Transport {
 	isClient := strings.HasPrefix(addr, "ws://") || strings.HasPrefix(addr, "wss://")
 
 	t := &Transport{
-		addr:     addr,
-		conns:    make(map[net.Conn]bool),
-		isClient: isClient,
+		addr:       addr,
+		conns:      make(map[net.Conn]bool),
+		isClient:   isClient,
+		pathPrefix: "", // Empty by default
+		wsPath:     DefaultWSPath,
 	}
 
 	if isClient {
@@ -58,12 +65,57 @@ func NewTransport(addr string) *Transport {
 	return t
 }
 
+// SetPathPrefix sets a prefix for the endpoint path
+// For example, SetPathPrefix("/mcp") will result in endpoint like "/mcp/ws"
+func (t *Transport) SetPathPrefix(prefix string) *Transport {
+	if !t.isClient {
+		// Ensure the prefix starts with a slash if not empty
+		if prefix != "" && !strings.HasPrefix(prefix, "/") {
+			prefix = "/" + prefix
+		}
+		t.pathPrefix = prefix
+	}
+	return t
+}
+
+// SetWSPath sets the path for the WebSocket endpoint
+func (t *Transport) SetWSPath(path string) *Transport {
+	if !t.isClient {
+		// Ensure the path starts with a slash
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		t.wsPath = path
+	}
+	return t
+}
+
+// GetFullWSPath returns the complete path for the WebSocket endpoint
+func (t *Transport) GetFullWSPath() string {
+	if t.pathPrefix == "" {
+		return t.wsPath
+	}
+	return t.pathPrefix + t.wsPath
+}
+
 // Initialize initializes the transport
 func (t *Transport) Initialize() error {
 	if t.isClient {
 		// Connect to the server
 		ctx := context.Background()
-		conn, _, _, err := ws.Dial(ctx, t.addr)
+
+		// Make sure the URL includes the WebSocket path
+		wsURL := t.addr
+		if !strings.HasSuffix(wsURL, DefaultWSPath) &&
+			!strings.Contains(wsURL, DefaultWSPath+"?") {
+			// Append the default WebSocket path if not already present
+			if !strings.HasSuffix(wsURL, "/") {
+				wsURL += "/"
+			}
+			wsURL = strings.TrimSuffix(wsURL, "/") + DefaultWSPath
+		}
+
+		conn, _, _, err := ws.Dial(ctx, wsURL)
 		if err != nil {
 			return err
 		}
@@ -87,7 +139,9 @@ func (t *Transport) Start() error {
 
 	// Server mode
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", t.handleWebSocketRequest)
+
+	// Register WebSocket handler at the configured path
+	mux.HandleFunc(t.GetFullWSPath(), t.handleWebSocketRequest)
 
 	t.server = &http.Server{
 		Addr:    t.addr,

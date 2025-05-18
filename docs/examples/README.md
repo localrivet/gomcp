@@ -11,12 +11,31 @@ This section provides a variety of examples demonstrating common usage patterns 
 
 ## Transport Examples
 
-- [WebSocket Server](websocket-server.md) - Server using WebSocket transport
-- [WebSocket Client](websocket-client.md) - Client using WebSocket transport
-- [HTTP Server](http-server.md) - Server using HTTP transport
-- [HTTP Client](http-client.md) - Client using HTTP transport
-- [SSE Server](sse-server.md) - Server using Server-Sent Events transport
-- [SSE Client](sse-client.md) - Client using Server-Sent Events transport
+All available transports have corresponding examples in the `/examples` directory:
+
+- [HTTP](http-example.md) - Standard request/response over HTTP
+- [WebSocket](websocket-example.md) - Bidirectional communication for web applications
+- [SSE (Server-Sent Events)](sse-example.md) - Server-to-client streaming
+- [Unix Socket](unix-example.md) - High-performance interprocess communication
+- [UDP](udp-example.md) - Low-overhead communication with optional reliability
+- [MQTT](mqtt-example.md) - Publish/subscribe messaging for IoT and lightweight applications
+- [NATS](nats-example.md) - Cloud-native, high-performance messaging
+- [Standard I/O](stdio-example.md) - Communication via stdin/stdout for CLI integration
+- [gRPC](grpc-example.md) - gRPC transport example (client-side, with conceptual server implementation)
+
+Each transport has specific strengths and is suitable for different use cases:
+
+| Transport    | Bidirectional | Streaming |   Connection   | Best For                                        |
+| ------------ | :-----------: | :-------: | :------------: | ----------------------------------------------- |
+| HTTP         |      No       |    No     |   Stateless    | Simple integrations, REST-like services         |
+| WebSocket    |      Yes      |    Yes    |   Persistent   | Web applications, real-time updates             |
+| SSE          |      No       |    Yes    |   Persistent   | Server-to-client updates, monitoring            |
+| Unix Socket  |      Yes      |    Yes    |   Persistent   | High-performance local IPC                      |
+| UDP          |      Yes      |    No     | Connectionless | High-throughput, latency-sensitive applications |
+| MQTT         |      Yes      |    No     |   Persistent   | IoT, telemetry, pub/sub patterns                |
+| NATS         |      Yes      |    Yes    |   Persistent   | Microservices, cloud-native applications        |
+| Standard I/O |      Yes      |    Yes    |     Direct     | CLI tools, child processes                      |
+| gRPC         |      Yes      |    Yes    |   Persistent   | Service-to-service communication                |
 
 ## Advanced Examples
 
@@ -42,11 +61,13 @@ Most examples in this directory can be run directly:
 git clone https://github.com/localrivet/gomcp.git
 cd gomcp/examples
 
-# Run a specific example (e.g., calculator server)
-go run calculator/server/main.go
+# Run a specific example (e.g., HTTP example)
+go run http/http_example.go
 
-# In another terminal, run the client
-go run calculator/client/main.go
+# For examples that require a broker (MQTT, NATS)
+# Make sure you have the broker running first:
+# docker run -d -p 1883:1883 eclipse-mosquitto  # For MQTT
+# docker run -d -p 4222:4222 nats               # For NATS
 ```
 
 ## Example Code Structure

@@ -1,4 +1,3 @@
-// Package server provides the server-side implementation of the MCP protocol.
 package server
 
 import (
@@ -8,6 +7,10 @@ import (
 	"fmt"
 )
 
+// handleMessage processes incoming JSON-RPC messages from clients.
+// It determines if the message is a request or response and routes it appropriately.
+// For requests, it calls HandleMessage to process them; for responses, it calls
+// HandleJSONRPCResponse to match them with pending requests.
 func (s *serverImpl) handleMessage(message []byte) ([]byte, error) {
 	// Check if this is a response (has no "method" field but has "id")
 	var msg map[string]interface{}
@@ -136,8 +139,10 @@ func HandleMessage(s *serverImpl, message []byte) ([]byte, error) {
 	return responseBytes, nil
 }
 
-// HandleMessageWithVersion handles a JSON-RPC message with a forced MCP version
-// This is primarily used for testing
+// HandleMessageWithVersion handles a JSON-RPC message with a forced MCP version.
+// This is primarily used for testing and allows processing messages with a
+// specific protocol version regardless of what was negotiated during initialization.
+// It provides a simplified subset of method handlers compared to the main HandleMessage function.
 func HandleMessageWithVersion(srv Server, message []byte, version string) ([]byte, error) {
 	serverImpl := srv.GetServer()
 	if len(message) == 0 {

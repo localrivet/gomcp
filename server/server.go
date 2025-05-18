@@ -1,3 +1,6 @@
+// Package server provides the server-side implementation of the MCP protocol.
+// It offers a comprehensive API for building and running MCP servers that can
+// register tools, resources, and prompt templates for client interaction.
 package server
 
 import (
@@ -10,7 +13,11 @@ import (
 
 	"github.com/localrivet/gomcp/mcp"
 	"github.com/localrivet/gomcp/transport"
+	"github.com/localrivet/gomcp/transport/mqtt"
+	"github.com/localrivet/gomcp/transport/nats"
 	"github.com/localrivet/gomcp/transport/stdio"
+	"github.com/localrivet/gomcp/transport/udp"
+	"github.com/localrivet/gomcp/transport/unix"
 )
 
 // Server represents an MCP server with fluent configuration methods.
@@ -125,6 +132,13 @@ type Server interface {
 	//  server.AsWebsocket("localhost:8080")
 	AsWebsocket(address string) Server
 
+	// AsWebsocketWithPaths configures the server to use WebSocket for communication with custom paths.
+	//
+	// Example:
+	//
+	//	server.AsWebsocketWithPaths("localhost:8080", "/api/v1", "/socket")
+	AsWebsocketWithPaths(address, pathPrefix, wsPath string) Server
+
 	// AsSSE configures the server to use Server-Sent Events for communication.
 	//
 	// The address parameter specifies the host and port to listen on.
@@ -140,6 +154,125 @@ type Server interface {
 	// Example:
 	//  server.AsHTTP("localhost:8080")
 	AsHTTP(address string) Server
+
+	// AsHTTPWithPaths configures the server to use HTTP for communication with custom paths.
+	//
+	// Example:
+	//
+	//	server.AsHTTPWithPaths("localhost:8080", "/api/v1", "/rpc")
+	AsHTTPWithPaths(address, pathPrefix, apiPath string) Server
+
+	// AsUnixSocket configures the server to use Unix Domain Sockets for communication.
+	//
+	// Unix Domain Sockets provide high-performance inter-process communication for
+	// processes running on the same machine.
+	//
+	// Example:
+	//
+	//	server.AsUnixSocket("/tmp/mcp.sock")
+	//	// With options:
+	//	server.AsUnixSocket("/tmp/mcp.sock", unix.WithPermissions(0600))
+	AsUnixSocket(socketPath string, options ...unix.UnixSocketOption) Server
+
+	// AsUDP configures the server to use UDP for communication.
+	//
+	// UDP provides low-latency communication with minimal overhead,
+	// suitable for high-throughput scenarios where occasional packet
+	// loss is acceptable.
+	//
+	// Example:
+	//
+	//	server.AsUDP(":8080")
+	//	// With options:
+	//	server.AsUDP(":8080", udp.WithMaxPacketSize(2048))
+	AsUDP(address string, options ...udp.UDPOption) Server
+
+	// AsMQTT configures the server to use MQTT for communication
+	// with optional configuration options.
+	//
+	// MQTT provides a publish/subscribe-based communication model,
+	// suitable for IoT applications and distributed systems with
+	// potentially intermittent connectivity.
+	//
+	// Example:
+	//
+	//	server.AsMQTT("tcp://broker.example.com:1883")
+	//	// With options:
+	//	server.AsMQTT("tcp://broker.example.com:1883",
+	//	    mqtt.WithQoS(1),
+	//	    mqtt.WithCredentials("username", "password"),
+	//	    mqtt.WithTopicPrefix("custom/topic/prefix"))
+	AsMQTT(brokerURL string, options ...mqtt.MQTTOption) Server
+
+	// AsMQTTWithClientID configures the server to use MQTT with a specific client ID
+	// along with optional configuration options.
+	//
+	// This is useful when you need to control the client ID to implement
+	// features like persistent sessions or shared subscriptions.
+	//
+	// Example:
+	//
+	//	server.AsMQTTWithClientID("tcp://broker.example.com:1883", "mcp-server-1")
+	//	// With options:
+	//	server.AsMQTTWithClientID("tcp://broker.example.com:1883", "mcp-server-1",
+	//	    mqtt.WithQoS(2),
+	//	    mqtt.WithTopicPrefix("my-org/mcp"))
+	AsMQTTWithClientID(brokerURL string, clientID string, options ...mqtt.MQTTOption) Server
+
+	// AsMQTTWithTLS configures the server to use MQTT with TLS security
+	// along with optional configuration options.
+	//
+	// This is recommended for production environments to encrypt
+	// communications between the server and the MQTT broker.
+	//
+	// Example:
+	//
+	//	server.AsMQTTWithTLS("ssl://broker.example.com:8883",
+	//	    mqtt.TLSConfig{
+	//	        CertFile: "/path/to/cert.pem",
+	//	        KeyFile: "/path/to/key.pem",
+	//	        CAFile: "/path/to/ca.pem",
+	//	    })
+	AsMQTTWithTLS(brokerURL string, tlsConfig mqtt.TLSConfig, options ...mqtt.MQTTOption) Server
+
+	// AsNATS configures the server to use NATS for communication
+	// with optional configuration options.
+	//
+	// NATS provides a high-performance, cloud native communication system,
+	// suitable for microservices architectures, IoT messaging, and
+	// event-driven applications.
+	//
+	// Example:
+	//
+	//	server.AsNATS("nats://localhost:4222")
+	//	// With options:
+	//	server.AsNATS("nats://localhost:4222",
+	//	    nats.WithCredentials("username", "password"),
+	//	    nats.WithSubjectPrefix("custom/subject/prefix"))
+	AsNATS(serverURL string, options ...nats.NATSOption) Server
+
+	// AsNATSWithClientID configures the server to use NATS with a specific client ID
+	// along with optional configuration options.
+	//
+	// Example:
+	//
+	//	server.AsNATSWithClientID("nats://localhost:4222", "mcp-server-1")
+	//	// With options:
+	//	server.AsNATSWithClientID("nats://localhost:4222", "mcp-server-1",
+	//	    nats.WithSubjectPrefix("my-org/mcp"))
+	AsNATSWithClientID(serverURL string, clientID string, options ...nats.NATSOption) Server
+
+	// AsNATSWithToken configures the server to use NATS with token authentication
+	// along with optional configuration options.
+	//
+	// Example:
+	//
+	//	server.AsNATSWithToken("nats://localhost:4222", "s3cr3t-t0k3n")
+	//	// With options:
+	//	server.AsNATSWithToken("nats://localhost:4222", "s3cr3t-t0k3n",
+	//	    nats.WithClientID("mcp-server-1"),
+	//	    nats.WithSubjectPrefix("my-org/mcp"))
+	AsNATSWithToken(serverURL string, token string, options ...nats.NATSOption) Server
 
 	// GetServer returns the underlying server implementation.
 	//

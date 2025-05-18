@@ -1,0 +1,132 @@
+syntax = "proto3";
+
+package mcp;
+
+option go_package = "github.com/localrivet/gomcp/transport/grpc/proto";
+
+// MCP service definition
+service MCP {
+  // Initialize establishes a new MCP session
+  rpc Initialize(InitializeRequest) returns (InitializeResponse) {}
+  
+  // StreamMessages establishes a bidirectional stream for exchanging messages
+  rpc StreamMessages(stream MCPMessage) returns (stream MCPMessage) {}
+  
+  // StreamEvents establishes a unidirectional stream for server to client events
+  rpc StreamEvents(EventStreamRequest) returns (stream EventMessage) {}
+  
+  // ExecuteFunction executes a function and returns the result
+  rpc ExecuteFunction(FunctionRequest) returns (FunctionResponse) {}
+  
+  // EndSession terminates an active MCP session
+  rpc EndSession(EndSessionRequest) returns (EndSessionResponse) {}
+}
+
+// InitializeRequest contains information to initialize a new MCP session
+message InitializeRequest {
+  string client_id = 1;
+  string client_version = 2;
+  map<string, string> capabilities = 3;
+  map<string, string> metadata = 4;
+}
+
+// InitializeResponse contains server response to initialization
+message InitializeResponse {
+  string session_id = 1;
+  string server_version = 2;
+  map<string, string> capabilities = 3;
+  repeated string supported_functions = 4;
+  bool success = 5;
+  ErrorInfo error = 6;
+}
+
+// MCPMessage is a generic MCP protocol message
+message MCPMessage {
+  string id = 1;
+  string session_id = 2;
+  oneof content {
+    string text_content = 3;
+    bytes binary_content = 4;
+    FunctionRequest function_request = 5;
+    FunctionResponse function_response = 6;
+    ErrorInfo error = 7;
+  }
+  map<string, string> metadata = 8;
+  uint64 timestamp = 9; // Unix timestamp in milliseconds
+}
+
+// FunctionRequest contains information to execute a function
+message FunctionRequest {
+  string function_id = 1;
+  map<string, Value> parameters = 2;
+  string request_id = 3;
+  bool is_streaming = 4;
+}
+
+// FunctionResponse contains the result of a function execution
+message FunctionResponse {
+  string function_id = 1;
+  string request_id = 2;
+  oneof result {
+    Value result_value = 3;
+    ErrorInfo error = 4;
+  }
+  bool is_partial = 5; // For streaming responses
+  bool is_final = 6;   // Final message in a streaming response
+}
+
+// Value represents a typed value
+message Value {
+  oneof kind {
+    string string_value = 1;
+    bool bool_value = 2;
+    double number_value = 3;
+    Array array_value = 4;
+    Object object_value = 5;
+    bytes binary_value = 6;
+    bool null_value = 7; // Must be set to true if used
+  }
+}
+
+// Array represents an ordered list of values
+message Array {
+  repeated Value values = 1;
+}
+
+// Object represents a map of string keys to values
+message Object {
+  map<string, Value> fields = 1;
+}
+
+// ErrorInfo contains error details
+message ErrorInfo {
+  int32 code = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// EventStreamRequest initiates an event stream
+message EventStreamRequest {
+  string session_id = 1;
+  repeated string event_types = 2; // Optional filter for specific event types
+}
+
+// EventMessage represents a server-to-client event
+message EventMessage {
+  string event_type = 1;
+  string session_id = 2;
+  map<string, Value> data = 3;
+  uint64 timestamp = 4; // Unix timestamp in milliseconds
+}
+
+// EndSessionRequest terminates an MCP session
+message EndSessionRequest {
+  string session_id = 1;
+  string reason = 2;
+}
+
+// EndSessionResponse confirms session termination
+message EndSessionResponse {
+  bool success = 1;
+  ErrorInfo error = 2;
+} 

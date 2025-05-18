@@ -1,14 +1,14 @@
 {
   "models": {
     "main": {
-      "provider": "anthropic",
-      "modelId": "claude-3-7-sonnet-20250219",
+      "provider": "openai",
+      "modelId": "o4-mini",
       "maxTokens": 120000,
       "temperature": 0.2
     },
     "research": {
-      "provider": "perplexity",
-      "modelId": "deep-research",
+      "provider": "anthropic",
+      "modelId": "claude-3-7-sonnet-20250219",
       "maxTokens": 8700,
       "temperature": 0.1
     },

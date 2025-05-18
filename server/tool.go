@@ -1,4 +1,3 @@
-// Package server provides the server-side implementation of the MCP protocol.
 package server
 
 import (
@@ -12,18 +11,34 @@ import (
 )
 
 // ToolHandler is a function that handles tool calls.
+// It receives a context with request information and arguments,
+// and returns a result and any error that occurred.
 type ToolHandler func(ctx *Context, args interface{}) (interface{}, error)
 
 // Tool represents a tool registered with the server.
+// Tools are functions that can be called by clients connected to the server.
 type Tool struct {
-	Name        string
+	// Name is the unique identifier for the tool
+	Name string
+
+	// Description explains what the tool does
 	Description string
-	Handler     ToolHandler
-	Schema      interface{}
-	Annotations map[string]interface{} // Additional metadata about the tool
+
+	// Handler is the function that executes when the tool is called
+	Handler ToolHandler
+
+	// Schema defines the expected input format for the tool
+	Schema interface{}
+
+	// Annotations contains additional metadata about the tool
+	Annotations map[string]interface{}
 }
 
 // Tool registers a tool with the server.
+// The function returns the server instance to allow for method chaining.
+// The name parameter is used as the identifier for the tool.
+// The description parameter explains what the tool does.
+// The handler parameter is a function that is called when the tool is invoked.
 func (s *serverImpl) Tool(name string, description string, handler interface{}) Server {
 	toolHandler, ok := convertToToolHandler(handler)
 	if !ok {
@@ -46,7 +61,9 @@ func (s *serverImpl) Tool(name string, description string, handler interface{}) 
 	return s
 }
 
-// registerTool registers a tool with the server
+// registerTool registers a tool with the server.
+// It's an internal method used by the Tool method.
+// This method handles validation, duplicate detection, and notifications.
 func (s *serverImpl) registerTool(name, description string, handler ToolHandler, schema map[string]interface{}) *serverImpl {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -91,7 +108,9 @@ func (s *serverImpl) registerTool(name, description string, handler ToolHandler,
 	return s
 }
 
-// ProcessToolList processes a tool list request and returns the list of available tools
+// ProcessToolList processes a tool list request and returns the list of available tools.
+// It supports pagination through an optional cursor parameter.
+// The response includes the tools' name, description, and input schema.
 func (s *serverImpl) ProcessToolList(ctx *Context) (interface{}, error) {
 	// Get pagination cursor if provided
 	var cursor string
@@ -160,7 +179,8 @@ func (s *serverImpl) ProcessToolList(ctx *Context) (interface{}, error) {
 
 // extractSchema extracts a JSON Schema from a handler function.
 // It analyzes the function's parameter structure and generates a schema
-// that describes the expected input format.
+// that describes the expected input format. This is used to inform clients
+// about the structure of arguments the tool expects.
 func extractSchema(handler interface{}) (map[string]interface{}, error) {
 	handlerType := reflect.TypeOf(handler)
 	if handlerType.Kind() != reflect.Func {
@@ -210,6 +230,8 @@ func extractSchema(handler interface{}) (map[string]interface{}, error) {
 }
 
 // executeTool executes a registered tool with the given arguments.
+// It handles argument validation, conversion, and execution of the tool handler.
+// Returns the result from the tool handler or an error if execution fails.
 func (s *serverImpl) executeTool(ctx *Context, name string, args map[string]interface{}) (interface{}, error) {
 	s.mu.RLock()
 	tool, exists := s.tools[name]
@@ -239,6 +261,8 @@ func (s *serverImpl) executeTool(ctx *Context, name string, args map[string]inte
 }
 
 // ProcessToolCall processes a tool call message and returns the result.
+// It executes the requested tool with the provided arguments and formats the response
+// according to the MCP protocol specification.
 func (s *serverImpl) ProcessToolCall(ctx *Context) (interface{}, error) {
 	if ctx.Request == nil || ctx.Request.ToolName == "" {
 		return nil, errors.New("invalid tool call request")
@@ -388,7 +412,8 @@ func (s *serverImpl) ProcessToolCall(ctx *Context) (interface{}, error) {
 	return formattedResult, nil
 }
 
-// SendToolsListChangedNotification sends a notification to inform clients that the tool list has changed
+// SendToolsListChangedNotification sends a notification to inform clients that the tool list has changed.
+// This is called when tools are added, removed, or updated, allowing clients to refresh their available tools.
 func (s *serverImpl) SendToolsListChangedNotification() error {
 	// Create the notification message
 	notification := map[string]interface{}{
@@ -416,7 +441,9 @@ func (s *serverImpl) SendToolsListChangedNotification() error {
 	return nil
 }
 
-// WithAnnotations adds annotations to a tool
+// WithAnnotations adds annotations to a tool.
+// Annotations provide additional metadata that can be used by clients.
+// The function returns the server instance to allow for method chaining.
 func (s *serverImpl) WithAnnotations(toolName string, annotations map[string]interface{}) Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -443,6 +470,9 @@ func (s *serverImpl) WithAnnotations(toolName string, annotations map[string]int
 }
 
 // convertToToolHandler converts a function to a ToolHandler if possible.
+// It uses reflection to validate the function signature and creates a wrapper
+// that adapts the function to the ToolHandler interface. Returns the converted
+// handler and a boolean indicating success.
 func convertToToolHandler(handler interface{}) (ToolHandler, bool) {
 	if handler == nil {
 		return nil, false

@@ -22,6 +22,12 @@ import (
 // DefaultShutdownTimeout is the default timeout for graceful shutdown
 const DefaultShutdownTimeout = 10 * time.Second
 
+// DefaultEventsPath is the default endpoint path for SSE connections
+const DefaultEventsPath = "/sse"
+
+// DefaultMessagePath is the default endpoint path for message posting
+const DefaultMessagePath = "/message"
+
 // Transport implements the transport.Transport interface for SSE
 type Transport struct {
 	transport.BaseTransport
@@ -30,17 +36,21 @@ type Transport struct {
 	isClient bool
 
 	// For server mode
-	clients   map[chan []byte]bool
-	clientsMu sync.Mutex
+	clients     map[string]chan []byte // Map client ID to message channel
+	clientsMu   sync.Mutex
+	pathPrefix  string // Optional prefix for endpoint paths (e.g., "/mcp")
+	eventsPath  string // Endpoint for SSE connections
+	messagePath string // Endpoint for receiving messages
 
 	// For client mode
-	url       string
-	client    *http.Client
-	readCh    chan []byte
-	errCh     chan error
-	doneCh    chan struct{}
-	connected bool
-	connMu    sync.Mutex
+	url          string
+	client       *http.Client
+	readCh       chan []byte
+	errCh        chan error
+	doneCh       chan struct{}
+	connected    bool
+	connMu       sync.Mutex
+	postEndpoint string // Endpoint for sending messages (received from server)
 }
 
 // NewTransport creates a new SSE transport
@@ -48,8 +58,9 @@ func NewTransport(addr string) *Transport {
 	isClient := strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://")
 
 	t := &Transport{
-		addr:     addr,
-		isClient: isClient,
+		addr:       addr,
+		isClient:   isClient,
+		pathPrefix: "", // Empty by default
 	}
 
 	if isClient {
@@ -59,10 +70,58 @@ func NewTransport(addr string) *Transport {
 		t.errCh = make(chan error, 1)
 		t.doneCh = make(chan struct{})
 	} else {
-		t.clients = make(map[chan []byte]bool)
+		t.clients = make(map[string]chan []byte)
+		// Set default endpoint paths
+		t.eventsPath = DefaultEventsPath
+		t.messagePath = DefaultMessagePath
 	}
 
 	return t
+}
+
+// SetPathPrefix sets a prefix for all endpoint paths
+// For example, SetPathPrefix("/mcp") will result in endpoints like "/mcp/sse"
+func (t *Transport) SetPathPrefix(prefix string) *Transport {
+	if !t.isClient {
+		// Ensure the prefix starts with a slash if not empty
+		if prefix != "" && !strings.HasPrefix(prefix, "/") {
+			prefix = "/" + prefix
+		}
+		t.pathPrefix = prefix
+	}
+	return t
+}
+
+// SetEventPath sets the path for the SSE events endpoint
+func (t *Transport) SetEventPath(path string) *Transport {
+	if !t.isClient {
+		t.eventsPath = path
+	}
+	return t
+}
+
+// SetMessagePath sets the path for the message posting endpoint
+func (t *Transport) SetMessagePath(path string) *Transport {
+	if !t.isClient {
+		t.messagePath = path
+	}
+	return t
+}
+
+// GetFullEventsPath returns the complete path for the events endpoint
+func (t *Transport) GetFullEventsPath() string {
+	if t.pathPrefix == "" {
+		return t.eventsPath
+	}
+	return t.pathPrefix + t.eventsPath
+}
+
+// GetFullMessagePath returns the complete path for the message endpoint
+func (t *Transport) GetFullMessagePath() string {
+	if t.pathPrefix == "" {
+		return t.messagePath
+	}
+	return t.pathPrefix + t.messagePath
 }
 
 // Initialize initializes the transport
@@ -88,7 +147,12 @@ func (t *Transport) Start() error {
 
 	// Start the server
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", t.handleSSERequest)
+
+	// SSE endpoint for clients to connect and receive messages
+	mux.HandleFunc(t.GetFullEventsPath(), t.handleSSERequest)
+
+	// HTTP POST endpoint for clients to send messages
+	mux.HandleFunc(t.GetFullMessagePath(), t.handleMessageRequest)
 
 	t.server = &http.Server{
 		Addr:    t.addr,
@@ -120,10 +184,10 @@ func (t *Transport) Stop() error {
 
 	// Notify all clients that we're shutting down
 	t.clientsMu.Lock()
-	for clientCh := range t.clients {
+	for _, clientCh := range t.clients {
 		close(clientCh)
 	}
-	t.clients = make(map[chan []byte]bool)
+	t.clients = make(map[string]chan []byte)
 	t.clientsMu.Unlock()
 
 	// Shutdown the server
@@ -133,21 +197,47 @@ func (t *Transport) Stop() error {
 // Send sends a message
 func (t *Transport) Send(message []byte) error {
 	if t.isClient {
-		return errors.New("send is not supported in client mode for SSE transport")
+		// In client mode, use the POST endpoint received from the server
+		t.connMu.Lock()
+		postEndpoint := t.postEndpoint
+		connected := t.connected
+		t.connMu.Unlock()
+
+		if !connected || postEndpoint == "" {
+			return errors.New("not connected to server or missing POST endpoint")
+		}
+
+		// Send message to server via HTTP POST
+		req, err := http.NewRequest("POST", postEndpoint, bytes.NewReader(message))
+		if err != nil {
+			return err
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := t.client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		}
+
+		return nil
 	}
 
 	// Server mode - send to all clients
 	t.clientsMu.Lock()
 	defer t.clientsMu.Unlock()
 
-	for clientCh := range t.clients {
+	for _, clientCh := range t.clients {
 		select {
 		case clientCh <- message:
 			// Message sent
 		default:
-			// Channel full, remove the client
-			close(clientCh)
-			delete(t.clients, clientCh)
+			// Channel full, message dropped (could implement better handling)
 		}
 	}
 
@@ -178,26 +268,44 @@ func (t *Transport) Receive() ([]byte, error) {
 	}
 }
 
+// generateClientID creates a unique client ID
+func (t *Transport) generateClientID() string {
+	return fmt.Sprintf("client-%d", time.Now().UnixNano())
+}
+
 // handleSSERequest handles incoming SSE connection requests
 func (t *Transport) handleSSERequest(w http.ResponseWriter, r *http.Request) {
+	// Validate Origin header for security
+	origin := r.Header.Get("Origin")
+	if origin != "" {
+		// In a production environment, implement proper origin validation
+		// For now, we'll accept any origin for development purposes
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	}
+
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Generate a unique client ID
+	clientID := t.generateClientID()
 
 	// Create a channel for this client
 	clientCh := make(chan []byte, 10)
 
 	// Register the client
 	t.clientsMu.Lock()
-	t.clients[clientCh] = true
+	t.clients[clientID] = clientCh
 	t.clientsMu.Unlock()
+
+	// Create the full message endpoint for this client
+	messageURL := fmt.Sprintf("http://%s%s", r.Host, t.GetFullMessagePath())
 
 	// Clean up when the client disconnects
 	defer func() {
 		t.clientsMu.Lock()
-		delete(t.clients, clientCh)
+		delete(t.clients, clientID)
 		close(clientCh)
 		t.clientsMu.Unlock()
 	}()
@@ -209,8 +317,8 @@ func (t *Transport) handleSSERequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send initial comment to establish connection
-	fmt.Fprintf(w, ": connected\n\n")
+	// Send initial endpoint event to tell the client where to send messages
+	fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", messageURL)
 	flusher.Flush()
 
 	// Handle client disconnect
@@ -229,9 +337,49 @@ func (t *Transport) handleSSERequest(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Format the message as an SSE event
-			fmt.Fprintf(w, "data: %s\n\n", string(msg))
+			fmt.Fprintf(w, "event: message\ndata: %s\n\n", string(msg))
 			flusher.Flush()
 		}
+	}
+}
+
+// handleMessageRequest handles incoming client messages via HTTP POST
+func (t *Transport) handleMessageRequest(w http.ResponseWriter, r *http.Request) {
+	// Validate method
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Validate content type
+	contentType := r.Header.Get("Content-Type")
+	if !strings.Contains(strings.ToLower(contentType), "application/json") {
+		http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	// Read message
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	// Process the message
+	response, err := t.HandleMessage(body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error processing message: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Send response if available
+	if response != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(response)
+	} else {
+		// No response, return empty success
+		w.WriteHeader(http.StatusOK)
 	}
 }
 
@@ -271,7 +419,21 @@ func (t *Transport) startClientConnection() {
 
 // connectToSSE establishes a connection to the SSE server
 func (t *Transport) connectToSSE() error {
-	req, err := http.NewRequest("GET", t.url, nil)
+	// Connect to the events endpoint
+	eventsURL := t.url
+
+	// Only append the SSE endpoint if the URL doesn't already end with it
+	// or doesn't already contain it as a query parameter
+	if !strings.HasSuffix(eventsURL, DefaultEventsPath) &&
+		!strings.Contains(eventsURL, DefaultEventsPath+"?") {
+		// Append the default events path if not already present
+		if !strings.HasSuffix(eventsURL, "/") {
+			eventsURL += "/"
+		}
+		eventsURL = strings.TrimSuffix(eventsURL, "/") + DefaultEventsPath
+	}
+
+	req, err := http.NewRequest("GET", eventsURL, nil)
 	if err != nil {
 		return err
 	}
@@ -308,22 +470,10 @@ func (t *Transport) connectToSSE() error {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	// Set connected status
-	t.connMu.Lock()
-	t.connected = true
-	t.connMu.Unlock()
-
 	// Parse SSE events
 	reader := bufio.NewReader(resp.Body)
 	var buf bytes.Buffer
-
-	// Send an initial empty message to notify that the connection is established
-	select {
-	case t.readCh <- []byte("connection established"):
-		// Message sent
-	default:
-		// Channel full, continue without blocking
-	}
+	var eventType string
 
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -341,6 +491,12 @@ func (t *Transport) connectToSSE() error {
 			continue
 		}
 
+		// Handle event type
+		if bytes.HasPrefix(line, []byte("event:")) {
+			eventType = string(bytes.TrimSpace(bytes.TrimPrefix(line, []byte("event:"))))
+			continue
+		}
+
 		// Handle data lines
 		if bytes.HasPrefix(line, []byte("data:")) {
 			// Extract the data
@@ -351,39 +507,44 @@ func (t *Transport) connectToSSE() error {
 			// Empty line indicates end of event
 			msg := buf.Bytes()
 
-			// Process the message
-			response, err := t.HandleMessage(msg)
-			if err != nil {
-				// Log error but continue processing
-				continue
-			}
+			// Handle different event types
+			if eventType == "endpoint" {
+				// Store the message endpoint
+				t.connMu.Lock()
+				t.postEndpoint = string(msg)
+				t.connected = true
+				t.connMu.Unlock()
 
-			if response != nil {
-				// We can't send responses in SSE client mode,
-				// but we can deliver them via the readCh
+				// Notify that connection is established
 				select {
-				case t.readCh <- response:
+				case t.readCh <- []byte(`{"connected":true}`):
 					// Message sent
 				default:
-					// Channel full, discard oldest message
-					<-t.readCh
-					t.readCh <- response
+					// Channel full, continue without blocking
 				}
-			} else {
-				// If there's no response from the handler, still send the original message
-				// to the read channel so clients can receive it
-				select {
-				case t.readCh <- msg:
-					// Message sent
-				default:
-					// Channel full, discard oldest message
-					<-t.readCh
-					t.readCh <- msg
+			} else if eventType == "message" || eventType == "" {
+				// Regular message, process it
+				response, err := t.HandleMessage(msg)
+				if err != nil {
+					// Log error but continue processing
+					continue
+				}
+
+				if response != nil {
+					select {
+					case t.readCh <- response:
+						// Message sent
+					default:
+						// Channel full, discard oldest message
+						<-t.readCh
+						t.readCh <- response
+					}
 				}
 			}
 
-			// Reset buffer for next event
+			// Reset buffer and event type for next event
 			buf.Reset()
+			eventType = ""
 		}
 	}
 

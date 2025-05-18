@@ -2,83 +2,136 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 )
 
 // InvalidParametersError represents an error with invalid parameters
+// for prompt rendering or template variable substitution.
 type InvalidParametersError struct {
+	// Message contains the error description
 	Message string
 }
 
+// Error returns the error message string.
+// This method implements the error interface.
 func (e *InvalidParametersError) Error() string {
 	return e.Message
 }
 
-// NewInvalidParametersError creates a new InvalidParametersError
+// NewInvalidParametersError creates a new InvalidParametersError with the given message.
+// This is used when prompt parameters are missing or invalid.
 func NewInvalidParametersError(message string) *InvalidParametersError {
 	return &InvalidParametersError{Message: message}
 }
 
 // ContentType represents the type of content in a prompt message.
+// Different content types have different required fields and rendering behaviors.
 type ContentType string
 
+// Content type constants define the supported content types for prompts.
 const (
-	ContentTypeText     ContentType = "text"
-	ContentTypeImage    ContentType = "image"
-	ContentTypeAudio    ContentType = "audio"
+	// ContentTypeText is used for plain text content
+	ContentTypeText ContentType = "text"
+
+	// ContentTypeImage is used for image content, which requires an imageUrl
+	ContentTypeImage ContentType = "image"
+
+	// ContentTypeAudio is used for audio content, which requires audio data
+	ContentTypeAudio ContentType = "audio"
+
+	// ContentTypeResource is used for referencing resources by URI
 	ContentTypeResource ContentType = "resource"
 )
 
 // PromptContent represents the content of a prompt message.
+// It defines a block of content with a specific type and associated data.
 type PromptContent struct {
-	Type     ContentType            `json:"type"`
-	Text     string                 `json:"text,omitempty"`
-	Data     string                 `json:"data,omitempty"`
-	MimeType string                 `json:"mimeType,omitempty"`
+	// Type specifies the kind of content (text, image, audio, resource)
+	Type ContentType `json:"type"`
+
+	// Text contains the text content when Type is ContentTypeText
+	Text string `json:"text,omitempty"`
+
+	// Data contains binary data encoded as base64 for non-text content
+	Data string `json:"data,omitempty"`
+
+	// MimeType specifies the format of the Data field
+	MimeType string `json:"mimeType,omitempty"`
+
+	// Resource contains resource reference information when Type is ContentTypeResource
 	Resource map[string]interface{} `json:"resource,omitempty"`
 }
 
 // PromptTemplate represents a template for a prompt with a role and content.
+// Templates can contain variables in the format {{variable}} which are
+// substituted when the prompt is rendered.
 type PromptTemplate struct {
-	Role    string
+	// Role defines who is speaking in this template (system, user, assistant)
+	Role string
+
+	// Content contains the template text with variables in {{variable}} format
 	Content string
-	// For storing template variables like {{var}}
+
+	// Variables holds the variable names extracted from the Content
 	Variables []string
 }
 
 // PromptArgument represents an argument for a prompt.
+// Arguments are defined by variable names in prompt templates.
 type PromptArgument struct {
-	Name        string `json:"name"`
+	// Name is the identifier for the argument, matching {{name}} in templates
+	Name string `json:"name"`
+
+	// Description explains what the argument is for
 	Description string `json:"description"`
-	Required    bool   `json:"required"`
+
+	// Required indicates whether the argument must be provided
+	Required bool `json:"required"`
 }
 
 // Prompt represents a prompt registered with the server.
+// A prompt is a named collection of templates that can be rendered with
+// provided variable values.
 type Prompt struct {
-	Name        string
+	// Name is the unique identifier for this prompt
+	Name string
+
+	// Description explains what the prompt is for
 	Description string
-	Templates   []PromptTemplate
-	Arguments   []PromptArgument
+
+	// Templates are the ordered sequence of message templates that make up the prompt
+	Templates []PromptTemplate
+
+	// Arguments are the parameters that can be passed when rendering the prompt
+	Arguments []PromptArgument
 }
 
 // System creates a system prompt template.
+// System prompts provide context or instructions to the language model.
 func System(content string) PromptTemplate {
 	return PromptTemplate{Role: "system", Content: content}
 }
 
 // User creates a user prompt template.
+// User prompts represent messages from the user to the language model.
 func User(content string) PromptTemplate {
 	return PromptTemplate{Role: "user", Content: content}
 }
 
 // Assistant creates an assistant prompt template.
+// Assistant prompts represent previous or example responses from the language model.
 func Assistant(content string) PromptTemplate {
 	return PromptTemplate{Role: "assistant", Content: content}
 }
 
 // Prompt registers a prompt with the server.
+// The function returns the server instance to allow for method chaining.
+// The name parameter is used as the identifier for the prompt.
+// The description parameter explains what the prompt does.
+// The templates parameter is a list of prompt templates that make up the prompt.
 func (s *serverImpl) Prompt(name string, description string, templates ...interface{}) Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -125,6 +178,8 @@ func (s *serverImpl) Prompt(name string, description string, templates ...interf
 }
 
 // extractArguments extracts variable names from templates and creates arguments list.
+// It uses a regular expression to find all {{variable}} patterns in the templates
+// and creates a corresponding list of required arguments.
 func extractArguments(templates []PromptTemplate) []PromptArgument {
 	variableMap := make(map[string]bool)
 	re := regexp.MustCompile(`\{\{([^}]+)\}\}`)
@@ -154,6 +209,9 @@ func extractArguments(templates []PromptTemplate) []PromptArgument {
 }
 
 // ProcessPromptList processes a prompt list request.
+// This method handles requests for listing available prompts, supporting
+// pagination through an optional cursor parameter.
+// The response includes prompt metadata such as name, description, and arguments.
 func (s *serverImpl) ProcessPromptList(ctx *Context) (interface{}, error) {
 	// Get pagination cursor if provided
 	var cursor string
@@ -217,117 +275,115 @@ func (s *serverImpl) ProcessPromptList(ctx *Context) (interface{}, error) {
 	return result, nil
 }
 
-// SubstituteVariables replaces variables in template content with values from variables map.
-// Variables in the template should be in the format {{variable_name}}.
+// SubstituteVariables replaces all {{variable}} patterns in the content string
+// with their corresponding values from the variables map.
+// Returns an error if a required variable is missing from the map.
 func SubstituteVariables(content string, variables map[string]interface{}) (string, error) {
-	if len(variables) == 0 {
-		return content, nil
-	}
-
-	// Regexp to find template variables {{variable}}
 	re := regexp.MustCompile(`\{\{([^}]+)\}\}`)
 
-	// Replace all matches with the corresponding variable values
-	result := re.ReplaceAllStringFunc(content, func(match string) string {
-		// Extract variable name (remove {{ and }})
-		varName := strings.TrimSpace(match[2 : len(match)-2])
+	result := content
+	matches := re.FindAllStringSubmatch(content, -1)
 
-		// Look up variable value
-		if value, exists := variables[varName]; exists {
-			// Convert value to string
-			switch v := value.(type) {
-			case string:
-				return v
-			case nil:
-				return ""
-			default:
-				// Try to convert to JSON
-				if jsonValue, err := json.Marshal(v); err == nil {
-					return string(jsonValue)
-				}
-				// Fallback to string representation
-				return fmt.Sprintf("%v", v)
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+
+		varName := strings.TrimSpace(match[1])
+		varValue, exists := variables[varName]
+
+		if !exists {
+			return "", NewInvalidParametersError(fmt.Sprintf("missing required variable: %s", varName))
+		}
+
+		// Convert the value to string
+		var valueStr string
+		switch v := varValue.(type) {
+		case string:
+			valueStr = v
+		case nil:
+			valueStr = ""
+		default:
+			// Try to JSON encode complex values
+			if jsonBytes, err := json.Marshal(v); err == nil {
+				valueStr = string(jsonBytes)
+			} else {
+				valueStr = fmt.Sprintf("%v", v)
 			}
 		}
 
-		// Variable not found, keep the original template marker
-		return match
-	})
+		// Replace the variable in the template
+		placeholder := match[0]
+		result = strings.Replace(result, placeholder, valueStr, -1)
+	}
 
 	return result, nil
 }
 
-// ProcessPromptRequest processes a prompt request message and returns the result.
+// ProcessPromptRequest processes a prompt request.
+// This method handles requests for rendering a prompt with provided arguments.
+// It looks up the named prompt, validates the arguments, substitutes variables,
+// and returns the rendered prompt as a formatted response.
 func (s *serverImpl) ProcessPromptRequest(ctx *Context) (interface{}, error) {
-	// Extract params from the request
-	if ctx.Request == nil || ctx.Request.Params == nil {
-		return nil, NewInvalidParametersError("invalid prompt request: missing params")
+	// Get the prompt name and arguments from params
+	if ctx.Request.Params == nil {
+		return nil, errors.New("missing params in prompt request")
 	}
 
-	// Parse params
 	var params struct {
 		Name      string                 `json:"name"`
-		Variables map[string]interface{} `json:"variables"`
+		Arguments map[string]interface{} `json:"arguments"`
 	}
-
 	if err := json.Unmarshal(ctx.Request.Params, &params); err != nil {
-		return nil, NewInvalidParametersError(fmt.Sprintf("invalid prompt params: %s", err.Error()))
+		return nil, fmt.Errorf("invalid params: %w", err)
 	}
 
-	if params.Name == "" {
-		return nil, NewInvalidParametersError("invalid prompt request: missing prompt name")
+	promptName := params.Name
+	if promptName == "" {
+		return nil, errors.New("missing prompt name")
 	}
 
-	// Look up the prompt
+	args := params.Arguments
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+
+	// Find the prompt
 	s.mu.RLock()
-	prompt, exists := s.prompts[params.Name]
+	prompt, exists := s.prompts[promptName]
 	s.mu.RUnlock()
 
 	if !exists {
-		return nil, NewInvalidParametersError(fmt.Sprintf("prompt not found: %s", params.Name))
+		return nil, fmt.Errorf("prompt not found: %s", promptName)
 	}
 
 	// Validate required arguments
-	missingArgs := []string{}
 	for _, arg := range prompt.Arguments {
 		if arg.Required {
-			if params.Variables == nil || params.Variables[arg.Name] == nil {
-				missingArgs = append(missingArgs, arg.Name)
+			if _, exists := args[arg.Name]; !exists {
+				return nil, NewInvalidParametersError(fmt.Sprintf("missing required argument: %s", arg.Name))
 			}
 		}
 	}
 
-	if len(missingArgs) > 0 {
-		return nil, NewInvalidParametersError(fmt.Sprintf("missing required arguments: %s", strings.Join(missingArgs, ", ")))
-	}
-
-	// Process the prompt templates by substituting variables
-	var messages []map[string]interface{}
+	// Render the prompt templates
+	renderedTemplates := make([]map[string]interface{}, 0, len(prompt.Templates))
 	for _, template := range prompt.Templates {
 		// Substitute variables in the content
-		content, err := SubstituteVariables(template.Content, params.Variables)
+		renderedContent, err := SubstituteVariables(template.Content, args)
 		if err != nil {
-			return nil, fmt.Errorf("error substituting variables: %w", err)
+			return nil, err
 		}
 
-		// Create content object according to spec
-		contentObj := map[string]interface{}{
-			"type": "text",
-			"text": content,
-		}
-
-		// Add to processed messages
-		messages = append(messages, map[string]interface{}{
+		// Create a message from the template
+		renderedTemplates = append(renderedTemplates, map[string]interface{}{
 			"role":    template.Role,
-			"content": contentObj,
+			"content": renderedContent,
 		})
 	}
 
-	// Return the processed prompt in the format specified by the MCP specification
-	result := map[string]interface{}{
-		"description": prompt.Description,
-		"messages":    messages,
-	}
-
-	return result, nil
+	// Return the rendered prompt
+	return map[string]interface{}{
+		"messages": renderedTemplates,
+	}, nil
 }
