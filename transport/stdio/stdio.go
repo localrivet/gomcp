@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/localrivet/gomcp/transport"
 )
@@ -101,14 +102,35 @@ func (t *Transport) readLoop() {
 			line, err := t.reader.ReadString('\n')
 			if err != nil {
 				if err == io.EOF {
+					// EOF doesn't mean we should exit - the parent process might send more input later
+					// Just sleep a bit to avoid tight loop
 					t.readEOF = true
-					// If we've reached EOF, wait for stop signal
-					<-t.done
-					return
+
+					// Log EOF for debugging
+					if debugHandler := t.GetDebugHandler(); debugHandler != nil {
+						debugHandler("stdio transport: received EOF, waiting for more input")
+					}
+
+					// Sleep briefly to avoid CPU spin
+					select {
+					case <-t.done:
+						return
+					default:
+						// Sleep for a short time then check again
+						time.Sleep(100 * time.Millisecond)
+						continue
+					}
 				}
-				// Log other errors but continue
+
+				// For other errors, log and continue
+				if debugHandler := t.GetDebugHandler(); debugHandler != nil {
+					debugHandler("stdio transport error: " + err.Error())
+				}
 				continue
 			}
+
+			// Reset EOF flag if we got a line
+			t.readEOF = false
 
 			// Trim newline character(s)
 			line = strings.TrimRight(line, "\r\n")
@@ -116,6 +138,15 @@ func (t *Transport) readLoop() {
 			// Skip empty lines
 			if line == "" {
 				continue
+			}
+
+			// Log received message if debug enabled
+			if debugHandler := t.GetDebugHandler(); debugHandler != nil {
+				if len(line) > 100 {
+					debugHandler("stdio transport received: " + line[:100] + "...")
+				} else {
+					debugHandler("stdio transport received: " + line)
+				}
 			}
 
 			// Process the message with the handler

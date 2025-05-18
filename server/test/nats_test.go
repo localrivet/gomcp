@@ -64,7 +64,8 @@ func TestNATSServerWithClientID(t *testing.T) {
 
 	// Create server with NATS transport using the ClientID helper
 	srv := server.NewServer("test-server")
-	srv.AsNATSWithClientID(serverURL, "custom-server-id",
+	srv.AsNATS(serverURL,
+		nats.WithClientID("custom-server-id"),
 		nats.WithSubjectPrefix("mcp-test"),
 	)
 
@@ -82,7 +83,8 @@ func TestNATSServerWithToken(t *testing.T) {
 
 	// Create server with NATS transport using token authentication
 	srv := server.NewServer("test-server")
-	srv.AsNATSWithToken(serverURL, "secret-token",
+	srv.AsNATS(serverURL,
+		nats.WithToken("secret-token"),
 		nats.WithSubjectPrefix("mcp-test"),
 	)
 

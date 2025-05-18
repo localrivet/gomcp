@@ -118,6 +118,14 @@ type Server interface {
 	//  server.Root("/api/v1", "/api/v2")
 	Root(paths ...string) Server
 
+	// IsPathInRoots checks if the given path is within any of the registered roots.
+	// This security method ensures that file operations can only access paths within
+	// the authorized boundaries defined by the registered root paths, preventing
+	// directory traversal attacks and unauthorized file system access.
+	//
+	// Parameters:
+	IsPathInRoots(path string) bool
+
 	// AsHTTP configures the server to use HTTP for communication.
 	//
 	// The address parameter specifies the host and port to listen on.
@@ -603,6 +611,11 @@ func (s *serverImpl) Run() error {
 	s.requestTracker = newRequestTracker()
 	s.mu.Unlock()
 
+	// Set up transport debug logging
+	t.SetDebugHandler(func(message string) {
+		s.logger.Debug("transport", "message", message)
+	})
+
 	// Set the message handler using the non-exported handleMessage method
 	t.SetMessageHandler(s.handleMessage)
 
@@ -616,7 +629,7 @@ func (s *serverImpl) Run() error {
 		return fmt.Errorf("failed to start transport: %w", err)
 	}
 
-	s.logger.Info("server started", "name", s.name)
+	s.logger.Info("server started", "name", s.name, "transport", fmt.Sprintf("%T", t))
 
 	// Block until the transport is done
 	// TODO: Implement proper shutdown handling
