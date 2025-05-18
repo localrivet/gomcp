@@ -126,6 +126,20 @@ type Server interface {
 	// Parameters:
 	IsPathInRoots(path string) bool
 
+	// Logger returns the server's logger.
+	//
+	// This method provides access to the server's configured logger for custom logging needs.
+	// It can be used to log additional information or to reconfigure logging at runtime.
+	//
+	// Example:
+	//
+	//	// Log a custom message with the server's logger
+	//	server.Logger().Info("custom event occurred",
+	//	    "correlation_id", correlationID,
+	//	    "user_id", userID,
+	//	)
+	Logger() *slog.Logger
+
 	// AsHTTP configures the server to use HTTP for communication.
 	//
 	// The address parameter specifies the host and port to listen on.
