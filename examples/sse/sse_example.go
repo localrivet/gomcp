@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,14 +19,22 @@ func main() {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
-	// Define the SSE server address
-	address := "localhost:8082"
+	// Define the SSE server address with a dynamic port
+	// Create a listener on a random available port
+	listener, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		log.Fatalf("Failed to create listener: %v", err)
+	}
+	address := listener.Addr().String()
+	listener.Close() // Close the listener as we just needed it to get a free port
+
+	fmt.Printf("Using dynamic address: %s\n", address)
 
 	// Start the server in a goroutine
 	startServer(address)
 
-	// Wait a bit for the server to initialize
-	time.Sleep(1 * time.Second)
+	// Wait a bit longer for the server to initialize
+	time.Sleep(2 * time.Second)
 
 	// Start the client
 	go runClient(address)
@@ -39,7 +48,7 @@ func startServer(address string) {
 	// Create a new server
 	srv := server.NewServer("sse-example-server")
 
-	// Configure the server with SSE transport
+	// Configure the server with SSE transport (default paths)
 	srv.AsSSE(address)
 
 	// Register a simple echo tool
@@ -62,11 +71,17 @@ func startServer(address string) {
 }
 
 func runClient(address string) {
-	// For SSE transport, we need to format the address as a URL
+	// Use explicit http:// scheme for the SSE server
+	// Do NOT include the /sse path - the transport will handle that
 	serverURL := fmt.Sprintf("http://%s", address)
 
+	fmt.Printf("Connecting to SSE server at URL: %s\n", serverURL)
+
 	// Create a new client with the SSE server URL
-	c, err := client.NewClient(serverURL,
+	// For SSE connections, the oldest protocol version is automatically used
+	// for maximum compatibility, unless explicitly overridden
+	c, err := client.NewClient("",
+		client.WithSSE(serverURL),
 		client.WithConnectionTimeout(5*time.Second),
 		client.WithRequestTimeout(30*time.Second),
 	)
