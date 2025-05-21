@@ -18,6 +18,7 @@ import (
 	"github.com/localrivet/gomcp/transport/stdio"
 	"github.com/localrivet/gomcp/transport/udp"
 	"github.com/localrivet/gomcp/transport/unix"
+	"github.com/localrivet/gomcp/transport/sse"
 )
 
 // Server represents an MCP server with fluent configuration methods.
@@ -159,10 +160,15 @@ type Server interface {
 	// AsSSE configures the server to use Server-Sent Events for communication.
 	//
 	// The address parameter specifies the host and port to listen on.
+	// Optional SSE configuration options can be provided using sse.SSE.With* functions.
 	//
 	// Example:
+	//  // Basic configuration
 	//  server.AsSSE("localhost:8080")
-	AsSSE(address string) Server
+	//
+	//  // With custom paths
+	//  server.AsSSE("localhost:8080", sse.SSE.WithPathPrefix("/api"), sse.SSE.WithEventsPath("/events"))
+	AsSSE(address string, options ...sse.Option) Server
 
 	// AsUnixSocket configures the server to use Unix Domain Sockets for communication.
 	//

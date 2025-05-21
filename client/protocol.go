@@ -80,7 +80,7 @@ func (c *clientImpl) CallTool(name string, args map[string]interface{}) (interfa
 		params["arguments"] = args
 	}
 
-	return c.sendRequest("tool/execute", params)
+	return c.sendRequest("tools/call", params)
 }
 
 // GetResource retrieves a resource from the server.

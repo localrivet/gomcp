@@ -19,6 +19,36 @@ import (
 	"github.com/localrivet/gomcp/transport"
 )
 
+// Option is a function that configures a Transport
+type Option func(*Transport)
+
+// Options provides a fluent API for configuring SSE transport options
+type Options struct{}
+
+// SSE provides access to SSE transport configuration options
+var SSE = Options{}
+
+// WithPathPrefix returns an option that sets the path prefix for all endpoints
+func (Options) WithPathPrefix(prefix string) Option {
+	return func(t *Transport) {
+		t.SetPathPrefix(prefix)
+	}
+}
+
+// WithEventsPath returns an option that sets the path for the SSE events endpoint
+func (Options) WithEventsPath(path string) Option {
+	return func(t *Transport) {
+		t.SetEventPath(path)
+	}
+}
+
+// WithMessagePath returns an option that sets the path for the message posting endpoint
+func (Options) WithMessagePath(path string) Option {
+	return func(t *Transport) {
+		t.SetMessagePath(path)
+	}
+}
+
 // DefaultShutdownTimeout is the default timeout for graceful shutdown
 const DefaultShutdownTimeout = 10 * time.Second
 
@@ -30,7 +60,6 @@ const DefaultMessagePath = "/message"
 
 // Transport implements the transport.Transport interface for SSE
 type Transport struct {
-	transport.BaseTransport
 	addr     string
 	server   *http.Server
 	isClient bool
@@ -50,7 +79,9 @@ type Transport struct {
 	doneCh       chan struct{}
 	connected    bool
 	connMu       sync.Mutex
-	postEndpoint string // Endpoint for sending messages (received from server)
+	postEndpoint string                   // Endpoint for sending messages (received from server)
+	handler      transport.MessageHandler // Handler for processing messages
+	debugHandler transport.DebugHandler
 }
 
 // NewTransport creates a new SSE transport
@@ -204,31 +235,55 @@ func (t *Transport) Send(message []byte) error {
 		t.connMu.Unlock()
 
 		if !connected || postEndpoint == "" {
+			if t.debugHandler != nil {
+				t.debugHandler("SSE transport not connected or missing POST endpoint")
+			}
 			return errors.New("not connected to server or missing POST endpoint")
 		}
 
 		// Send message to server via HTTP POST
 		req, err := http.NewRequest("POST", postEndpoint, bytes.NewReader(message))
 		if err != nil {
+			if t.debugHandler != nil {
+				t.debugHandler(fmt.Sprintf("Failed to create HTTP request: %v", err))
+			}
 			return err
 		}
 
 		req.Header.Set("Content-Type", "application/json")
 
+		if t.debugHandler != nil {
+			t.debugHandler(fmt.Sprintf("Sending message to %s: %s", postEndpoint, string(message)))
+		}
+
 		resp, err := t.client.Do(req)
 		if err != nil {
+			if t.debugHandler != nil {
+				t.debugHandler(fmt.Sprintf("HTTP request failed: %v", err))
+			}
 			return err
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+			errMsg := fmt.Sprintf("unexpected status code: %d", resp.StatusCode)
+			if t.debugHandler != nil {
+				t.debugHandler(errMsg)
+			}
+			return fmt.Errorf(errMsg)
 		}
 
+		if t.debugHandler != nil {
+			t.debugHandler("Message sent successfully")
+		}
 		return nil
 	}
 
 	// Server mode - send to all clients
+	if t.debugHandler != nil {
+		t.debugHandler(fmt.Sprintf("Broadcasting message to %d clients", len(t.clients)))
+	}
+
 	t.clientsMu.Lock()
 	defer t.clientsMu.Unlock()
 
@@ -237,7 +292,9 @@ func (t *Transport) Send(message []byte) error {
 		case clientCh <- message:
 			// Message sent
 		default:
-			// Channel full, message dropped (could implement better handling)
+			if t.debugHandler != nil {
+				t.debugHandler("Client channel full, message dropped")
+			}
 		}
 	}
 
@@ -275,21 +332,26 @@ func (t *Transport) generateClientID() string {
 
 // handleSSERequest handles incoming SSE connection requests
 func (t *Transport) handleSSERequest(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("SERVER DEBUG: New SSE connection from %s\n", r.RemoteAddr)
+
 	// Validate Origin header for security
 	origin := r.Header.Get("Origin")
 	if origin != "" {
 		// In a production environment, implement proper origin validation
 		// For now, we'll accept any origin for development purposes
 		w.Header().Set("Access-Control-Allow-Origin", origin)
+		fmt.Printf("SERVER DEBUG: Origin header: %s\n", origin)
 	}
 
 	// Set headers for SSE
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	fmt.Printf("SERVER DEBUG: Set SSE headers\n")
 
 	// Generate a unique client ID
 	clientID := t.generateClientID()
+	fmt.Printf("SERVER DEBUG: Generated client ID: %s\n", clientID)
 
 	// Create a channel for this client
 	clientCh := make(chan []byte, 10)
@@ -298,12 +360,15 @@ func (t *Transport) handleSSERequest(w http.ResponseWriter, r *http.Request) {
 	t.clientsMu.Lock()
 	t.clients[clientID] = clientCh
 	t.clientsMu.Unlock()
+	fmt.Printf("SERVER DEBUG: Registered client with ID: %s\n", clientID)
 
 	// Create the full message endpoint for this client
 	messageURL := fmt.Sprintf("http://%s%s", r.Host, t.GetFullMessagePath())
+	fmt.Printf("SERVER DEBUG: Message endpoint URL: %s\n", messageURL)
 
 	// Clean up when the client disconnects
 	defer func() {
+		fmt.Printf("SERVER DEBUG: Client %s disconnected\n", clientID)
 		t.clientsMu.Lock()
 		delete(t.clients, clientID)
 		close(clientCh)
@@ -313,32 +378,40 @@ func (t *Transport) handleSSERequest(w http.ResponseWriter, r *http.Request) {
 	// Ensure the connection stays open with a flush
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		fmt.Printf("SERVER DEBUG: Streaming not supported by client\n")
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
 	// Send initial endpoint event to tell the client where to send messages
+	fmt.Printf("SERVER DEBUG: Sending endpoint event: %s\n", messageURL)
 	fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", messageURL)
 	flusher.Flush()
+	fmt.Printf("SERVER DEBUG: Flushed endpoint event\n")
 
 	// Handle client disconnect
 	clientClosed := r.Context().Done()
+	fmt.Printf("SERVER DEBUG: Waiting for client messages or disconnect\n")
 
 	// Send events to the client
 	for {
 		select {
 		case <-clientClosed:
 			// Client disconnected
+			fmt.Printf("SERVER DEBUG: Client context done, client disconnected\n")
 			return
 		case msg, ok := <-clientCh:
 			if !ok {
 				// Channel closed
+				fmt.Printf("SERVER DEBUG: Client channel closed\n")
 				return
 			}
 
 			// Format the message as an SSE event
+			fmt.Printf("SERVER DEBUG: Sending message to client: %s\n", string(msg))
 			fmt.Fprintf(w, "event: message\ndata: %s\n\n", string(msg))
 			flusher.Flush()
+			fmt.Printf("SERVER DEBUG: Flushed message to client\n")
 		}
 	}
 }
@@ -367,10 +440,16 @@ func (t *Transport) handleMessageRequest(w http.ResponseWriter, r *http.Request)
 	defer r.Body.Close()
 
 	// Process the message
-	response, err := t.HandleMessage(body)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error processing message: %v", err), http.StatusInternalServerError)
-		return
+	var response []byte
+	if t.handler != nil {
+		var handlerErr error
+		response, handlerErr = t.handler(body)
+		if handlerErr != nil {
+			http.Error(w, fmt.Sprintf("Error processing message: %v", handlerErr), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		response = []byte(`{"status":"no handler registered"}`)
 	}
 
 	// Send response if available
@@ -433,9 +512,20 @@ func (t *Transport) connectToSSE() error {
 		eventsURL = strings.TrimSuffix(eventsURL, "/") + DefaultEventsPath
 	}
 
+	// Log connection attempt
+	logMsg := fmt.Sprintf("Connecting to SSE server at %s", eventsURL)
+	fmt.Printf("DEBUG: %s\n", logMsg)
+	if t.debugHandler != nil {
+		t.debugHandler(logMsg)
+	}
+
 	req, err := http.NewRequest("GET", eventsURL, nil)
 	if err != nil {
-		return err
+		errMsg := fmt.Sprintf("Failed to create SSE request: %v", err)
+		if t.debugHandler != nil {
+			t.debugHandler(errMsg)
+		}
+		return fmt.Errorf(errMsg)
 	}
 
 	// Set headers for SSE request
@@ -460,14 +550,35 @@ func (t *Transport) connectToSSE() error {
 
 	req = req.WithContext(ctx)
 
+	if t.debugHandler != nil {
+		t.debugHandler("Sending SSE connection request...")
+	}
+	fmt.Printf("DEBUG: Sending SSE request...\n")
+
 	resp, err := t.client.Do(req)
 	if err != nil {
-		return err
+		errMsg := fmt.Sprintf("SSE request failed: %v", err)
+		fmt.Printf("DEBUG: %s\n", errMsg)
+		if t.debugHandler != nil {
+			t.debugHandler(errMsg)
+		}
+		return fmt.Errorf(errMsg)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		errMsg := fmt.Sprintf("SSE request returned status code %d", resp.StatusCode)
+		fmt.Printf("DEBUG: %s\n", errMsg)
+		if t.debugHandler != nil {
+			t.debugHandler(errMsg)
+		}
+		return fmt.Errorf(errMsg)
+	}
+
+	connMsg := "SSE connection established, parsing events"
+	fmt.Printf("DEBUG: %s\n", connMsg)
+	if t.debugHandler != nil {
+		t.debugHandler(connMsg)
 	}
 
 	// Parse SSE events
@@ -479,12 +590,15 @@ func (t *Transport) connectToSSE() error {
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			if err == io.EOF {
+				fmt.Printf("DEBUG: SSE connection closed (EOF)\n")
 				break
 			}
+			fmt.Printf("DEBUG: Error reading SSE stream: %v\n", err)
 			return err
 		}
 
 		line = bytes.TrimSpace(line)
+		fmt.Printf("DEBUG: SSE line received: %s\n", string(line))
 
 		// Skip comment lines
 		if bytes.HasPrefix(line, []byte(":")) {
@@ -494,6 +608,7 @@ func (t *Transport) connectToSSE() error {
 		// Handle event type
 		if bytes.HasPrefix(line, []byte("event:")) {
 			eventType = string(bytes.TrimSpace(bytes.TrimPrefix(line, []byte("event:"))))
+			fmt.Printf("DEBUG: Event type: %s\n", eventType)
 			continue
 		}
 
@@ -503,9 +618,11 @@ func (t *Transport) connectToSSE() error {
 			data := bytes.TrimPrefix(line, []byte("data:"))
 			data = bytes.TrimSpace(data)
 			buf.Write(data)
+			fmt.Printf("DEBUG: Event data: %s\n", string(data))
 		} else if len(line) == 0 && buf.Len() > 0 {
 			// Empty line indicates end of event
 			msg := buf.Bytes()
+			fmt.Printf("DEBUG: Complete event received: %s (type: %s)\n", string(msg), eventType)
 
 			// Handle different event types
 			if eventType == "endpoint" {
@@ -513,24 +630,38 @@ func (t *Transport) connectToSSE() error {
 				t.connMu.Lock()
 				t.postEndpoint = string(msg)
 				t.connected = true
+				fmt.Printf("DEBUG: POST endpoint set to: %s\n", t.postEndpoint)
 				t.connMu.Unlock()
 
-				// Notify that connection is established
+				// Notify that connection is established with an encoded JSON response
+				// that includes both connected status and the endpoint URL
+				jsonResp := fmt.Sprintf(`{"connected":true,"endpoint":"%s"}`, string(msg))
 				select {
-				case t.readCh <- []byte(`{"connected":true}`):
-					// Message sent
+				case t.readCh <- []byte(jsonResp):
+					fmt.Printf("DEBUG: Sent connected notification with endpoint\n")
 				default:
-					// Channel full, continue without blocking
+					fmt.Printf("DEBUG: Connected notification channel full, skipping\n")
 				}
 			} else if eventType == "message" || eventType == "" {
 				// Regular message, process it
-				response, err := t.HandleMessage(msg)
+				if t.handler == nil {
+					fmt.Printf("DEBUG: No message handler registered\n")
+					buf.Reset()
+					eventType = ""
+					continue
+				}
+
+				response, err := t.handler(msg)
 				if err != nil {
+					fmt.Printf("DEBUG: Error handling message: %v\n", err)
 					// Log error but continue processing
+					buf.Reset()
+					eventType = ""
 					continue
 				}
 
 				if response != nil {
+					fmt.Printf("DEBUG: Sending response: %s\n", string(response))
 					select {
 					case t.readCh <- response:
 						// Message sent
@@ -548,5 +679,32 @@ func (t *Transport) connectToSSE() error {
 		}
 	}
 
+	fmt.Printf("DEBUG: SSE connection closed\n")
 	return errors.New("SSE connection closed")
+}
+
+// SetMessageHandler sets the handler for incoming messages
+func (t *Transport) SetMessageHandler(handler transport.MessageHandler) {
+	t.handler = handler
+}
+
+// GetMessageHandler returns the currently set message handler
+func (t *Transport) GetMessageHandler() transport.MessageHandler {
+	return t.handler
+}
+
+// GetAddr returns the transport's address
+func (t *Transport) GetAddr() string {
+	return t.addr
+}
+
+// SetDebugHandler sets a handler for debug messages
+func (t *Transport) SetDebugHandler(handler transport.DebugHandler) {
+	// Store the debug handler for later use
+	t.debugHandler = handler
+}
+
+// GetDebugHandler returns the current debug handler
+func (t *Transport) GetDebugHandler() transport.DebugHandler {
+	return t.debugHandler
 }

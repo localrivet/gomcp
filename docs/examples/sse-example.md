@@ -9,7 +9,7 @@ In this example, we demonstrate:
 - Setting up an MCP server using SSE transport
 - Creating an MCP client that connects to the SSE server
 - Registering and calling a simple echo tool
-- Handling the unidirectional streaming nature of SSE
+- Handling the bidirectional communication pattern with SSE
 
 ## Server Configuration
 
@@ -39,11 +39,15 @@ if err := srv.Run(); err != nil {
 ## Client Configuration
 
 ```go
-// Create a new client with SSE transport
-// For SSE, we format the address as an HTTP URL
+// Use explicit http:// scheme for the SSE server
+// Do NOT include the /sse path - the transport will handle that
 serverURL := fmt.Sprintf("http://%s", address)
 
-c, err := client.NewClient(serverURL,
+// Create a new client with the SSE server URL
+// For SSE connections, the oldest protocol version is automatically used
+// for maximum compatibility, unless explicitly overridden
+c, err := client.NewClient("",
+    client.WithSSE(serverURL),
     client.WithConnectionTimeout(5*time.Second),
     client.WithRequestTimeout(30*time.Second),
 )
@@ -52,7 +56,7 @@ if err != nil {
 }
 defer c.Close()
 
-// Call the echo tool
+// Call the echo tool - connection happens automatically
 echoResult, err := c.CallTool("echo", map[string]interface{}{
     "message": "Hello from SSE client!",
 })
@@ -62,16 +66,21 @@ if err != nil {
 fmt.Printf("Echo result: %v\n", echoResult)
 ```
 
-## How SSE Works
+## How SSE Works in GOMCP
 
-Server-Sent Events is a standard for one-way communication from the server to the client:
+The SSE implementation in GOMCP uses a hybrid approach for bidirectional communication:
 
-1. The client makes an initial HTTP request to the server
-2. The server keeps the connection open and sends events as formatted text messages
-3. The client processes these events as they arrive
-4. If the connection drops, the client automatically attempts to reconnect
+1. The client establishes an SSE connection to the server's events endpoint (typically `/sse`)
+2. The server sends back a message endpoint URL over the SSE connection
+3. The client uses this endpoint URL for sending messages via HTTP POST requests
+4. The server maintains the SSE connection for sending notifications to the client
+5. Client requests receive direct HTTP responses, while server-initiated messages come through the SSE stream
 
-Unlike WebSockets, SSE only allows the server to send data to the client, not vice versa. For client-to-server communication with SSE, regular HTTP requests are used.
+This approach provides several advantages:
+- The server can push notifications to the client in real-time
+- Regular client-to-server communication uses standard HTTP requests
+- The pattern works well with existing web infrastructure and proxies
+- Automatic reconnection is built into the client implementation
 
 ## Advantages of SSE Transport
 
@@ -83,7 +92,7 @@ Unlike WebSockets, SSE only allows the server to send data to the client, not vi
 
 ## Limitations of SSE Transport
 
-- **Unidirectional**: Server-to-client only; requires separate HTTP requests for client-to-server messages
+- **Initial Setup Complexity**: Requires coordination between SSE stream and HTTP endpoints
 - **Connection Limits**: Browsers typically limit concurrent connections to the same domain
 - **Header Limitations**: Cannot set custom headers for reconnection requests in browsers
 - **No Binary Support**: Text-based protocol not optimized for binary data transfer

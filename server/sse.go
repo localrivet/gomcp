@@ -15,62 +15,28 @@ import (
 //
 // Parameters:
 //   - address: The listening address for the server (e.g., ":8080" for all interfaces on port 8080)
+//   - options: Optional configuration options for the SSE transport
 //
 // Returns:
 //   - The server instance for method chaining
-func (s *serverImpl) AsSSE(address string) Server {
+//
+// Example usage:
+//
+//	// Basic usage with default paths
+//	server.AsSSE(":8080")
+//
+//	// With custom path options
+//	server.AsSSE(":8080", sse.SSE.WithPathPrefix("/api/v1"), sse.SSE.WithEventsPath("/events"))
+func (s *serverImpl) AsSSE(address string, options ...sse.Option) Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Create SSE transport with the provided address
 	sseTransport := sse.NewTransport(address)
 
-	// Configure the transport with an empty path prefix by default
-	// Users can set a custom prefix using AsSSEWithPaths if needed
-
-	// Configure the message handler
-	sseTransport.SetMessageHandler(s.handleMessage)
-
-	// Set as the server's transport
-	s.transport = sseTransport
-
-	s.logger.Info("server configured with Server-Sent Events transport",
-		"address", address,
-		"events_endpoint", sseTransport.GetFullEventsPath(),
-		"message_endpoint", sseTransport.GetFullMessagePath())
-	return s
-}
-
-// AsSSEWithPaths configures the server to use the Server-Sent Events transport with custom path configurations.
-//
-// This method allows you to customize the paths used for SSE endpoints:
-//
-// Parameters:
-//   - address: The listening address for the server (e.g., ":8080" for all interfaces on port 8080)
-//   - pathPrefix: Optional prefix for all endpoints (e.g., "/api/v1")
-//   - eventsPath: Custom path for the SSE events endpoint (default is "/sse")
-//   - messagePath: Custom path for the message posting endpoint (default is "/message")
-//
-// Returns:
-//   - The server instance for method chaining
-func (s *serverImpl) AsSSEWithPaths(address, pathPrefix, eventsPath, messagePath string) Server {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Create SSE transport with the provided address
-	sseTransport := sse.NewTransport(address)
-
-	// Configure the transport with custom paths
-	if pathPrefix != "" {
-		sseTransport.SetPathPrefix(pathPrefix)
-	}
-
-	if eventsPath != "" {
-		sseTransport.SetEventPath(eventsPath)
-	}
-
-	if messagePath != "" {
-		sseTransport.SetMessagePath(messagePath)
+	// Apply any provided options
+	for _, option := range options {
+		option(sseTransport)
 	}
 
 	// Configure the message handler

@@ -39,3 +39,6 @@ tasks*/
 /examples/**/*.so
 
 PRD.md
+
+# Specification files (kept locally but not in repo)
+/specification/

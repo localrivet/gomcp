@@ -234,7 +234,11 @@ GoMCP supports multiple transport layers:
 
 - **stdio**: For CLI tools and direct LLM integration
 - **WebSocket**: For web applications with bidirectional communication
-- **Server-Sent Events (SSE)**: For web applications with server-to-client streaming
+- **Server-Sent Events (SSE)**: For web applications with a hybrid communication pattern:
+  - Server-to-client messages use SSE for real-time streaming
+  - Client-to-server messages use HTTP POST requests
+  - The server provides a message endpoint URL via the SSE connection
+  - Ideal for applications needing real-time updates with standard HTTP infrastructure
 - **HTTP**: For simple RESTful interfaces
 - **Unix Socket**: For high-performance interprocess communication
 - **UDP**: For low-overhead, high-throughput communication

@@ -96,10 +96,23 @@ func WithExperimentalCapability(name string, config interface{}) Option {
 	}
 }
 
-// WithProtocolVersion sets the preferred protocol version for the client.
+// WithProtocolVersion sets a specific protocol version for the client to use.
+// This bypasses the normal negotiation process and forces the client to use this version.
+// This is useful for testing or when you know exactly which version the server expects.
 func WithProtocolVersion(version string) Option {
 	return func(c *clientImpl) {
 		c.negotiatedVersion = version
+	}
+}
+
+// WithOldestProtocolVersion sets the client to use the oldest supported protocol version.
+// This is useful for maximum compatibility with servers that might not support newer versions.
+func WithOldestProtocolVersion() Option {
+	return func(c *clientImpl) {
+		// Get the last element in the supported versions slice, which is the oldest
+		if len(mcp.SupportedVersions) > 0 {
+			c.negotiatedVersion = mcp.SupportedVersions[len(mcp.SupportedVersions)-1]
+		}
 	}
 }
 
@@ -186,7 +199,6 @@ func WithServerConfig(configPath string, serverName string) Option {
 		}
 
 		// Copy the internal transport from the registry's client to our client
-		// This allows us to use the process management features while keeping our own client instance
 		clientImpl, ok := client.(*clientImpl)
 		if ok && clientImpl.transport != nil {
 			c.transport = clientImpl.transport

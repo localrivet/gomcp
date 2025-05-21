@@ -200,6 +200,11 @@ func (t *Transport) RegisterAsyncHandler(method string, handler AsyncMessageHand
 	t.asyncHandlers[method] = handler
 }
 
+// GetAddr returns the transport's address
+func (t *Transport) GetAddr() string {
+	return t.addr
+}
+
 // handleHTTPRequest handles incoming HTTP requests
 func (t *Transport) handleHTTPRequest(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST requests for JSON-RPC

@@ -19,8 +19,26 @@ func (c *clientImpl) Connect() error {
 
 	// If no transport has been set, select an appropriate one based on the URL
 	if c.transport == nil {
-		// TODO: Implement transport selection based on URL
-		return errors.New("no transport configured, use WithTransport option")
+		// Select transport based on URL scheme
+		url := c.url
+		switch {
+		case url == "stdio:///" || url == "stdio://" || url == "stdio:":
+			WithStdio()(c)
+		case len(url) > 5 && url[:5] == "http:":
+			WithHTTP(url)(c)
+		case len(url) > 6 && url[:6] == "https:":
+			WithHTTP(url)(c)
+		case len(url) > 3 && url[:3] == "ws:":
+			WithWebsocket(url)(c)
+		case len(url) > 4 && url[:4] == "wss:":
+			WithWebsocket(url)(c)
+		case len(url) > 4 && url[:4] == "sse:":
+			WithSSE(url)(c)
+		case len(url) > 8 && url[:8] == "unix:///":
+			WithUnixSocket(url[8:])(c)
+		default:
+			return errors.New("no transport configured, use WithTransport option")
+		}
 	}
 
 	// Set the timeout on the transport
@@ -46,13 +64,25 @@ func (c *clientImpl) Connect() error {
 
 // initialize performs the initial version negotiation with the server.
 func (c *clientImpl) initialize() error {
+	// Determine which protocol version(s) to send
+	var protocolVersion interface{}
+	
+	// If a negotiated version was already set (via WithProtocolVersion),
+	// use that single version instead of the full array
+	if c.negotiatedVersion != "" {
+		protocolVersion = c.negotiatedVersion
+	} else {
+		// Otherwise use the full list of supported versions
+		protocolVersion = c.versionDetector.Supported
+	}
+	
 	// Create the initialize request
 	initRequest := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"id":      c.generateRequestID(),
 		"method":  "initialize",
 		"params": map[string]interface{}{
-			"protocolVersion": c.versionDetector.Supported,
+			"protocolVersion": protocolVersion,
 			"capabilities":    c.capabilities,
 			"clientInfo": map[string]interface{}{
 				"name":    "GoMCP Client",
@@ -104,16 +134,16 @@ func (c *clientImpl) initialize() error {
 	}
 
 	// Validate the protocol version
-	if _, err := c.versionDetector.ValidateVersion(protocolVersion); err != nil {
+	if _, err := c.versionDetector.ValidateVersion(protocolVersion.(string)); err != nil {
 		return fmt.Errorf("server returned invalid protocol version: %w", err)
 	}
 
-	c.negotiatedVersion = protocolVersion
+	c.negotiatedVersion = protocolVersion.(string)
 	c.initialized = true
 
 	c.logger.Info("initialized client connection",
 		"url", c.url,
-		"protocolVersion", protocolVersion)
+		"protocolVersion", c.negotiatedVersion)
 
 	// Send initialized notification
 	if err := c.sendInitializedNotification(); err != nil {
