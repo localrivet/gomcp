@@ -1,5 +1,69 @@
 # GoMCP Bug Report: server.Context.GetRoots() Returns Empty in Test Environments
 
+## ✅ RESOLVED
+
+**Status:** Fixed in commit 867e23b  
+**Date:** 2025-01-02  
+**Solution:** Enhanced `Context.GetRoots()` and `Context.InRoots()` to support metadata fallback for test environments
+
+### Fix Summary
+
+The issue has been resolved by implementing **Option 1** from the proposed solutions - enhancing `GetRoots()` to check metadata as a fallback for test environments while maintaining full backward compatibility.
+
+#### Changes Made
+
+1. **Enhanced `Context.GetRoots()` method** (`server/context.go`):
+   - First tries MCP session roots (existing behavior)
+   - Falls back to checking `ctx.Metadata["roots"]` for test environments
+   - Returns empty slice if neither source has roots
+
+2. **Enhanced `Context.InRoots()` method** (`server/context.go`):
+   - Uses same fallback logic as `GetRoots()` for consistency
+   - Implements path validation logic when using metadata roots
+   - Maintains security boundaries in all scenarios
+
+3. **Comprehensive test coverage** (`server/test/getrots_fix_test.go`):
+   - Tests metadata fallback functionality
+   - Verifies MCP session roots take priority
+   - Tests workspace path resolution
+   - Validates security boundary enforcement
+
+4. **Demonstration program** (`examples/getrots_demo/`):
+   - Shows the fix working in practice
+   - Demonstrates all key scenarios
+   - Provides before/after comparison
+
+#### Verification
+
+The fix has been verified to:
+- ✅ Enable workspace path resolution in test environments
+- ✅ Maintain MCP session root priority
+- ✅ Preserve backward compatibility
+- ✅ Enforce security boundaries correctly
+- ✅ Follow "one way of doing things" principle
+
+**Test Results:**
+```bash
+# All new tests pass
+go test -v -run TestGetRootsFix
+go test -v -run TestWorkspacePathResolution  
+go test -v -run TestGetPrimaryRootFix
+go test -v -run TestInRootsFix
+
+# Existing tests still pass
+go test -v -run TestContextWorkspaceRoots
+```
+
+**Demo Output:**
+```
+✅ SUCCESS: GetRoots() returns workspace from metadata (bug fixed)
+✅ SUCCESS: Path resolved correctly to workspace
+✅ SUCCESS: InRoots() correctly validates workspace boundaries  
+✅ SUCCESS: MCP session roots take priority over metadata
+```
+
+---
+
 ## Summary
 
 The `server.Context.GetRoots()` method returns an empty slice when called in test environments or when workspace roots are not properly initialized through the MCP protocol, even when roots are provided through other means (e.g., metadata). This breaks workspace path resolution for tools that depend on workspace isolation.
