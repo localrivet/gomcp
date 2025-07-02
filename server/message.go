@@ -178,7 +178,8 @@ func handleSingleMessage(s *serverImpl, message []byte) ([]byte, error) {
 	// Notifications
 	case "notifications/initialized":
 		// The client has finished initialization, process any pending notifications
-		// Run asynchronously to avoid potential deadlocks with mutex acquisition\n\t\tgo s.handleInitializedNotification()
+		// Run asynchronously to avoid potential deadlocks with mutex acquisition
+		go s.handleInitializedNotification()
 		return nil, nil
 	case "notifications/cancelled":
 		// Handle cancellation notification

@@ -36,11 +36,6 @@ func testInitializationSequence(t *testing.T, protocolVersion string) {
 	// Create server
 	srv := server.NewServer("test-init-sequence")
 
-	// Register tools to trigger notifications
-	srv.Tool("test-tool", "Test tool", func(ctx *server.Context, args interface{}) (interface{}, error) {
-		return "ok", nil
-	})
-
 	// Create mock transport to capture all messages
 	transport := NewSequenceCapturingTransport()
 
@@ -64,6 +59,12 @@ func testInitializationSequence(t *testing.T, protocolVersion string) {
 			transport.QueueResponse(response)
 		}
 	})
+
+	// Register tools to trigger notifications AFTER setting up transport
+	srv.Tool("test-tool", "Test tool", func(ctx *server.Context, args interface{}) (interface{}, error) {
+		return "ok", nil
+	})
+	time.Sleep(50 * time.Millisecond) // Allow time for async notification processing
 
 	// Step 1: Send initialize request
 	initRequest := map[string]interface{}{
@@ -151,6 +152,9 @@ func TestConcurrentToolRegistrationRace(t *testing.T) {
 	srv := server.NewServer("test-concurrent-tools")
 	transport := NewSequenceCapturingTransport()
 	serverImpl := srv.GetServer()
+
+	// IMPORTANT: Set the transport on the server so notifications go through our mock
+	serverImpl.SetTransport(transport)
 
 	// Set message handler
 	transport.SetHandler(func(message []byte) {
