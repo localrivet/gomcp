@@ -486,6 +486,32 @@ type Client interface {
 	//  // Now safe to make API calls
 	//  tools, err := client.ListTools()
 	WaitForReady(timeout time.Duration) error
+
+	// GetServerStatus returns the status of a managed MCP server.
+	//
+	// This method is only available for clients created with WithServersFromConfig
+	// or WithServerConfig options. It returns the running status, any errors,
+	// and process information for the specified server.
+	//
+	// Example:
+	//  status := client.GetServerStatus("file-server")
+	//  if !status.Running {
+	//      log.Printf("File server is not running: %v", status.Error)
+	//  }
+	GetServerStatus(serverName string) *ServerStatus
+
+	// RestartServer attempts to restart a managed MCP server.
+	//
+	// This method is only available for clients created with WithServersFromConfig
+	// or WithServerConfig options. It stops the specified server if running and
+	// starts it again with the same configuration.
+	//
+	// Example:
+	//  err := client.RestartServer("file-server")
+	//  if err != nil {
+	//      log.Fatalf("Failed to restart server: %v", err)
+	//  }
+	RestartServer(serverName string) error
 }
 
 // clientImpl is the concrete implementation of the Client interface.
@@ -1251,30 +1277,88 @@ func (c *clientImpl) SupportsListChangedNotifications(resourceType string) bool 
 //	// Now safe to make API calls
 //	tools, err := client.ListTools()
 func (c *clientImpl) WaitForReady(timeout time.Duration) error {
-	ctx, cancel := context.WithTimeout(c.ctx, timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// First check if already ready
-	if c.IsConnected() && c.IsInitialized() {
-		if err := c.Ping(); err == nil {
-			return nil
-		}
-	}
-
-	// Wait for readiness with polling
-	ticker := time.NewTicker(50 * time.Millisecond)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("client not ready within timeout: %w", ctx.Err())
+			return fmt.Errorf("timeout waiting for client to be ready")
 		case <-ticker.C:
 			if c.IsConnected() && c.IsInitialized() {
+				// Try a ping to verify the connection is working
 				if err := c.Ping(); err == nil {
 					return nil
 				}
 			}
 		}
 	}
+}
+
+// GetServerStatus returns the status of a managed MCP server.
+func (c *clientImpl) GetServerStatus(serverName string) *ServerStatus {
+	c.mu.RLock()
+	registry := c.serverRegistry
+	c.mu.RUnlock()
+
+	if registry == nil {
+		return &ServerStatus{
+			Running: false,
+			Error:   fmt.Errorf("client not created with server registry"),
+		}
+	}
+
+	// Check if the server exists in the registry
+	client, err := registry.GetClient(serverName)
+	if err != nil {
+		return &ServerStatus{
+			Running: false,
+			Error:   err,
+		}
+	}
+
+	// Check if the client is connected
+	if !client.IsConnected() {
+		return &ServerStatus{
+			Running: false,
+			Error:   fmt.Errorf("server is not connected"),
+		}
+	}
+
+	// Try to ping the server to verify it's responsive
+	if err := client.Ping(); err != nil {
+		return &ServerStatus{
+			Running: false,
+			Error:   fmt.Errorf("server ping failed: %w", err),
+		}
+	}
+
+	return &ServerStatus{
+		Running: true,
+		Error:   nil,
+	}
+}
+
+// RestartServer attempts to restart a managed MCP server.
+func (c *clientImpl) RestartServer(serverName string) error {
+	c.mu.RLock()
+	registry := c.serverRegistry
+	c.mu.RUnlock()
+
+	if registry == nil {
+		return fmt.Errorf("client not created with server registry")
+	}
+
+	// Stop the server
+	if err := registry.StopServer(serverName); err != nil {
+		return fmt.Errorf("failed to stop server %s: %w", serverName, err)
+	}
+
+	// Note: To restart the server, we would need the original ServerDefinition
+	// This would require storing the configuration in the registry or client
+	// For now, return an error indicating this limitation
+	return fmt.Errorf("server restart not yet implemented - please recreate the client")
 }

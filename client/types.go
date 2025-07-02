@@ -187,6 +187,13 @@ type BatchRequestBuilder struct {
 	nextID   int64
 }
 
+// ServerStatus represents the status of a managed MCP server.
+type ServerStatus struct {
+	Running bool  `json:"running"`
+	Error   error `json:"error,omitempty"`
+	PID     int   `json:"pid,omitempty"`
+}
+
 // AddRequest adds a request to the batch.
 // For requests that expect a response, provide an ID. For notifications, set ID to nil.
 func (b *BatchRequestBuilder) AddRequest(method string, params map[string]interface{}, id interface{}) *BatchRequestBuilder {

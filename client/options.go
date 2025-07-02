@@ -252,3 +252,53 @@ func WithServers(config ServerConfig, serverName string, opts ...ServerConfigOpt
 		}
 	}
 }
+
+// WithServersFromConfig provides server configurations from a loaded config to the client.
+// This allows connecting to multiple servers from a configuration file.
+// The first serverName in the list will be used as the primary transport.
+func WithServersFromConfig(config *ServerConfig, serverNames ...string) Option {
+	return func(c *clientImpl) {
+		if len(serverNames) == 0 {
+			if c.logger != nil {
+				c.logger.Error("No server names provided to WithServersFromConfig")
+			}
+			return
+		}
+
+		// Create a new server registry
+		registry := NewServerRegistry()
+
+		// Apply the config directly
+		if err := registry.ApplyConfig(*config); err != nil {
+			if c.logger != nil {
+				c.logger.Error("Failed to apply server config", "error", err)
+			}
+			return
+		}
+
+		// Use the first server as the primary transport
+		primaryServerName := serverNames[0]
+		client, err := registry.GetClient(primaryServerName)
+		if err != nil {
+			if c.logger != nil {
+				c.logger.Error("Failed to get primary client from registry", "server", primaryServerName, "error", err)
+			}
+			return
+		}
+
+		// Copy the internal transport from the registry's client to our client
+		clientImpl, ok := client.(*clientImpl)
+		if ok && clientImpl.transport != nil {
+			c.transport = clientImpl.transport
+
+			// Store the registry in the client for cleanup during Close()
+			c.serverRegistry = registry
+			c.serverName = primaryServerName
+		} else if c.logger != nil {
+			c.logger.Error("Failed to extract transport from registry client", "server", primaryServerName)
+		}
+
+		// Store references to all requested servers for access via the registry
+		// Additional servers can be accessed through the registry stored in the client
+	}
+}

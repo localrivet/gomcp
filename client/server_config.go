@@ -1065,3 +1065,19 @@ func (r *ServerRegistry) untrackProcess(pid int) {
 		delete(r.spawnedProcesses, pid)
 	}
 }
+
+// LoadServerConfig loads a server configuration from a file and returns the parsed config.
+// This is a standalone function for loading configuration files without creating a registry.
+func LoadServerConfig(path string) (*ServerConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var config ServerConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	return &config, nil
+}

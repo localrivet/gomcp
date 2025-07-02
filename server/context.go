@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/localrivet/gomcp/mcp"
 	"github.com/localrivet/gomcp/util/schema"
@@ -779,9 +781,23 @@ func (c *Context) ValidateToolArgs(toolName string) (interface{}, error) {
 
 // GetRoots returns all registered root paths from the server
 func (c *Context) GetRoots() []string {
+	// First, try MCP session roots (current behavior)
 	if c.server != nil {
-		return c.server.GetRoots()
+		sessionRoots := c.server.GetRoots()
+		if len(sessionRoots) > 0 {
+			return sessionRoots
+		}
 	}
+
+	// Fallback: Check metadata for test environments
+	if c.Metadata != nil {
+		if roots, ok := c.Metadata["roots"]; ok {
+			if rootSlice, ok := roots.([]string); ok {
+				return rootSlice
+			}
+		}
+	}
+
 	return []string{}
 }
 
@@ -796,8 +812,29 @@ func (c *Context) GetPrimaryRoot() string {
 
 // InRoots checks if a path is within any registered root
 func (c *Context) InRoots(path string) bool {
+	// First, try MCP session roots (current behavior)
 	if c.server != nil {
-		return c.server.IsPathInRoots(path)
+		sessionRoots := c.server.GetRoots()
+		if len(sessionRoots) > 0 {
+			return c.server.IsPathInRoots(path)
+		}
 	}
+
+	// Fallback: Check metadata for test environments
+	roots := c.GetRoots() // This will check metadata fallback
+	if len(roots) == 0 {
+		return false
+	}
+
+	// Use the same path checking logic as server.IsPathInRoots
+	normalizedPath := filepath.Clean(path)
+
+	for _, root := range roots {
+		rel, err := filepath.Rel(root, normalizedPath)
+		if err == nil && !filepath.IsAbs(rel) && !strings.HasPrefix(rel, "..") {
+			return true
+		}
+	}
+
 	return false
 }
