@@ -2,13 +2,16 @@
 
 ## ✅ RESOLVED
 
-**Status:** Fixed in commit 867e23b  
+**Status:** Fixed in commits 867e23b and ae86f4e  
 **Date:** 2025-01-02  
-**Solution:** Enhanced `Context.GetRoots()` and `Context.InRoots()` to support metadata fallback for test environments
+**Solution:** Enhanced `Context.GetRoots()` and `Context.InRoots()` to support metadata fallback for test environments, plus fixed MCP notification handling
 
 ### Fix Summary
 
-The issue has been resolved by implementing **Option 1** from the proposed solutions - enhancing `GetRoots()` to check metadata as a fallback for test environments while maintaining full backward compatibility.
+The issues have been resolved through two complementary fixes:
+
+1. **Enhanced GetRoots/InRoots for test environments** (commit 867e23b)
+2. **Fixed MCP notification handling** (commit ae86f4e)
 
 #### Changes Made
 
@@ -18,49 +21,52 @@ The issue has been resolved by implementing **Option 1** from the proposed solut
    - Returns empty slice if neither source has roots
 
 2. **Enhanced `Context.InRoots()` method** (`server/context.go`):
-   - Uses same fallback logic as `GetRoots()` for consistency
-   - Implements path validation logic when using metadata roots
-   - Maintains security boundaries in all scenarios
+   - Uses same fallback logic as GetRoots for consistency
+   - Implements proper path validation for metadata-sourced roots
+   - Maintains security boundaries in all environments
 
-3. **Comprehensive test coverage** (`server/test/getrots_fix_test.go`):
-   - Tests metadata fallback functionality
-   - Verifies MCP session roots take priority
-   - Tests workspace path resolution
-   - Validates security boundary enforcement
+3. **Fixed MCP notification handling** (`server/message.go`):
+   - Fixed accidentally commented out `handleInitializedNotification()` call
+   - Ensures proper MCP specification compliance
+   - Queued notifications are now correctly sent after `notifications/initialized`
 
-4. **Demonstration program** (`examples/getrots_demo/`):
-   - Shows the fix working in practice
-   - Demonstrates all key scenarios
-   - Provides before/after comparison
+#### Test Coverage
 
-#### Verification
+**Comprehensive test suite added** (`server/test/getrots_fix_test.go`):
+- ✅ Test environment metadata fallback
+- ✅ MCP session roots priority
+- ✅ InRoots workspace validation  
+- ✅ Mixed environment scenarios
 
-The fix has been verified to:
-- ✅ Enable workspace path resolution in test environments
-- ✅ Maintain MCP session root priority
-- ✅ Preserve backward compatibility
-- ✅ Enforce security boundaries correctly
-- ✅ Follow "one way of doing things" principle
+**MCP compliance tests fixed**:
+- ✅ TestInitializationSequenceCompliance
+- ✅ TestNotificationTimingRace
+- ✅ TestResourceNotificationSent
+- ✅ TestRootsListMCPCompliance
 
-**Test Results:**
-```bash
-# All new tests pass
-go test -v -run TestGetRootsFix
-go test -v -run TestWorkspacePathResolution  
-go test -v -run TestGetPrimaryRootFix
-go test -v -run TestInRootsFix
+#### Demo Application
 
-# Existing tests still pass
-go test -v -run TestContextWorkspaceRoots
-```
+**Working demonstration** (`examples/getrots_demo/`):
+- Shows GetRoots working in test environments
+- Demonstrates MCP session priority
+- Validates workspace boundary enforcement
+- Confirms path resolution accuracy
 
-**Demo Output:**
-```
-✅ SUCCESS: GetRoots() returns workspace from metadata (bug fixed)
-✅ SUCCESS: Path resolved correctly to workspace
-✅ SUCCESS: InRoots() correctly validates workspace boundaries  
-✅ SUCCESS: MCP session roots take priority over metadata
-```
+### Verification Results
+
+✅ **All project tests pass**  
+✅ **MCP specification compliance verified**  
+✅ **Backward compatibility maintained**  
+✅ **Security boundaries preserved**  
+✅ **Performance impact minimal**
+
+### Key Benefits
+
+- **Test Environment Support**: GetRoots now works properly in test scenarios
+- **MCP Compliance**: Proper notification timing per specification
+- **Workspace Isolation**: Enhanced security for workspace-aware tools  
+- **Backward Compatible**: Existing MCP session behavior unchanged
+- **Performance**: Minimal overhead, efficient fallback logic
 
 ---
 
