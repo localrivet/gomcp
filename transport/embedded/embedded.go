@@ -145,9 +145,14 @@ func (t *Transport) Start() error {
 	// Only start message processing on server transport AND if we have a handler
 	// This avoids consuming messages when tests just want to use Send()/Receive()
 	if t.isServer {
-		// Test if we have a handler by trying to handle an empty message
-		// If no handler is set, HandleMessage will return "no message handler set" error
-		_, err := t.HandleMessage([]byte{})
+		// Check if we have a handler by testing with a minimal valid JSON-RPC message
+		// This avoids the "unexpected end of JSON input" error that occurs when
+		// passing empty bytes to real MCP handlers
+		testMessage := []byte(`{"jsonrpc":"2.0","method":"_test_handler_detection","id":null}`)
+		_, err := t.HandleMessage(testMessage)
+
+		// If we get "no message handler set", then no handler is set
+		// Any other error (including method not found, etc.) means handler exists
 		if err == nil || err.Error() != "no message handler set" {
 			// We have a handler, start processing
 			go t.processMessages()
