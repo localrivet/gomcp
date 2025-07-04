@@ -58,9 +58,15 @@ func TestValidateProtocolVersion(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name:        "valid version - 2025-06-18",
+			version:     "2025-06-18",
+			expected:    "2025-06-18",
+			expectError: false,
+		},
+		{
 			name:        "latest keyword",
 			version:     "latest",
-			expected:    "2025-03-26", // Latest is now 2025-03-26 (first in SupportedVersions)
+			expected:    "2025-06-18", // Latest is now 2025-06-18 (first in SupportedVersions)
 			expectError: false,
 		},
 	}

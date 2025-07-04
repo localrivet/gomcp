@@ -35,13 +35,15 @@ func FormatResourceResponse(uri string, result interface{}, version string) map[
 		return formatResourceV20241105(uri, result)
 	case "2025-03-26":
 		return formatResourceV20250326(uri, result)
+	case "2025-06-18":
+		return formatResourceV20250618(uri, result)
 	case "draft":
-		// For now, draft has the same format as 2025-03-26
+		// For now, draft has the same format as 2025-06-18
 		// In the future, if they diverge, implement a separate formatter
-		return formatResourceV20250326(uri, result)
+		return formatResourceV20250618(uri, result)
 	default:
 		// If version is unknown, use the most recent format
-		return formatResourceV20250326(uri, result)
+		return formatResourceV20250618(uri, result)
 	}
 }
 
@@ -277,6 +279,71 @@ func formatResourceV20241105(uri string, result interface{}) map[string]interfac
 
 // formatResourceV20250326 formats a response for the 2025-03-26 MCP specification
 func formatResourceV20250326(uri string, result interface{}) map[string]interface{} {
+	// Handle specialized resource types first
+	switch v := result.(type) {
+	case TextResource:
+		response := v.ToResourceResponse()
+		return ensureContentsArray(response, uri)
+	case ImageResource:
+		response := v.ToResourceResponse()
+		return ensureContentsArray(response, uri)
+	case LinkResource:
+		response := v.ToResourceResponse()
+		return ensureContentsArray(response, uri)
+	case FileResource:
+		response := v.ToResourceResponse()
+		return ensureContentsArray(response, uri)
+	case JSONResource:
+		response := v.ToResourceResponse()
+		return ensureContentsArray(response, uri)
+	case AudioResource:
+		response := v.ToResourceResponse()
+		return ensureContentsArray(response, uri)
+	}
+
+	// Handle different result types
+	switch v := result.(type) {
+	case string:
+		// Simple text content
+		response := map[string]interface{}{
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": v,
+				},
+			},
+		}
+		return ensureContentsArray(response, uri)
+
+	case map[string]interface{}:
+		// If it already has proper structure, ensure contents array format
+		if _, hasContents := v["contents"]; hasContents {
+			return ensureContentsArray(v, uri)
+		}
+		if _, hasContent := v["content"]; hasContent {
+			return ensureContentsArray(v, uri)
+		}
+
+		// For other maps, preserve them as-is and let ensureContentsArray handle the conversion
+		return ensureContentsArray(v, uri)
+
+	default:
+		// Convert other types to JSON text
+		jsonStr, _ := json.MarshalIndent(v, "", "  ")
+		response := map[string]interface{}{
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": string(jsonStr),
+				},
+			},
+		}
+		return ensureContentsArray(response, uri)
+	}
+}
+
+// formatResourceV20250618 formats a response for the 2025-06-18 MCP specification
+func formatResourceV20250618(uri string, result interface{}) map[string]interface{} {
 	// Handle specialized resource types first
 	switch v := result.(type) {
 	case TextResource:

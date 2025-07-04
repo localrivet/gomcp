@@ -11,7 +11,7 @@ import (
 // TestRootsListMCPCompliance tests that roots/list follows MCP specification
 // across all three protocol versions using the existing server API
 func TestRootsListMCPCompliance(t *testing.T) {
-	versions := []string{"2024-11-05", "2025-03-26", "draft"}
+	versions := []string{"2024-11-05", "2025-03-26", "2025-06-18", "draft"}
 
 	for _, version := range versions {
 		t.Run(version, func(t *testing.T) {

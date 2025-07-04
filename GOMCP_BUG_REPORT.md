@@ -46,7 +46,7 @@ The issues have been resolved through two complementary fixes:
 
 #### Demo Application
 
-**Working demonstration** (`examples/getrots_demo/`):
+**Working demonstration** (`examples/getroots_demo/`):
 - Shows GetRoots working in test environments
 - Demonstrates MCP session priority
 - Validates workspace boundary enforcement

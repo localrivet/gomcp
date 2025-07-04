@@ -1271,6 +1271,7 @@ func TestMCPSpecificationCompliance(t *testing.T) {
 		{"draft", true},
 		{"2024-11-05", false},
 		{"2025-03-26", true},
+		{"2025-06-18", true},
 	}
 
 	for _, tc := range testCases {
