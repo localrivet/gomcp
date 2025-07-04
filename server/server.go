@@ -774,8 +774,10 @@ func (s *serverImpl) ProcessInitialize(ctx *Context) (interface{}, error) {
 		return nil, err
 	}
 
-	// Store the validated protocol version without locking
+	// Store the validated protocol version with minimal locking
+	s.mu.Lock()
 	s.protocolVersion = protocolVersion
+	s.mu.Unlock()
 
 	// Update the transport with the negotiated protocol version
 	if s.transport != nil {
@@ -826,7 +828,9 @@ func (s *serverImpl) ProcessInitialize(ctx *Context) (interface{}, error) {
 
 	// Check if client supports roots capability and mark for fetching via roots/list
 	if clientSupportsRoots(ctx.Request.Params) {
+		s.mu.Lock()
 		s.needsRootFetch = true
+		s.mu.Unlock()
 	}
 
 	// Determine sampling capabilities based on protocol version
@@ -850,8 +854,10 @@ func (s *serverImpl) ProcessInitialize(ctx *Context) (interface{}, error) {
 	}
 	ctx.Metadata["sessionID"] = string(session.ID)
 
-	// For simple implementations that don't track multiple sessions, update the default session without locking
+	// For simple implementations that don't track multiple sessions, update the default session with minimal locking
+	s.mu.Lock()
 	s.defaultSession = session
+	s.mu.Unlock()
 
 	// Log the session creation
 	s.logger.Info("client connected",
@@ -1154,10 +1160,14 @@ func (s *serverImpl) handleInitializedNotification() {
 		s.sendCapabilityNotification("prompts")
 	}
 
-	// Fetch workspace roots if needed (for non-stdio transports)
+	// Fetch workspace roots if needed (for non-stdio transports) with proper locking
 	// Only fetch roots, don't send initial capability notifications
 	// Capability notifications should only be sent when capabilities actually change
-	if s.needsRootFetch {
+	s.mu.RLock()
+	needsRootFetch := s.needsRootFetch
+	s.mu.RUnlock()
+
+	if needsRootFetch {
 		go func() {
 			time.Sleep(50 * time.Millisecond) // Small delay for client readiness
 			s.fetchWorkspaceRoots()
@@ -1575,13 +1585,15 @@ func (s *serverImpl) handleRootsListResponse(requestID int, responseChan chan js
 			rootPaths = append(rootPaths, path)
 		}
 
-		// Update the default session with the workspace roots
+		// Update the default session with the workspace roots (with proper locking)
+		s.mu.Lock()
 		if s.defaultSession != nil {
 			s.defaultSession.ClientInfo.Roots = rootPaths
 			s.logger.Debug("updated session with workspace roots",
 				"count", len(rootPaths),
 				"roots", rootPaths)
 		}
+		s.mu.Unlock()
 
 	case <-timer.C:
 		s.logger.Warn("timeout waiting for roots/list response", "requestId", requestID)

@@ -122,8 +122,14 @@ func (s *serverImpl) Resource(path, description string, handler interface{}) Ser
 	// Mark resources as changed for potential notifications
 	s.capabilityCache.MarkResourcesChanged()
 
+	// Release the lock before sending notification to avoid deadlock
+	s.mu.Unlock()
+
 	// Send simple notification if client is already initialized
 	s.sendCapabilityNotification("resources")
+
+	// Re-acquire lock to satisfy defer unlock
+	s.mu.Lock()
 
 	return s
 }

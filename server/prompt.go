@@ -120,8 +120,14 @@ func (s *serverImpl) Prompt(name string, description string, templates ...Prompt
 	// Mark prompts as changed for potential notifications
 	s.capabilityCache.MarkPromptsChanged()
 
+	// Release the lock before sending notification to avoid deadlock
+	s.mu.Unlock()
+
 	// Send simple notification if client is already initialized
 	s.sendCapabilityNotification("prompts")
+
+	// Re-acquire lock to satisfy defer unlock
+	s.mu.Lock()
 
 	return s
 }

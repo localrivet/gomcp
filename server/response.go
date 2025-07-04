@@ -130,6 +130,7 @@ type InitializeResponse struct {
 	ProtocolVersion string                 `json:"protocolVersion"`
 	ServerInfo      ServerInfo             `json:"serverInfo"`
 	Capabilities    map[string]interface{} `json:"capabilities"`
+	Instructions    string                 `json:"instructions,omitempty"`
 }
 
 // ServerInfo represents server information in initialize responses
@@ -210,12 +211,19 @@ func NewResourceReadResponse(contents []ResourceContent) *ResourceReadResponse {
 }
 
 // NewInitializeResponse creates a new InitializeResponse
-func NewInitializeResponse(protocolVersion string, serverInfo ServerInfo, capabilities map[string]interface{}) *InitializeResponse {
-	return &InitializeResponse{
+func NewInitializeResponse(protocolVersion string, serverInfo ServerInfo, capabilities map[string]interface{}, instructions ...string) *InitializeResponse {
+	response := &InitializeResponse{
 		ProtocolVersion: protocolVersion,
 		ServerInfo:      serverInfo,
 		Capabilities:    capabilities,
 	}
+
+	// Add instructions if provided
+	if len(instructions) > 0 && instructions[0] != "" {
+		response.Instructions = instructions[0]
+	}
+
+	return response
 }
 
 // NewRootsListResponse creates a new RootsListResponse

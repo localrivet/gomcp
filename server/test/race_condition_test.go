@@ -14,6 +14,24 @@ import (
 	"github.com/localrivet/gomcp/transport"
 )
 
+// ThreadSafeBuffer is a thread-safe wrapper around bytes.Buffer
+type ThreadSafeBuffer struct {
+	mu  sync.RWMutex
+	buf bytes.Buffer
+}
+
+func (b *ThreadSafeBuffer) Write(p []byte) (n int, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *ThreadSafeBuffer) String() string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.buf.String()
+}
+
 // TestInitializationSequenceCompliance tests that the server follows proper MCP initialization sequence
 func TestInitializationSequenceCompliance(t *testing.T) {
 	tests := []struct {
@@ -264,7 +282,9 @@ func TestConcurrentToolRegistrationRace(t *testing.T) {
 func TestStdioTransportInitializationRace(t *testing.T) {
 	// Create a buffer to capture stdout
 	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+
+	// Use a thread-safe buffer for stderr to avoid race conditions
+	var stderr ThreadSafeBuffer
 
 	// Create server with stdio transport
 	srv := server.NewServer("test-stdio-race")
@@ -341,6 +361,9 @@ func TestStdioTransportInitializationRace(t *testing.T) {
 			t.Errorf("Line %d is not a valid JSON-RPC 2.0 message: %s", i, string(line))
 		}
 	}
+
+	// Wait a bit longer for any pending goroutines to complete their logging
+	time.Sleep(50 * time.Millisecond)
 
 	// Verify stderr contains debug output (if any)
 	stderrContent := stderr.String()

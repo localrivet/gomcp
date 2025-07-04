@@ -112,18 +112,23 @@ type RPCError struct {
 //   - An error if request parsing fails
 func NewContext(ctx context.Context, requestBytes []byte, server *serverImpl) (*Context, error) {
 	// Create a basic context with the server instance
+	// Get default session with proper locking to avoid race conditions
+	server.mu.RLock()
+	defaultSession := server.defaultSession
+	server.mu.RUnlock()
+
 	reqCtx := &Context{
 		ctx:          ctx,
 		RequestBytes: requestBytes,
 		server:       server,
 		Logger:       server.logger,
 		Metadata:     make(map[string]interface{}),
-		Session:      server.defaultSession, // ✅ Attach the current session
+		Session:      defaultSession, // ✅ Attach the current session
 	}
 
 	// If we have a default session, set the sessionID in metadata
-	if server.defaultSession != nil {
-		reqCtx.Metadata["sessionID"] = string(server.defaultSession.ID)
+	if defaultSession != nil {
+		reqCtx.Metadata["sessionID"] = string(defaultSession.ID)
 	}
 
 	// Parse the request
