@@ -325,10 +325,10 @@ func (t *Transport) GetChannelStats() map[string]int {
 // GetResponseChannel returns the channel for receiving responses (for client use)
 func (t *Transport) GetResponseChannel() <-chan []byte {
 	if t.isServer {
-		// Server should not be reading responses, but if needed, it would read from serverToClient
-		return t.serverToClient
-	} else {
-		// Client reads responses from clientToServer (which is actually the server's serverToClient)
+		// Server should not be reading responses, but if needed, it would read from clientToServer
 		return t.clientToServer
+	} else {
+		// Client reads responses from serverToClient (server sends responses here)
+		return t.serverToClient
 	}
 }
