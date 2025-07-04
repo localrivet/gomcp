@@ -1505,9 +1505,6 @@ func (s *serverImpl) fetchWorkspaceRoots() {
 	if s.requestTracker != nil {
 		responseChan := s.requestTracker.addRequest(requestID)
 
-		// Set up proper timeout handling through the request tracker
-		s.requestTracker.setupTimeout(requestID, 10*time.Second)
-
 		// Handle the response in a goroutine to avoid blocking
 		go s.handleRootsListResponse(requestID, responseChan)
 	}
@@ -1541,10 +1538,10 @@ func (s *serverImpl) fetchWorkspaceRoots() {
 // handleRootsListResponse processes the response to a roots/list request
 // and updates the default session with the workspace roots
 func (s *serverImpl) handleRootsListResponse(requestID int, responseChan chan json.RawMessage) {
-	// Wait for the response - no manual timeout needed, request tracker handles it
+	// Wait for the response - no timeout, just wait for the actual response
 	responseData, ok := <-responseChan
 	if !ok {
-		// Channel was closed, likely due to timeout handled by request tracker
+		// Channel was closed, request was removed
 		s.logger.Debug("roots/list request channel closed", "requestId", requestID)
 		return
 	}

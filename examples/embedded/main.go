@@ -166,6 +166,23 @@ func main() {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
+	// Add workspace roots to the client for testing roots/list functionality
+	fmt.Println("📁 Adding workspace roots to client...")
+	err = mcpClient.AddRoot("/Users/user/workspace", "User Workspace")
+	if err != nil {
+		log.Printf("Warning: Failed to add workspace root: %v", err)
+	}
+
+	err = mcpClient.AddRoot("/Users/user/projects/embedded-demo", "Embedded Demo Project")
+	if err != nil {
+		log.Printf("Warning: Failed to add project root: %v", err)
+	}
+
+	err = mcpClient.AddRoot("/tmp/test-workspace", "Temporary Test Workspace")
+	if err != nil {
+		log.Printf("Warning: Failed to add temp root: %v", err)
+	}
+
 	// Set up a sampling handler to respond to sampling requests from the server
 	mcpClient = mcpClient.WithSamplingHandler(func(params client.SamplingCreateMessageParams) (client.SamplingResponse, error) {
 		fmt.Printf("\n🤖 Server requested sampling with %d messages\n", len(params.Messages))
@@ -340,6 +357,19 @@ func main() {
 	fmt.Println()
 
 	fmt.Println("✅ All tests completed successfully!")
+
+	// Test the roots functionality by displaying the workspace roots
+	fmt.Println("\n🌳 Testing workspace roots functionality...")
+	roots, err := mcpClient.GetRoots()
+	if err != nil {
+		fmt.Printf("   ❌ Failed to get roots: %v\n", err)
+	} else {
+		fmt.Printf("   📁 Found %d workspace roots:\n", len(roots))
+		for i, root := range roots {
+			fmt.Printf("      [%d] %s (%s)\n", i+1, root.Name, root.URI)
+		}
+	}
+
 	fmt.Println("🎉 Embedded transport demonstration finished")
 	fmt.Println()
 
