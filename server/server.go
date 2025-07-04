@@ -1505,6 +1505,9 @@ func (s *serverImpl) fetchWorkspaceRoots() {
 	if s.requestTracker != nil {
 		responseChan := s.requestTracker.addRequest(requestID)
 
+		// Set up proper timeout handling through the request tracker
+		s.requestTracker.setupTimeout(requestID, 10*time.Second)
+
 		// Handle the response in a goroutine to avoid blocking
 		go s.handleRootsListResponse(requestID, responseChan)
 	}
@@ -1538,62 +1541,55 @@ func (s *serverImpl) fetchWorkspaceRoots() {
 // handleRootsListResponse processes the response to a roots/list request
 // and updates the default session with the workspace roots
 func (s *serverImpl) handleRootsListResponse(requestID int, responseChan chan json.RawMessage) {
-	// Wait for the response with a timeout
-	timeout := 10 * time.Second
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
+	// Wait for the response - no manual timeout needed, request tracker handles it
+	responseData, ok := <-responseChan
+	if !ok {
+		// Channel was closed, likely due to timeout handled by request tracker
+		s.logger.Debug("roots/list request channel closed", "requestId", requestID)
+		return
+	}
 
-	select {
-	case responseData := <-responseChan:
-		// Parse the response
-		var response struct {
-			JSONRPC string `json:"jsonrpc"`
-			ID      int    `json:"id"`
-			Result  struct {
-				Roots []struct {
-					URI  string `json:"uri"`
-					Name string `json:"name,omitempty"`
-				} `json:"roots"`
-			} `json:"result,omitempty"`
-			Error *struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-			} `json:"error,omitempty"`
-		}
+	// Parse the response
+	var response struct {
+		JSONRPC string `json:"jsonrpc"`
+		ID      int    `json:"id"`
+		Result  struct {
+			Roots []struct {
+				URI  string `json:"uri"`
+				Name string `json:"name,omitempty"`
+			} `json:"roots"`
+		} `json:"result,omitempty"`
+		Error *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error,omitempty"`
+	}
 
-		if err := json.Unmarshal(responseData, &response); err != nil {
-			s.logger.Error("failed to parse roots/list response", "error", err)
-			return
-		}
+	if err := json.Unmarshal(responseData, &response); err != nil {
+		s.logger.Error("failed to parse roots/list response", "error", err)
+		return
+	}
 
-		// Check for error in response
-		if response.Error != nil {
-			s.logger.Error("received error in roots/list response",
-				"code", response.Error.Code,
-				"message", response.Error.Message)
-			return
-		}
+	// Check for error in response
+	if response.Error != nil {
+		s.logger.Error("received error in roots/list response",
+			"code", response.Error.Code,
+			"message", response.Error.Message)
+		return
+	}
 
-		// Extract root URIs from the response
-		var rootPaths []string
-		for _, root := range response.Result.Roots {
-			// Convert URI to path if needed (e.g., file:///path/to/dir -> /path/to/dir)
-			if path := uriToPath(root.URI); path != "" {
-				rootPaths = append(rootPaths, path)
-			}
-		}
-
-		// Update the default session with the workspace roots using minimal locking
-		// Only lock the specific field we need to update, not the entire server
-		s.updateSessionRoots(rootPaths)
-
-	case <-timer.C:
-		s.logger.Error("failed to handle roots/list request", "error", "context deadline exceeded")
-		// Clean up the request tracker
-		if s.requestTracker != nil {
-			s.requestTracker.removeRequest(requestID)
+	// Extract root URIs from the response
+	var rootPaths []string
+	for _, root := range response.Result.Roots {
+		// Convert URI to path if needed (e.g., file:///path/to/dir -> /path/to/dir)
+		if path := uriToPath(root.URI); path != "" {
+			rootPaths = append(rootPaths, path)
 		}
 	}
+
+	// Update the default session with the workspace roots using minimal locking
+	// Only lock the specific field we need to update, not the entire server
+	s.updateSessionRoots(rootPaths)
 }
 
 // updateSessionRoots updates the session roots with minimal locking
