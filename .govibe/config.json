@@ -1,0 +1,120 @@
+{
+  "models": {
+    "main": {
+      "provider": "anthropic",
+      "modelId": "claude-3-5-sonnet-20241022",
+      "maxTokens": 120000,
+      "temperature": 0.2
+    },
+    "research": {
+      "provider": "openai",
+      "modelId": "gpt-4o-mini",
+      "maxTokens": 120000,
+      "temperature": 0.1
+    },
+    "fallback": {
+      "provider": "google",
+      "modelId": "gemini-2.0-flash-exp",
+      "maxTokens": 120000,
+      "temperature": 0.2
+    }
+  },
+  "global": {
+    "logLevel": "info",
+    "debug": false,
+    "defaultSubtasks": 5,
+    "defaultPriority": "medium",
+    "projectName": "GoVibe",
+    "ollamaBaseUrl": "http://localhost:11434/api",
+    "storageDir": "./storage",
+    "logDir": "./logs",
+    "logNameFormat": "govibe.log",
+    "enableFileLog": true
+  },
+  "server": {
+    "blockedCommands": [
+      "rm",
+      "mkfs",
+      "format",
+      "mount",
+      "umount",
+      "fdisk",
+      "dd",
+      "parted",
+      "diskpart",
+      "sudo",
+      "su",
+      "passwd",
+      "adduser",
+      "useradd",
+      "usermod",
+      "groupadd",
+      "chsh",
+      "visudo",
+      "shutdown",
+      "reboot",
+      "halt",
+      "poweroff",
+      "init",
+      "iptables",
+      "firewall",
+      "netsh",
+      "sfc",
+      "bcdedit",
+      "reg",
+      "net",
+      "sc",
+      "runas",
+      "cipher",
+      "takeown"
+    ],
+    "telemetryEnabled": false,
+    "webEnabled": true,
+    "webPort": 8080,
+    "webHost": "0.0.0.0"
+  },
+  "orchestrator": {
+    "executionMode": "mcp",
+    "maxConcurrentTasks": 10,
+    "maxConcurrentSubtasks": 5,
+    "taskTimeoutMinutes": 30,
+    "subtaskTimeoutMinutes": 10,
+    "pollingIntervalSeconds": 1,
+    "retryAttempts": 3,
+    "retryDelaySeconds": 30,
+    "enableMetrics": true,
+    "enableMonitoringApi": true,
+    "godevtoolsPath": "godevtools",
+    "mcpAgentConfig": {
+      "backend": 3,
+      "database": 1,
+      "devops": 1,
+      "frontend": 2,
+      "security": 1,
+      "testing": 2
+    },
+    "agentModelMapping": {
+      "analysis": "main",
+      "backend": "main",
+      "database": "main",
+      "devops": "research",
+      "documentation": "research",
+      "frontend": "main",
+      "refactor": "main",
+      "security": "main",
+      "testing": "research"
+    },
+    "agentGuidelines": {
+      "analysis": "You are a Senior Software Architect specializing in code analysis, performance profiling, and system optimization. Focus on code quality metrics, performance analysis, and architectural improvements. Use GoDevTools to analyze codebases and provide optimization recommendations.",
+      "backend": "You are a Senior Backend Engineer specializing in Go, APIs, databases, and server-side architecture. Focus on robust, scalable, and performant backend solutions. Use GoDevTools to read/write code, run tests, and manage backend services.",
+      "database": "You are a Senior Database Engineer specializing in database design, optimization, and data management. Focus on efficient schemas, query optimization, and data integrity. Use GoDevTools to manage database migrations, scripts, and data operations.",
+      "devops": "You are a Senior DevOps Engineer specializing in infrastructure, CI/CD, deployment, and operational concerns. Focus on reliable deployments, monitoring, and infrastructure as code. Use GoDevTools to manage deployment scripts, configuration, and operational tasks.",
+      "documentation": "You are a Senior Technical Writer specializing in clear, comprehensive documentation. Focus on API docs, user guides, and code documentation. Use GoDevTools to read code and generate accurate, helpful documentation.",
+      "frontend": "You are a Senior Frontend Engineer specializing in modern web technologies, UI/UX, and client-side architecture. Focus on responsive, accessible, and performant user interfaces. Use GoDevTools to read/write frontend code, run builds, and test UI components.",
+      "refactor": "You are a Senior Software Engineer specializing in code refactoring, technical debt reduction, and code quality improvements. Focus on clean code principles, design patterns, and maintainable architecture. Use GoDevTools to refactor code and improve code quality.",
+      "security": "You are a Senior Security Engineer specializing in application security, vulnerability assessment, and security best practices. Focus on secure code, security testing, and security compliance. Use GoDevTools to analyze code for security issues and implement security measures.",
+      "testing": "You are a Senior QA Engineer and Testing Specialist. Focus on comprehensive testing strategies, test automation, and quality assurance. Use GoDevTools to write tests, run test suites, analyze coverage, and ensure code quality."
+    }
+  },
+  "apiKeys": {}
+}

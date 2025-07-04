@@ -1139,6 +1139,21 @@ func (s *serverImpl) handleInitializedNotification() {
 		}
 	}
 
+	// Send single capability notifications if capabilities exist and were marked as changed
+	// This ensures clients are notified about available capabilities after initialization
+	// Use the existing capability notification system consistently
+	if toolCount > 0 {
+		s.sendCapabilityNotification("tools")
+	}
+
+	if resourceCount > 0 {
+		s.sendCapabilityNotification("resources")
+	}
+
+	if promptCount > 0 {
+		s.sendCapabilityNotification("prompts")
+	}
+
 	// Fetch workspace roots if needed (for non-stdio transports)
 	// Only fetch roots, don't send initial capability notifications
 	// Capability notifications should only be sent when capabilities actually change
@@ -1353,28 +1368,26 @@ func getMapFromInterface(val interface{}) map[string]interface{} {
 func (s *serverImpl) sendCapabilityNotification(capabilityType string) {
 	// Send the appropriate notification without holding any locks
 	// The individual notification methods handle initialization state and queuing
-	go func() {
-		switch capabilityType {
-		case "tools":
-			if err := s.SendToolsListChangedNotification(); err != nil {
-				s.logger.Error("failed to send tools notification", "error", err)
-			} else {
-				s.logger.Debug("sent tools/list_changed notification")
-			}
-		case "resources":
-			if err := s.SendResourcesListChangedNotification(); err != nil {
-				s.logger.Error("failed to send resources notification", "error", err)
-			} else {
-				s.logger.Debug("sent resources/list_changed notification")
-			}
-		case "prompts":
-			if err := s.SendPromptsListChangedNotification(); err != nil {
-				s.logger.Error("failed to send prompts notification", "error", err)
-			} else {
-				s.logger.Debug("sent prompts/list_changed notification")
-			}
+	switch capabilityType {
+	case "tools":
+		if err := s.SendToolsListChangedNotification(); err != nil {
+			s.logger.Error("failed to send tools notification", "error", err)
+		} else {
+			s.logger.Debug("sent tools/list_changed notification")
 		}
-	}()
+	case "resources":
+		if err := s.SendResourcesListChangedNotification(); err != nil {
+			s.logger.Error("failed to send resources notification", "error", err)
+		} else {
+			s.logger.Debug("sent resources/list_changed notification")
+		}
+	case "prompts":
+		if err := s.SendPromptsListChangedNotification(); err != nil {
+			s.logger.Error("failed to send prompts notification", "error", err)
+		} else {
+			s.logger.Debug("sent prompts/list_changed notification")
+		}
+	}
 }
 
 // extractStdioSessionData extracts session environment variables from the server's process environment

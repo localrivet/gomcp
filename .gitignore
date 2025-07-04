@@ -42,3 +42,6 @@ node_modules/
 specification/
 .taskmaster
 GOMCP_FEATURE_REQUEST.md
+
+test_govibe_stdio.sh
+test_mcp_handshake.sh

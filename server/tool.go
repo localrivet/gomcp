@@ -278,8 +278,9 @@ func (s *serverImpl) registerTool(name string, description string, handler inter
 	// Mark tools as changed for potential notifications
 	s.capabilityCache.MarkToolsChanged()
 
-	// Send simple notification if client is already initialized
-	s.sendCapabilityNotification("tools")
+	// Don't send immediate notification - let the capability cache handle batching
+	// This prevents sending one notification per tool registration
+	// The notification will be sent when the client is initialized or when explicitly requested
 
 	s.logger.Debug("tool registered", "name", name, "description", description)
 }
