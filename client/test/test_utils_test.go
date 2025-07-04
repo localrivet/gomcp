@@ -264,9 +264,7 @@ func TestMockTransport(t *testing.T) {
 	mock := NewMockTransport()
 
 	// Set the Connected property to true so we don't get "connection closed" errors
-	mock.mu.Lock()
 	mock.Connected = true
-	mock.mu.Unlock()
 
 	// Prepare response data
 	responseData := []byte(`{"jsonrpc":"2.0","id":1,"result":{"success":true}}`)

@@ -3,6 +3,7 @@ package embedded
 import (
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -80,23 +81,29 @@ func TestInitializeAndStart(t *testing.T) {
 }
 
 func TestSendReceive(t *testing.T) {
+	t.Logf("🔧 Creating transport pair...")
 	server, client := NewTransportPair()
 
 	// Initialize and start both
+	t.Logf("🔧 Initializing server...")
 	if err := server.Initialize(); err != nil {
 		t.Fatalf("Server initialize failed: %v", err)
 	}
+	t.Logf("🔧 Initializing client...")
 	if err := client.Initialize(); err != nil {
 		t.Fatalf("Client initialize failed: %v", err)
 	}
+	t.Logf("🔧 Starting server...")
 	if err := server.Start(); err != nil {
 		t.Fatalf("Server start failed: %v", err)
 	}
+	t.Logf("🔧 Starting client...")
 	if err := client.Start(); err != nil {
 		t.Fatalf("Client start failed: %v", err)
 	}
 
 	defer func() {
+		t.Logf("🔧 Stopping transports...")
 		server.Stop()
 		client.Stop()
 	}()
@@ -104,16 +111,19 @@ func TestSendReceive(t *testing.T) {
 	// Test client to server communication
 	testMessage := []byte("Hello from client")
 
+	t.Logf("🔧 Sending message from client...")
 	if err := client.Send(testMessage); err != nil {
 		t.Errorf("Client send failed: %v", err)
 	}
 
+	t.Logf("🔧 Waiting for server to receive message...")
 	// Server should receive the message
 	received, err := server.Receive()
 	if err != nil {
 		t.Errorf("Server receive failed: %v", err)
 	}
 
+	t.Logf("🔧 Received: %s", string(received))
 	if string(received) != string(testMessage) {
 		t.Errorf("Expected %s, got %s", string(testMessage), string(received))
 	}
@@ -122,10 +132,10 @@ func TestSendReceive(t *testing.T) {
 func TestMessageHandler(t *testing.T) {
 	server, client := NewTransportPair()
 
-	// Set up echo handler on server
-	var handlerCalled bool
+	// Set up echo handler on server - use atomic for race-free access
+	var handlerCalled atomic.Bool
 	server.SetMessageHandler(func(message []byte) ([]byte, error) {
-		handlerCalled = true
+		handlerCalled.Store(true)
 		// Echo the message back
 		return message, nil
 	})
@@ -150,7 +160,7 @@ func TestMessageHandler(t *testing.T) {
 	// Give some time for message processing
 	time.Sleep(50 * time.Millisecond)
 
-	if !handlerCalled {
+	if !handlerCalled.Load() {
 		t.Error("Message handler was not called")
 	}
 

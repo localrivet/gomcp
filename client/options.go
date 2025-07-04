@@ -62,7 +62,7 @@ func WithRoots(roots []Root) Option {
 			}
 		}()
 		// Enable roots capability if roots are provided
-		c.capabilities.Roots.ListChanged = true
+		c.capabilities.Roots.ListChanged.Store(true)
 	}
 }
 
@@ -70,7 +70,7 @@ func WithRoots(roots []Root) Option {
 func WithRootsCapability(enabled bool, listChanged bool) Option {
 	return func(c *clientImpl) {
 		if enabled {
-			c.capabilities.Roots.ListChanged = listChanged
+			c.capabilities.Roots.ListChanged.Store(listChanged)
 		} else {
 			// Clear roots capability
 			c.capabilities.Roots = RootsCapability{}

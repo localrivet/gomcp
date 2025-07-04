@@ -415,11 +415,12 @@ func (m *mockAddr) Network() string { return "tcp" }
 func (m *mockAddr) String() string  { return m.addr }
 
 func TestLoggerIntegration(t *testing.T) {
-	// Create a test logger that captures output
-	var logOutput strings.Builder
-	logger := slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}))
+	// Create a test logger that captures output - use a channel-based approach to avoid race conditions
+	logMessages := make(chan string, 10)
+
+	// Create a custom handler that sends to channel instead of shared buffer
+	handler := &channelHandler{ch: logMessages}
+	logger := slog.New(handler)
 
 	// Create subject with logger
 	subject := NewSubject(WithLogger(logger), WithBufferSize(10))
@@ -436,11 +437,24 @@ func TestLoggerIntegration(t *testing.T) {
 		t.Fatalf("Failed to publish event: %v", err)
 	}
 
-	// Wait for event processing
-	time.Sleep(50 * time.Millisecond)
+	// Wait for event processing and collect log messages
+	var logMessages_received []string
+	timeout := time.After(100 * time.Millisecond)
+
+collectLoop:
+	for {
+		select {
+		case msg := <-logMessages:
+			logMessages_received = append(logMessages_received, msg)
+		case <-timeout:
+			break collectLoop
+		}
+	}
+
+	// Combine all log messages to check content
+	logStr := strings.Join(logMessages_received, " ")
 
 	// Check that error was logged
-	logStr := logOutput.String()
 	if !strings.Contains(logStr, "event handler error") {
 		t.Errorf("Expected error to be logged, got: %s", logStr)
 	}
@@ -452,6 +466,42 @@ func TestLoggerIntegration(t *testing.T) {
 	if !strings.Contains(logStr, "topic=test.error") {
 		t.Errorf("Expected topic to be logged, got: %s", logStr)
 	}
+}
+
+// channelHandler is a thread-safe slog handler that sends messages to a channel
+type channelHandler struct {
+	ch chan string
+}
+
+func (h *channelHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return true
+}
+
+func (h *channelHandler) Handle(ctx context.Context, record slog.Record) error {
+	// Build message without shared state
+	var msg strings.Builder
+	msg.WriteString("level=" + record.Level.String())
+	msg.WriteString(" msg=" + record.Message)
+
+	record.Attrs(func(attr slog.Attr) bool {
+		msg.WriteString(" " + attr.Key + "=" + attr.Value.String())
+		return true
+	})
+
+	select {
+	case h.ch <- msg.String():
+	default:
+		// Channel full, drop message (test shouldn't fail because of this)
+	}
+	return nil
+}
+
+func (h *channelHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h // For simplicity, ignore attrs in test handler
+}
+
+func (h *channelHandler) WithGroup(name string) slog.Handler {
+	return h // For simplicity, ignore groups in test handler
 }
 
 // TestAsyncSyncDelivery verifies that live events are delivered asynchronously

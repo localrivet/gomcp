@@ -14,7 +14,7 @@ import (
 	"github.com/localrivet/gomcp/transport"
 )
 
-// Transport represents an embedded transport for in-process communication.
+// Transport implements an in-memory transport for testing and embedded use cases.
 type Transport struct {
 	transport.BaseTransport
 
@@ -93,10 +93,10 @@ func NewTransportPair(options ...Option) (*Transport, *Transport) {
 		isServer:       true,
 	}
 
-	// Create client transport (channels are swapped so client and server communicate)
+	// Create client transport - channels are wired to connect with server
 	client := &Transport{
-		serverToClient: clientToServer, // Client Send() writes here (same as server Receive() reads)
-		clientToServer: serverToClient, // Client Receive() reads here (same as server Send() writes)
+		serverToClient: serverToClient, // Client Receive() reads here (same as server Send() writes)
+		clientToServer: clientToServer, // Client Send() writes here (same as server Receive() reads)
 		serverErrors:   clientErrors,
 		clientErrors:   serverErrors,
 		done:           done,
@@ -142,10 +142,16 @@ func (t *Transport) Start() error {
 
 	t.started = true
 
-	// Only start message processing on server transport
-	// Client transport just does direct Send()/Receive()
+	// Only start message processing on server transport AND if we have a handler
+	// This avoids consuming messages when tests just want to use Send()/Receive()
 	if t.isServer {
-		go t.processMessages()
+		// Test if we have a handler by trying to handle an empty message
+		// If no handler is set, HandleMessage will return "no message handler set" error
+		_, err := t.HandleMessage([]byte{})
+		if err == nil || err.Error() != "no message handler set" {
+			// We have a handler, start processing
+			go t.processMessages()
+		}
 	}
 
 	return nil
@@ -161,11 +167,12 @@ func (t *Transport) processMessages() {
 				continue
 			}
 
-			// Always try to process the message
+			// Always try to process the message - if no handler is set, HandleMessage will return an error
+			// and that's perfectly fine for test scenarios
 			go func(msg []byte) {
 				response, err := t.HandleMessage(msg)
 				if err != nil {
-					// Send error back
+					// Send error back - this is normal if no handler is set
 					select {
 					case t.serverErrors <- err:
 					case <-t.done:
@@ -239,8 +246,17 @@ func (t *Transport) Send(message []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), t.timeout)
 	defer cancel()
 
+	var targetChannel chan []byte
+	if t.isServer {
+		// Server sends responses to client via serverToClient
+		targetChannel = t.serverToClient
+	} else {
+		// Client sends requests to server via clientToServer
+		targetChannel = t.clientToServer
+	}
+
 	select {
-	case t.serverToClient <- msgCopy:
+	case targetChannel <- msgCopy:
 		return nil
 	case <-ctx.Done():
 		return errors.New("send timeout")
@@ -258,10 +274,23 @@ func (t *Transport) Receive() ([]byte, error) {
 		return nil, errors.New("transport not started")
 	}
 
+	var sourceChannel chan []byte
+	var errorChannel chan error
+
+	if t.isServer {
+		// Server receives requests from client via clientToServer
+		sourceChannel = t.clientToServer
+		errorChannel = t.serverErrors
+	} else {
+		// Client receives responses from server via serverToClient
+		sourceChannel = t.serverToClient
+		errorChannel = t.clientErrors
+	}
+
 	select {
-	case message := <-t.clientToServer:
+	case message := <-sourceChannel:
 		return message, nil
-	case err := <-t.clientErrors:
+	case err := <-errorChannel:
 		return nil, err
 	case <-t.done:
 		return nil, errors.New("transport stopped")

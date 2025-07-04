@@ -589,12 +589,13 @@ func NewClient(url string, options ...Option) (Client, error) {
 		ctx:               ctx,
 		cancel:            cancel,
 		capabilities: ClientCapabilities{
-			Roots: RootsCapability{
-				ListChanged: true,
-			},
+			Roots: RootsCapability{},
 		},
 		events: events.NewSubject(),
 	}
+
+	// Initialize atomic boolean for roots capability
+	c.capabilities.Roots.ListChanged.Store(true)
 
 	// Initialize the roots manager with the actor pattern
 	c.rootsManager = newRootsManager(c)

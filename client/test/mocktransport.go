@@ -18,14 +18,16 @@ type MockTransport struct {
 	DisconnectCalled   bool
 	ConnectionAttempts int
 	Connected          bool
-	mu                 sync.Mutex
 
-	// Request/Response handling
+	// Request/Response handling - minimal protection for slice operations only
 	LastSentMessage []byte
 	RequestHistory  []RequestRecord
 	ResponseQueue   []ResponseConfig
 	DefaultResponse *ResponseConfig
-	ResponseHistory [][]byte // Track responses sent back to client
+	ResponseHistory [][]byte
+
+	// Minimal mutex ONLY for slice operations that race
+	historyMu sync.RWMutex // Only protects RequestHistory and ResponseHistory
 
 	// Network simulation
 	NetworkConditions NetworkConditions
@@ -75,8 +77,9 @@ type NetworkConditions struct {
 // NewMockTransport creates a new mock transport with default settings
 func NewMockTransport() *MockTransport {
 	return &MockTransport{
-		RequestHistory: make([]RequestRecord, 0),
-		ResponseQueue:  make([]ResponseConfig, 0),
+		RequestHistory:  make([]RequestRecord, 0),
+		ResponseQueue:   make([]ResponseConfig, 0),
+		ResponseHistory: make([][]byte, 0),
 		NetworkConditions: NetworkConditions{
 			Latency:         0,
 			LatencyJitter:   0,
@@ -151,15 +154,20 @@ func (m *MockTransport) ClearResponses() *MockTransport {
 
 // ClearHistory clears the request history
 func (m *MockTransport) ClearHistory() *MockTransport {
+	m.historyMu.Lock()
 	m.RequestHistory = make([]RequestRecord, 0)
+	m.ResponseHistory = make([][]byte, 0)
+	m.historyMu.Unlock()
 	return m
 }
 
 // GetRequestByID finds a request in the history by its ID
 func (m *MockTransport) GetRequestByID(id interface{}) *RequestRecord {
-	for i := len(m.RequestHistory) - 1; i >= 0; i-- {
-		if m.RequestHistory[i].ID == id {
-			return &m.RequestHistory[i]
+	m.historyMu.RLock()
+	defer m.historyMu.RUnlock()
+	for _, req := range m.RequestHistory {
+		if req.ID == id {
+			return &req
 		}
 	}
 	return nil
@@ -167,10 +175,12 @@ func (m *MockTransport) GetRequestByID(id interface{}) *RequestRecord {
 
 // GetRequestsByMethod finds requests in the history by method
 func (m *MockTransport) GetRequestsByMethod(method string) []RequestRecord {
+	m.historyMu.RLock()
+	defer m.historyMu.RUnlock()
 	var result []RequestRecord
-	for _, rec := range m.RequestHistory {
-		if rec.Method == method {
-			result = append(result, rec)
+	for _, req := range m.RequestHistory {
+		if req.Method == method {
+			result = append(result, req)
 		}
 	}
 	return result
@@ -197,10 +207,8 @@ func (m *MockTransport) WaitForNotification(method string, timeout time.Duration
 func (m *MockTransport) Connect() error {
 	// Record connection attempt
 	{
-		m.mu.Lock()
 		m.ConnectCalled = true
 		m.ConnectionAttempts++
-		m.mu.Unlock()
 	}
 
 	// Simulate network conditions - outside of lock
@@ -222,9 +230,7 @@ func (m *MockTransport) Connect() error {
 	}
 
 	// Set connected state
-	m.mu.Lock()
 	m.Connected = true
-	m.mu.Unlock()
 
 	return nil
 }
@@ -251,46 +257,46 @@ func (m *MockTransport) ConnectWithContext(ctx context.Context) error {
 // Disconnect implements the Transport interface
 func (m *MockTransport) Disconnect() error {
 	// Use a simple lock/unlock to avoid nested locks which can cause deadlocks
-	m.mu.Lock()
-	// Only log and set the state if we're currently connected
 	if m.Connected {
 		m.Connected = false
 		m.DisconnectCalled = true
 		fmt.Println("[MockTransport] Disconnect called")
 	}
-	m.mu.Unlock()
 	return nil
 }
 
 // Send implements the Transport interface
 func (m *MockTransport) Send(message []byte) ([]byte, error) {
-	// A simplified approach with minimal locking to avoid deadlocks
+	// Make a copy of the message for this goroutine to avoid races
+	messageCopy := append([]byte{}, message...)
 
-	// Store the original message for debugging
-	m.LastSentMessage = append([]byte{}, message...)
+	// Store the original message for debugging with proper synchronization
+	m.historyMu.Lock()
+	m.LastSentMessage = append([]byte{}, messageCopy...)
+	m.historyMu.Unlock()
 
 	// Apply request interceptor if set
 	if m.RequestInterceptor != nil {
-		message = m.RequestInterceptor(message)
+		messageCopy = m.RequestInterceptor(messageCopy)
 	}
 
 	// Track request
-	record := m.recordRequest(message)
+	record := m.recordRequest(messageCopy)
 
 	// Check for notification/initialized message - special handler
 	// This handles a common case for test failures
 	var req map[string]interface{}
-	if err := json.Unmarshal(message, &req); err == nil {
+	if err := json.Unmarshal(messageCopy, &req); err == nil {
 		reqMethod, isMethod := req["method"].(string)
 		if isMethod && reqMethod == "notifications/initialized" {
 			// Auto-handle this message with an empty success response
 			response := []byte(`{"jsonrpc":"2.0","result":null}`)
 
-			// Store in response history
-			m.mu.Lock()
-			m.ResponseHistory = append(m.ResponseHistory, response)
+			// Store in history
+			m.historyMu.Lock()
 			m.RequestHistory = append(m.RequestHistory, record)
-			m.mu.Unlock()
+			m.ResponseHistory = append(m.ResponseHistory, response)
+			m.historyMu.Unlock()
 
 			return response, nil
 		}
@@ -314,12 +320,10 @@ func (m *MockTransport) Send(message []byte) ([]byte, error) {
 	var response []byte
 	var responseErr error
 
-	// Access shared state with lock
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	// Add to request history
+	m.historyMu.Lock()
 	m.RequestHistory = append(m.RequestHistory, record)
+	m.historyMu.Unlock()
 
 	// Signal notification for test synchronization (non-blocking)
 	if record.Method != "" && strings.HasPrefix(record.Method, "notifications/") {
@@ -332,7 +336,7 @@ func (m *MockTransport) Send(message []byte) ([]byte, error) {
 
 	// First try conditional responses
 	for i, cfg := range m.ResponseQueue {
-		if cfg.Condition == nil || cfg.Condition(message) {
+		if cfg.Condition == nil || cfg.Condition(messageCopy) {
 			response = cfg.Data
 			responseErr = cfg.Error
 
@@ -343,11 +347,11 @@ func (m *MockTransport) Send(message []byte) ([]byte, error) {
 
 			// Apply ID replacement for JSON-RPC responses
 			if response != nil &&
-				bytes.HasPrefix(bytes.TrimSpace(message), []byte(`{"jsonrpc":"2.0"`)) &&
+				bytes.HasPrefix(bytes.TrimSpace(messageCopy), []byte(`{"jsonrpc":"2.0"`)) &&
 				bytes.HasPrefix(bytes.TrimSpace(response), []byte(`{"jsonrpc":"2.0"`)) {
 				// Parse request to extract ID
 				var req map[string]interface{}
-				if err := json.Unmarshal(message, &req); err == nil {
+				if err := json.Unmarshal(messageCopy, &req); err == nil {
 					if reqID, ok := req["id"]; ok {
 						// Create ID replacement string
 						idStr := fmt.Sprintf(`"id":%v`, reqID)
@@ -358,7 +362,9 @@ func (m *MockTransport) Send(message []byte) ([]byte, error) {
 			}
 
 			// Add to response history
+			m.historyMu.Lock()
 			m.ResponseHistory = append(m.ResponseHistory, response)
+			m.historyMu.Unlock()
 
 			return response, responseErr
 		}
@@ -371,11 +377,11 @@ func (m *MockTransport) Send(message []byte) ([]byte, error) {
 
 		// Apply ID replacement for JSON-RPC responses
 		if response != nil &&
-			bytes.HasPrefix(bytes.TrimSpace(message), []byte(`{"jsonrpc":"2.0"`)) &&
+			bytes.HasPrefix(bytes.TrimSpace(messageCopy), []byte(`{"jsonrpc":"2.0"`)) &&
 			bytes.HasPrefix(bytes.TrimSpace(response), []byte(`{"jsonrpc":"2.0"`)) {
 			// Parse request to extract ID
 			var req map[string]interface{}
-			if err := json.Unmarshal(message, &req); err == nil {
+			if err := json.Unmarshal(messageCopy, &req); err == nil {
 				if reqID, ok := req["id"]; ok {
 					// Create ID replacement string
 					idStr := fmt.Sprintf(`"id":%v`, reqID)
@@ -386,12 +392,14 @@ func (m *MockTransport) Send(message []byte) ([]byte, error) {
 		}
 
 		// Add to response history
+		m.historyMu.Lock()
 		m.ResponseHistory = append(m.ResponseHistory, response)
+		m.historyMu.Unlock()
 
 		return response, responseErr
 	}
 
-	return nil, fmt.Errorf("no response available for request: %s", string(message))
+	return nil, fmt.Errorf("no response available for request: %s", string(messageCopy))
 }
 
 // SendWithContext implements the Transport interface
@@ -510,9 +518,7 @@ func SetupMockTransport(version string) *MockTransport {
 	m := NewMockTransport()
 
 	// Set the transport to connected state to prevent "connection closed" errors
-	m.mu.Lock()
 	m.Connected = true
-	m.mu.Unlock()
 
 	// Configure the mock transport to support the version's protocol
 
@@ -808,9 +814,6 @@ func RequestHasID(id interface{}) func([]byte) bool {
 
 // SetLatency configures the latency simulation
 func (m *MockTransport) SetLatency(latencyMs int, jitterPercent int) *MockTransport {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	latency := time.Duration(latencyMs) * time.Millisecond
 	m.NetworkConditions.Latency = latency
 
@@ -824,27 +827,18 @@ func (m *MockTransport) SetLatency(latencyMs int, jitterPercent int) *MockTransp
 
 // SetPacketLoss configures packet loss simulation
 func (m *MockTransport) SetPacketLoss(lossPercent int) *MockTransport {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.NetworkConditions.PacketLossRate = float64(lossPercent) / 100.0
 	return m
 }
 
 // SimulateDisconnect forces the transport to disconnect after a certain number of requests
 func (m *MockTransport) SimulateDisconnect() *MockTransport {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.Connected = false
 	return m
 }
 
 // SimulateDisconnectAfter configures the transport to disconnect after a specified number of requests
 func (m *MockTransport) SimulateDisconnectAfter(requestCount int) *MockTransport {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.NetworkConditions.DisconnectAfter = requestCount
 	m.NetworkConditions.RequestCount = 0
 	return m
@@ -852,22 +846,15 @@ func (m *MockTransport) SimulateDisconnectAfter(requestCount int) *MockTransport
 
 // SetErrorRate configures the probability of returning errors on any request
 func (m *MockTransport) SetErrorRate(errorPercent int) *MockTransport {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.ErrorRate = float64(errorPercent) / 100.0
 	return m
 }
 
 // GetRequestHistory returns a copy of the request history
 func (m *MockTransport) GetRequestHistory() []RequestRecord {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Create a copy to avoid race conditions
-	history := make([]RequestRecord, len(m.RequestHistory))
-	copy(history, m.RequestHistory)
-	return history
+	m.historyMu.RLock()
+	defer m.historyMu.RUnlock()
+	return m.RequestHistory
 }
 
 // SimulateNotification simulates a notification from the server
@@ -899,9 +886,9 @@ func (m *MockTransport) SimulateNotification(method string, message []byte) {
 			}
 
 			// Add to history
-			m.mu.Lock()
+			m.historyMu.Lock()
 			m.RequestHistory = append(m.RequestHistory, record)
-			m.mu.Unlock()
+			m.historyMu.Unlock()
 
 			// Get notification handler without locking
 			notificationHandler := m.NotificationHandlerFunc
@@ -932,9 +919,9 @@ func (m *MockTransport) SimulateNotification(method string, message []byte) {
 	}
 
 	// Add to history
-	m.mu.Lock()
+	m.historyMu.Lock()
 	m.RequestHistory = append(m.RequestHistory, record)
-	m.mu.Unlock()
+	m.historyMu.Unlock()
 
 	// Get notification handler
 	notificationHandler := m.NotificationHandlerFunc

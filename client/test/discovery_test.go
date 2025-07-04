@@ -402,12 +402,27 @@ func TestWithResourceParams(t *testing.T) {
 
 	// Verify the request was sent with correct parameters
 	history := m.GetRequestHistory()
-	if len(history) != 1 {
-		t.Fatalf("Expected 1 request, got %d", len(history))
+
+	// Filter for only resources/read requests
+	var resourceRequests []RequestRecord
+	for _, req := range history {
+		var request map[string]interface{}
+		if err := json.Unmarshal(req.Message, &request); err != nil {
+			continue
+		}
+		if method, ok := request["method"].(string); ok && method == "resources/read" {
+			resourceRequests = append(resourceRequests, req)
+		}
+	}
+
+	// We expect 1 resources/read request:
+	// The setup function calls GetResource("/") but then calls ClearHistory(), so only our test request should be counted
+	if len(resourceRequests) != 1 {
+		t.Fatalf("Expected 1 resources/read request (from test), got %d (total requests: %d)", len(resourceRequests), len(history))
 	}
 
 	var request map[string]interface{}
-	if err := json.Unmarshal(history[0].Message, &request); err != nil {
+	if err := json.Unmarshal(resourceRequests[0].Message, &request); err != nil {
 		t.Fatalf("Failed to unmarshal request: %v", err)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/localrivet/gomcp/mcp"
@@ -327,30 +328,24 @@ func (s *serverImpl) RequestSampling(messages []SamplingMessage, preferences Sam
 }
 
 // requestTracker manages pending requests and correlates them with responses
+// Uses minimal locking and atomics for better concurrency
 type requestTracker struct {
-	mu           sync.RWMutex
-	requests     map[int]chan json.RawMessage
-	timeouts     map[int]*time.Timer // Track timeout timers
-	pendingCount int                 // Count of active pending requests
+	requests     sync.Map // map[int]chan json.RawMessage - lock-free concurrent map
+	timeouts     sync.Map // map[int]*time.Timer - lock-free concurrent map
+	pendingCount int64    // atomic counter for pending requests
 }
 
 // newRequestTracker creates a new request tracker
 func newRequestTracker() *requestTracker {
-	return &requestTracker{
-		requests: make(map[int]chan json.RawMessage),
-		timeouts: make(map[int]*time.Timer),
-	}
+	return &requestTracker{}
 }
 
 // addRequest adds a new request to track and returns a channel to receive the response
 func (rt *requestTracker) addRequest(id int) chan json.RawMessage {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
 	// Create a buffered channel to prevent deadlock if response arrives after timeout
 	responseChan := make(chan json.RawMessage, 1)
-	rt.requests[id] = responseChan
-	rt.pendingCount++
+	rt.requests.Store(id, responseChan)
+	atomic.AddInt64(&rt.pendingCount, 1)
 
 	return responseChan
 }
@@ -358,18 +353,18 @@ func (rt *requestTracker) addRequest(id int) chan json.RawMessage {
 // resolveRequest resolves a request with its response
 // Returns true if the request was found and resolved
 func (rt *requestTracker) resolveRequest(id int, response json.RawMessage) bool {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
-	responseChan, exists := rt.requests[id]
+	responseVal, exists := rt.requests.LoadAndDelete(id)
 	if !exists {
 		return false
 	}
 
+	responseChan := responseVal.(chan json.RawMessage)
+
 	// Cancel any pending timeout for this request
-	if timer, hasTimer := rt.timeouts[id]; hasTimer && timer != nil {
-		timer.Stop()
-		delete(rt.timeouts, id)
+	if timerVal, hasTimer := rt.timeouts.LoadAndDelete(id); hasTimer {
+		if timer := timerVal.(*time.Timer); timer != nil {
+			timer.Stop()
+		}
 	}
 
 	// Send the response on the channel (non-blocking to handle case where no one is listening)
@@ -380,49 +375,41 @@ func (rt *requestTracker) resolveRequest(id int, response json.RawMessage) bool 
 		// No one is listening, likely due to a timeout
 	}
 
-	// Clean up the request
-	delete(rt.requests, id)
-	rt.pendingCount--
-
+	atomic.AddInt64(&rt.pendingCount, -1)
 	return true
 }
 
 // removeRequest removes a request from tracking without sending a response
 // Used for cleanup after timeouts
 func (rt *requestTracker) removeRequest(id int) {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
 	// Cancel any pending timeout
-	if timer, hasTimer := rt.timeouts[id]; hasTimer && timer != nil {
-		timer.Stop()
-		delete(rt.timeouts, id)
+	if timerVal, hasTimer := rt.timeouts.LoadAndDelete(id); hasTimer {
+		if timer := timerVal.(*time.Timer); timer != nil {
+			timer.Stop()
+		}
 	}
 
 	// Remove the request
-	delete(rt.requests, id)
-	rt.pendingCount--
+	if _, exists := rt.requests.LoadAndDelete(id); exists {
+		atomic.AddInt64(&rt.pendingCount, -1)
+	}
 }
 
 // setupTimeout creates a timeout for a request
 // When the timeout expires, the request will be automatically cleaned up
 func (rt *requestTracker) setupTimeout(id int, timeout time.Duration) {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-
 	// Create a timer that will clean up the request when expired
+	// No mutex needed - just call removeRequest directly
 	timer := time.AfterFunc(timeout, func() {
 		rt.removeRequest(id)
 	})
 
-	rt.timeouts[id] = timer
+	rt.timeouts.Store(id, timer)
 }
 
-// TODO: This function is currently unused but may be needed for future request tracking
+// getPendingCount returns the current number of pending requests
 func (rt *requestTracker) getPendingCount() int {
-	rt.mu.RLock()
-	defer rt.mu.RUnlock()
-	return rt.pendingCount
+	return int(atomic.LoadInt64(&rt.pendingCount))
 }
 
 // GetSessionFromContext retrieves the client session associated with a context

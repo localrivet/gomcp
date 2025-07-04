@@ -456,7 +456,7 @@ func TestCompleteSessionFlow(t *testing.T) {
 	assert.True(t, len(roots) == 0, "Roots should be empty initially (comes from roots/list)")
 
 	// Verify that needsRootFetch was set since client supports roots capability
-	assert.True(t, server.needsRootFetch, "Server should be marked to fetch roots via roots/list")
+	assert.True(t, server.needsRootFetch.Load(), "Server should be marked to fetch roots via roots/list")
 
 	// Now simulate a tool call request
 	toolCallRequest := map[string]interface{}{
@@ -489,5 +489,5 @@ func TestCompleteSessionFlow(t *testing.T) {
 
 	t.Logf("✅ Complete session flow working: ctx.Session.Env() = %v", toolCtx.Session.Env())
 	t.Logf("✅ Complete session flow working: ctx.Session.Roots() = %v", toolCtx.Session.Roots())
-	t.Logf("✅ Server correctly detected client roots capability and marked needsRootFetch = %v", server.needsRootFetch)
+	t.Logf("✅ Server correctly detected client roots capability and marked needsRootFetch = %v", server.needsRootFetch.Load())
 }

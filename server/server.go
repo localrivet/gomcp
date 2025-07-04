@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/localrivet/gomcp/events"
@@ -465,7 +466,7 @@ type serverImpl struct {
 
 	// needsRootFetch indicates whether we should fetch workspace roots from the client
 	// after initialization is complete (similar to how we queue capability notifications)
-	needsRootFetch bool
+	needsRootFetch atomic.Bool
 }
 
 // CapabilityCache manages the caching and change tracking of server capabilities
@@ -828,9 +829,7 @@ func (s *serverImpl) ProcessInitialize(ctx *Context) (interface{}, error) {
 
 	// Check if client supports roots capability and mark for fetching via roots/list
 	if clientSupportsRoots(ctx.Request.Params) {
-		s.mu.Lock()
-		s.needsRootFetch = true
-		s.mu.Unlock()
+		s.needsRootFetch.Store(true)
 	}
 
 	// Determine sampling capabilities based on protocol version
@@ -1163,9 +1162,7 @@ func (s *serverImpl) handleInitializedNotification() {
 	// Fetch workspace roots if needed (for non-stdio transports) with proper locking
 	// Only fetch roots, don't send initial capability notifications
 	// Capability notifications should only be sent when capabilities actually change
-	s.mu.RLock()
-	needsRootFetch := s.needsRootFetch
-	s.mu.RUnlock()
+	needsRootFetch := s.needsRootFetch.Load()
 
 	if needsRootFetch {
 		go func() {
@@ -1508,7 +1505,7 @@ func (s *serverImpl) fetchWorkspaceRoots() {
 	if s.requestTracker != nil {
 		responseChan := s.requestTracker.addRequest(requestID)
 
-		// Handle the response in a goroutine
+		// Handle the response in a goroutine to avoid blocking
 		go s.handleRootsListResponse(requestID, responseChan)
 	}
 
@@ -1581,25 +1578,37 @@ func (s *serverImpl) handleRootsListResponse(requestID int, responseChan chan js
 		var rootPaths []string
 		for _, root := range response.Result.Roots {
 			// Convert URI to path if needed (e.g., file:///path/to/dir -> /path/to/dir)
-			path := uriToPath(root.URI)
-			rootPaths = append(rootPaths, path)
+			if path := uriToPath(root.URI); path != "" {
+				rootPaths = append(rootPaths, path)
+			}
 		}
 
-		// Update the default session with the workspace roots (with proper locking)
-		s.mu.Lock()
-		if s.defaultSession != nil {
-			s.defaultSession.ClientInfo.Roots = rootPaths
-			s.logger.Debug("updated session with workspace roots",
-				"count", len(rootPaths),
-				"roots", rootPaths)
-		}
-		s.mu.Unlock()
+		// Update the default session with the workspace roots using minimal locking
+		// Only lock the specific field we need to update, not the entire server
+		s.updateSessionRoots(rootPaths)
 
 	case <-timer.C:
-		s.logger.Warn("timeout waiting for roots/list response", "requestId", requestID)
+		s.logger.Error("failed to handle roots/list request", "error", "context deadline exceeded")
 		// Clean up the request tracker
 		if s.requestTracker != nil {
 			s.requestTracker.removeRequest(requestID)
 		}
+	}
+}
+
+// updateSessionRoots updates the session roots with minimal locking
+func (s *serverImpl) updateSessionRoots(rootPaths []string) {
+	// Use a very targeted lock scope - only what we absolutely need
+	s.mu.RLock()
+	session := s.defaultSession
+	s.mu.RUnlock()
+
+	if session != nil {
+		// Update the session's roots directly without holding the server lock
+		// The session is already created, so we can safely update its fields
+		session.ClientInfo.Roots = rootPaths
+		s.logger.Debug("updated session with workspace roots",
+			"count", len(rootPaths),
+			"roots", rootPaths)
 	}
 }

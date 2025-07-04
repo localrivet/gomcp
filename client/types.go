@@ -1,7 +1,11 @@
 // Package client provides the client-side implementation of the MCP protocol.
 package client
 
-import "github.com/localrivet/gomcp/mcp"
+import (
+	"sync/atomic"
+
+	"github.com/localrivet/gomcp/mcp"
+)
 
 // Root represents a filesystem root exposed to the MCP server.
 type Root struct {
@@ -19,7 +23,28 @@ type ClientCapabilities struct {
 
 // RootsCapability represents the client's roots capability.
 type RootsCapability struct {
-	ListChanged bool `json:"listChanged"`
+	ListChanged atomic.Bool `json:"-"` // Use atomic.Bool and exclude from JSON
+}
+
+// MarshalJSON implements custom JSON marshaling for RootsCapability
+func (r RootsCapability) MarshalJSON() ([]byte, error) {
+	return []byte(`{"listChanged":` + func() string {
+		if r.ListChanged.Load() {
+			return "true"
+		}
+		return "false"
+	}() + `}`), nil
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for RootsCapability
+func (r *RootsCapability) UnmarshalJSON(data []byte) error {
+	// Simple parsing for the listChanged field
+	if string(data) == `{"listChanged":true}` {
+		r.ListChanged.Store(true)
+	} else {
+		r.ListChanged.Store(false)
+	}
+	return nil
 }
 
 // ServerCapabilities represents the capabilities declared by the MCP server during initialization.

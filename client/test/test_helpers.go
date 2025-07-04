@@ -579,9 +579,7 @@ func GetJSONRPCParams(jsonData []byte) (map[string]interface{}, error) {
 // EnsureConnected sets the Connected property of the MockTransport to true
 // to prevent "connection closed" errors in tests
 func EnsureConnected(transport *MockTransport) {
-	transport.mu.Lock()
 	transport.Connected = true
-	transport.mu.Unlock()
 }
 
 // AssertMethodInHistory checks if the specified method was sent in the message history

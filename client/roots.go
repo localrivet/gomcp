@@ -104,8 +104,8 @@ func (rm *rootsManager) addRoot(roots *[]Root, uri, name string) error {
 	})
 
 	// Enable roots capability if not already enabled
-	if !rm.client.capabilities.Roots.ListChanged {
-		rm.client.capabilities.Roots.ListChanged = true
+	if !rm.client.capabilities.Roots.ListChanged.Load() {
+		rm.client.capabilities.Roots.ListChanged.Store(true)
 	}
 
 	// Send notification (outside of critical section since we own the data)
@@ -231,7 +231,7 @@ func (c *clientImpl) handleRootsList(requestID int64) error {
 
 // sendRootsListChangedNotification sends a notification that the roots list has changed
 func (c *clientImpl) sendRootsListChangedNotification() {
-	if !c.capabilities.Roots.ListChanged {
+	if !c.capabilities.Roots.ListChanged.Load() {
 		return // Don't send notifications if capability is not enabled
 	}
 

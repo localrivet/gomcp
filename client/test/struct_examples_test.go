@@ -25,9 +25,7 @@ func TestJSONRPCTypes(t *testing.T) {
 	transport := NewMockTransport()
 
 	// Set connection to true to prevent "connection closed" errors
-	transport.mu.Lock()
 	transport.Connected = true
-	transport.mu.Unlock()
 
 	// Queue a response for this request
 	toolResp := jsonrpc.NewToolResponse(1, 8, map[string]interface{}{
