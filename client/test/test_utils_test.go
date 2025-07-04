@@ -68,7 +68,7 @@ func TestCreateToolResponse(t *testing.T) {
 
 func TestCreateResourceResponse(t *testing.T) {
 	// Test creating resource responses for different versions
-	versions := []string{"2024-11-05", "2025-03-26", "draft"}
+	versions := []string{"2024-11-05", "2025-03-26", "2025-06-18", "draft"}
 
 	for _, version := range versions {
 		t.Run("TextContent-"+version, func(t *testing.T) {
@@ -91,7 +91,7 @@ func TestCreateResourceResponse(t *testing.T) {
 
 			// Check version-specific format
 			switch version {
-			case "2025-03-26":
+			case "2025-03-26", "2025-06-18":
 				contents, ok := result["contents"].([]interface{})
 				if !ok || len(contents) == 0 {
 					t.Fatalf("Expected contents array, got %v", result["contents"])

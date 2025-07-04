@@ -34,11 +34,11 @@ func AssertVersionSpecificResource(t *testing.T, version string, response []byte
 
 	// Verify the structure based on version
 	switch version {
-	case "2025-03-26":
+	case "2025-03-26", "2025-06-18":
 		// Check for contents array
 		_, ok := result["contents"]
 		if !ok {
-			t.Errorf("Expected contents field in 2025-03-26 response, got %v", result)
+			t.Errorf("Expected contents field in %s response, got %v", version, result)
 		}
 	case "2024-11-05", "draft":
 		// Check for content array
@@ -100,7 +100,7 @@ func AssertVersionCapabilities(t *testing.T, version string, response []byte) {
 
 	// Check version-specific capabilities
 	switch version {
-	case "2025-03-26":
+	case "2025-03-26", "2025-06-18":
 		// Check for enhanced resources capability
 		_, hasEnhancedResources := capabilities["enhancedResources"]
 		if !hasEnhancedResources {
@@ -163,11 +163,11 @@ func AssertVersionCompatibility(t *testing.T, version string, jsonData []byte) {
 			}
 
 			// Version-specific checks
-			if version == "2025-03-26" {
-				// 2025-03-26 supports additional options
+			if version == "2025-03-26" || version == "2025-06-18" {
+				// 2025-03-26 and 2025-06-18 support additional options
 				_, hasOptions := params["options"]
 				if !hasOptions {
-					t.Logf("2025-03-26 supports options parameter in resources/read")
+					t.Logf("%s supports options parameter in resources/read", version)
 				}
 			}
 
@@ -253,11 +253,11 @@ func AssertVersionSpecificError(t *testing.T, version string, response []byte, e
 	}
 
 	// Version-specific error checks
-	if version == "2025-03-26" {
-		// 2025-03-26 may include additional error data
+	if version == "2025-03-26" || version == "2025-06-18" {
+		// 2025-03-26 and 2025-06-18 may include additional error data
 		_, hasData := errorMap["data"]
 		if hasData {
-			t.Logf("2025-03-26 error includes additional data")
+			t.Logf("%s error includes additional data", version)
 		}
 	}
 }
@@ -282,7 +282,7 @@ func normalizeContent(version string, content interface{}) interface{} {
 	switch c := content.(type) {
 	case map[string]interface{}:
 		// Handle different version structures
-		if version == "2025-03-26" {
+		if version == "2025-03-26" || version == "2025-06-18" {
 			if contents, ok := c["contents"].([]interface{}); ok && len(contents) > 0 {
 				// Extract content from contents array
 				if contentItem, ok := contents[0].(map[string]interface{}); ok {
@@ -313,8 +313,8 @@ func CreateVersionError(version string, id interface{}, code int, message string
 		errorObj["data"] = data
 	}
 
-	// For 2025-03-26, add additional version-specific error details
-	if version == "2025-03-26" {
+	// For 2025-03-26 and 2025-06-18, add additional version-specific error details
+	if version == "2025-03-26" || version == "2025-06-18" {
 		errorObj["timestamp"] = time.Now().UTC().Format(time.RFC3339)
 		errorObj["version"] = version
 	}
@@ -515,7 +515,7 @@ func AssertVersionMatrixCompatibility(t *testing.T, fn func(t *testing.T, client
 	t.Helper()
 
 	// Define all supported versions
-	versions := []string{"draft", "2024-11-05", "2025-03-26"}
+	versions := []string{"draft", "2024-11-05", "2025-03-26", "2025-06-18"}
 
 	// Run tests for all combinations
 	for _, clientVersion := range versions {

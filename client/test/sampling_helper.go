@@ -65,6 +65,6 @@ func NewStreamingSamplingRequest(messages []client.SamplingMessage, prefs client
 
 // IsStreamingSupportedForVersion checks if streaming is supported for a version
 func IsStreamingSupportedForVersion(version string) bool {
-	// Streaming is supported in 2025-03-26 and later
-	return version == "2025-03-26" || version == "draft"
+	// Streaming is supported in 2025-03-26, 2025-06-18, and draft
+	return version == "2025-03-26" || version == "2025-06-18" || version == "draft"
 }

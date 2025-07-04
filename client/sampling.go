@@ -22,7 +22,7 @@ type SamplingMessageContent struct {
 // IsValidForVersion checks if the content type is valid for the given protocol version
 func (c *SamplingMessageContent) IsValidForVersion(version string) bool {
 	switch version {
-	case "draft", "2025-03-26":
+	case "draft", "2025-03-26", "2025-06-18":
 		// These versions support text, image, and audio content types
 		return c.Type == "text" || c.Type == "image" || c.Type == "audio"
 	case "2024-11-05":
@@ -168,8 +168,8 @@ func (opts *SamplingOptions) Validate() error {
 
 	// Validate streaming options
 	if opts.Streaming {
-		if opts.ProtocolVersion != "2025-03-26" {
-			return fmt.Errorf("streaming is only supported in protocol version 2025-03-26")
+		if opts.ProtocolVersion != "2025-03-26" && opts.ProtocolVersion != "2025-06-18" {
+			return fmt.Errorf("streaming is only supported in protocol versions 2025-03-26 and 2025-06-18")
 		}
 		if opts.StreamHandler == nil {
 			return fmt.Errorf("stream handler is required for streaming mode")

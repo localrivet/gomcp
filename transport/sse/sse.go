@@ -93,7 +93,7 @@ type Transport struct {
 	mcpEndpoint string // Unified MCP endpoint path
 	eventsPath  string // Legacy events path for 2024-11-05 compatibility
 
-	// Session management (2025-03-26/draft)
+	// Session management (2025-03-26/2025-06-18/draft)
 	sessions       map[string]*SessionInfo // Map session ID to session info
 	sessionsMu     sync.Mutex
 	nextEventID    int64 // For SSE event IDs
@@ -136,7 +136,7 @@ func NewTransport(addr string) *Transport {
 	} else {
 		t.clients = make(map[string]chan []byte)
 		t.sessions = make(map[string]*SessionInfo)
-		t.enableSessions = true // Enable session management by default for 2025-03-26/draft
+		t.enableSessions = true // Enable session management by default for 2025-03-26/2025-06-18/draft
 		// Set default unified endpoint
 		t.mcpEndpoint = DefaultMCPEndpoint
 		// Set default legacy events path for 2024-11-05 compatibility
@@ -480,9 +480,9 @@ func (t *Transport) handleSessionTermination(w http.ResponseWriter, r *http.Requ
 func (t *Transport) handleSSEConnection(w http.ResponseWriter, r *http.Request) {
 	t.GetLogger().Debug("New SSE connection", "remote_addr", r.RemoteAddr)
 
-	// Handle session management for 2025-03-26/draft
+	// Handle session management for 2025-03-26/2025-06-18/draft
 	var sessionID string
-	if t.enableSessions && (t.GetProtocolVersion() == "2025-03-26" || t.GetProtocolVersion() == "draft") {
+	if t.enableSessions && (t.GetProtocolVersion() == "2025-03-26" || t.GetProtocolVersion() == "2025-06-18" || t.GetProtocolVersion() == "draft") {
 		sessionID = r.Header.Get("Mcp-Session-Id")
 		if sessionID != "" {
 			// Validate existing session
@@ -555,7 +555,7 @@ func (t *Transport) handleSSEConnection(w http.ResponseWriter, r *http.Request) 
 		t.clientsMu.Unlock()
 	}()
 
-	// For unified MCP endpoint (2025-03-26/draft), we don't send endpoint events
+	// For unified MCP endpoint (2025-03-26/2025-06-18/draft), we don't send endpoint events
 	// The client already knows the endpoint from the URL they connected to
 	// This is different from the legacy 2024-11-05 behavior
 
@@ -576,7 +576,7 @@ func (t *Transport) handleSSEConnection(w http.ResponseWriter, r *http.Request) 
 		}
 		t.GetLogger().Debug("Sent endpoint discovery event", "endpoint", mcpURL, "event_id", eventID)
 	}
-	// For draft and 2025-03-26, we don't send endpoint events - unified endpoint pattern
+	// For draft, 2025-03-26, and 2025-06-18, we don't send endpoint events - unified endpoint pattern
 
 	// Listen for messages and send them to the client
 	for {
@@ -710,9 +710,9 @@ func (t *Transport) handleClientMessage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Handle session management for 2025-03-26/draft
+	// Handle session management for 2025-03-26/2025-06-18/draft
 	var sessionID string
-	if t.enableSessions && (t.GetProtocolVersion() == "2025-03-26" || t.GetProtocolVersion() == "draft") {
+	if t.enableSessions && (t.GetProtocolVersion() == "2025-03-26" || t.GetProtocolVersion() == "2025-06-18" || t.GetProtocolVersion() == "draft") {
 		sessionID = r.Header.Get("Mcp-Session-Id")
 
 		// For non-initialize requests, session ID might be required
@@ -760,7 +760,7 @@ func (t *Transport) handleClientMessage(w http.ResponseWriter, r *http.Request) 
 			// 2024-11-05 spec: notifications return 200 OK
 			w.WriteHeader(http.StatusOK)
 		} else {
-			// 2025-03-26/draft spec: notifications return 202 Accepted
+			// 2025-03-26/2025-06-18/draft spec: notifications return 202 Accepted
 			w.WriteHeader(http.StatusAccepted)
 		}
 		return
@@ -777,7 +777,7 @@ func (t *Transport) handleClientMessage(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Handle session creation for initialize responses
-	if t.enableSessions && (t.GetProtocolVersion() == "2025-03-26" || t.GetProtocolVersion() == "draft") {
+	if t.enableSessions && (t.GetProtocolVersion() == "2025-03-26" || t.GetProtocolVersion() == "2025-06-18" || t.GetProtocolVersion() == "draft") {
 		// Check if this is an initialize response by looking at the request
 		var request map[string]interface{}
 		if json.Unmarshal(body, &request) == nil {

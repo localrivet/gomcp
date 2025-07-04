@@ -150,8 +150,8 @@ func CreateResourceResponse(version string, content interface{}) []byte {
 	var result map[string]interface{}
 
 	switch version {
-	case "2025-03-26":
-		// 2025-03-26 response format
+	case "2025-03-26", "2025-06-18":
+		// 2025-03-26 and 2025-06-18 response format
 		if contentMap, ok := content.(map[string]interface{}); ok {
 			// If content is a map, use it as is for structured data
 			result = map[string]interface{}{
@@ -220,8 +220,8 @@ func CreateResourceResponseWithPath(version string, path string, content interfa
 	var result map[string]interface{}
 
 	switch version {
-	case "2025-03-26":
-		// 2025-03-26 response format
+	case "2025-03-26", "2025-06-18":
+		// 2025-03-26 and 2025-06-18 response format
 		if contentMap, ok := content.(map[string]interface{}); ok {
 			// If content is a map, use it as is for structured data
 			result = map[string]interface{}{

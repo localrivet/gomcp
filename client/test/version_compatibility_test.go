@@ -12,7 +12,7 @@ import (
 // TestVersionNegotiation verifies the client correctly negotiates the protocol version
 // with servers that support different versions
 func TestVersionNegotiation(t *testing.T) {
-	versions := []string{"draft", "2024-11-05", "2025-03-26"}
+	versions := []string{"draft", "2024-11-05", "2025-03-26", "2025-06-18"}
 
 	for _, version := range versions {
 		t.Run("Negotiate_"+version, func(t *testing.T) {
@@ -55,13 +55,18 @@ func TestVersionFallback(t *testing.T) {
 		},
 		{
 			name:            "Server supports all versions",
-			serverVersions:  []string{"draft", "2024-11-05", "2025-03-26"},
-			expectedVersion: "2025-03-26", // Should pick the newest
+			serverVersions:  []string{"draft", "2024-11-05", "2025-03-26", "2025-06-18"},
+			expectedVersion: "2025-06-18", // Should pick the newest
 		},
 		{
 			name:            "Server supports 2024-11-05 and 2025-03-26",
 			serverVersions:  []string{"2024-11-05", "2025-03-26"},
 			expectedVersion: "2025-03-26", // Should pick the newest
+		},
+		{
+			name:            "Server supports 2025-03-26 and 2025-06-18",
+			serverVersions:  []string{"2025-03-26", "2025-06-18"},
+			expectedVersion: "2025-06-18", // Should pick the newest
 		},
 	}
 
@@ -174,6 +179,11 @@ func TestCrossVersionFeatureDetection(t *testing.T) {
 			hasRootsList:         true,
 			hasEnhancedResources: true,
 		},
+		{
+			version:              "2025-06-18",
+			hasRootsList:         true,
+			hasEnhancedResources: true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -191,9 +201,9 @@ func TestCrossVersionFeatureDetection(t *testing.T) {
 
 			// Verify response format based on version
 			if tc.hasEnhancedResources {
-				// Check for 2025-03-26 specific format (contents array)
+				// Check for 2025-03-26/2025-06-18 specific format (contents array)
 				if len(resource.Contents) == 0 {
-					t.Errorf("Expected 'contents' field in 2025-03-26 response, but not found")
+					t.Errorf("Expected 'contents' field in %s response, but not found", tc.version)
 				}
 			} else {
 				// Check for draft/2024-11-05 format (content array)
@@ -207,7 +217,7 @@ func TestCrossVersionFeatureDetection(t *testing.T) {
 
 // TestVersionSpecificErrors tests error handling specific to each version
 func TestVersionSpecificErrors(t *testing.T) {
-	versions := []string{"draft", "2024-11-05", "2025-03-26"}
+	versions := []string{"draft", "2024-11-05", "2025-03-26", "2025-06-18"}
 
 	for _, version := range versions {
 		t.Run("Errors_"+version, func(t *testing.T) {
@@ -266,14 +276,14 @@ func TestVersionUpgradeDowngrade(t *testing.T) {
 		t.Errorf("Expected draft version, got %s", c.Version())
 	}
 
-	// Now "reconnect" to a server with 2025-03-26
+	// Now "reconnect" to a server with 2025-06-18
 	err = c.Close()
 	if err != nil {
 		t.Fatalf("Failed to close client: %v", err)
 	}
 
 	// Change the mock transport's version
-	mockTransport = SetupMockTransport("2025-03-26")
+	mockTransport = SetupMockTransport("2025-06-18")
 
 	// Apply new transport
 	c, err = client.NewClient("test://server",
@@ -281,12 +291,12 @@ func TestVersionUpgradeDowngrade(t *testing.T) {
 		client.WithVersionDetector(mcp.NewVersionDetector()),
 	)
 	if err != nil {
-		t.Fatalf("Failed to initialize client with 2025-03-26: %v", err)
+		t.Fatalf("Failed to initialize client with 2025-06-18: %v", err)
 	}
 
-	// Should now be using 2025-03-26
-	if c.Version() != "2025-03-26" {
-		t.Errorf("Expected 2025-03-26 version after upgrade, got %s", c.Version())
+	// Should now be using 2025-06-18
+	if c.Version() != "2025-06-18" {
+		t.Errorf("Expected 2025-06-18 version after upgrade, got %s", c.Version())
 	}
 
 	// Test downgrade

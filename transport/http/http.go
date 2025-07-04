@@ -80,7 +80,7 @@ type Transport struct {
 	pathPrefix  string // Optional prefix for endpoint paths (e.g., "/api")
 	mcpEndpoint string // MCP endpoint path
 
-	// Session management (2025-03-26)
+	// Session management (2025-03-26/2025-06-18)
 	sessions       map[string]*SessionInfo // Map session ID to session info
 	sessionsMu     sync.Mutex
 	enableSessions bool // Whether to use session management
@@ -112,7 +112,7 @@ func NewTransport(addr string, options ...Option) *Transport {
 		sessions:       make(map[string]*SessionInfo),
 		pathPrefix:     "", // Empty by default
 		mcpEndpoint:    DefaultMCPEndpoint,
-		enableSessions: true, // Enable sessions by default for 2025-03-26
+		enableSessions: true, // Enable sessions by default for 2025-03-26/2025-06-18
 	}
 
 	// Apply options

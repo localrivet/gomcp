@@ -65,6 +65,16 @@ func TestSamplingMessageContent_IsValidForVersion(t *testing.T) {
 			shouldBeValid: true,
 		},
 		{
+			name: "audio content in 2025-06-18",
+			content: client.SamplingMessageContent{
+				Type:     "audio",
+				Data:     "base64-audio-data",
+				MimeType: "audio/wav",
+			},
+			version:       "2025-06-18",
+			shouldBeValid: true,
+		},
+		{
 			name: "audio content in 2024-11-05 (not supported)",
 			content: client.SamplingMessageContent{
 				Type:     "audio",
@@ -136,7 +146,7 @@ func TestSamplingOptions_Validation(t *testing.T) {
 
 		err := opts.Validate()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "streaming is only supported in protocol version 2025-03-26")
+		assert.Contains(t, err.Error(), "streaming is only supported in protocol versions 2025-03-26 and 2025-06-18")
 	})
 
 	t.Run("invalid chunk size", func(t *testing.T) {
@@ -300,6 +310,7 @@ func TestStreamingSupportDetection(t *testing.T) {
 		{"draft", false},
 		{"2024-11-05", false},
 		{"2025-03-26", true},
+		{"2025-06-18", true},
 		{"invalid", false},
 	}
 
@@ -320,7 +331,7 @@ func TestStreamingSupportDetection(t *testing.T) {
 			} else {
 				assert.Error(t, err, "streaming should not be supported in %s", tc.version)
 				if err != nil {
-					assert.Contains(t, err.Error(), "streaming is only supported in protocol version 2025-03-26")
+					assert.Contains(t, err.Error(), "streaming is only supported in protocol versions 2025-03-26 and 2025-06-18")
 				}
 			}
 		})

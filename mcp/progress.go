@@ -63,7 +63,7 @@ func NewProgressNotificationForVersion(progressToken string, progress float64, t
 	}
 
 	// Only include message field for versions that support it
-	if protocolVersion == "draft" || protocolVersion == "2025-03-26" {
+	if protocolVersion == "draft" || protocolVersion == "2025-03-26" || protocolVersion == "2025-06-18" {
 		params.Message = message
 	}
 

@@ -61,6 +61,15 @@ var VersionCompatibilityMatrix = map[string]map[string]bool{
 		"enhanced_resources": true,
 		"multiple_roots":     true,
 	},
+	"2025-06-18": {
+		"basic_resources":    true,
+		"basic_tools":        true,
+		"basic_prompts":      true,
+		"basic_roots":        true,
+		"experimental":       false,
+		"enhanced_resources": true,
+		"multiple_roots":     true,
+	},
 }
 
 // Import RequestRecord from mocktransport.go
@@ -230,11 +239,11 @@ func TestResourceOperations(t *testing.T) {
 
 				// Verify the structure based on version
 				switch version {
-				case "2025-03-26":
+				case "2025-03-26", "2025-06-18":
 					// Check for contents array
 					contents, ok := resultObj["contents"]
 					if !ok {
-						t.Errorf("Expected contents field in 2025-03-26 response, got %v", resultObj)
+						t.Errorf("Expected contents field in %s response, got %v", version, resultObj)
 					} else {
 						t.Logf("Found contents: %v", contents)
 					}
@@ -286,9 +295,9 @@ func TestResourceOperations(t *testing.T) {
 		},
 		{
 			Name:            "GetResourceWithOptions",
-			Description:     "Test resource retrieval with options (available in 2025-03-26 only)",
+			Description:     "Test resource retrieval with options (available in 2025-03-26 and 2025-06-18)",
 			RequiresFeature: "enhanced_resources",
-			SupportedIn:     []string{"2025-03-26"},
+			SupportedIn:     []string{"2025-03-26", "2025-06-18"},
 			TestFunc: func(t *testing.T, version string, c client.Client, m *MockTransport) {
 				// Set up mock response for the enhanced resource request
 				m.QueueResponse(CreateResourceResponse(version, "Resource with options"), nil)
@@ -783,8 +792,8 @@ func TestSamplingOperations(t *testing.T) {
 		},
 		{
 			Name:           "SamplingCreateAudioMessage",
-			Description:    "Test sampling with audio content (supported only in draft and 2025-03-26)",
-			SupportedIn:    []string{"draft", "2025-03-26"},
+			Description:    "Test sampling with audio content (supported only in draft, 2025-03-26, and 2025-06-18)",
+			SupportedIn:    []string{"draft", "2025-03-26", "2025-06-18"},
 			NotSupportedIn: []string{"2024-11-05"},
 			TestFunc: func(t *testing.T, version string, c client.Client, m *MockTransport) {
 				// Setup a sampling handler

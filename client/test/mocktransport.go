@@ -537,6 +537,11 @@ func SetupMockTransport(version string) *MockTransport {
 	// Include version support based on MCP specification
 	var supportedVersions []string
 	switch version {
+	case "2025-06-18":
+		// 2025-06-18 supports all previous versions
+		supportedVersions = []string{"draft", "2024-11-05", "2025-03-26", "2025-06-18"}
+		capabilities["enhancedResources"] = true
+		capabilities["multipleRoots"] = true
 	case "2025-03-26":
 		// 2025-03-26 supports all previous versions
 		supportedVersions = []string{"draft", "2024-11-05", "2025-03-26"}
@@ -575,8 +580,8 @@ func SetupMockTransport(version string) *MockTransport {
 	// Create a proper version-specific resource response for basic resource/get requests
 	var defaultResourceResponse []byte
 	switch version {
-	case "2025-03-26":
-		// 2025-03-26 format uses 'contents' array
+	case "2025-03-26", "2025-06-18":
+		// 2025-03-26 and 2025-06-18 format uses 'contents' array
 		resourceResp := map[string]interface{}{
 			"jsonrpc": "2.0",
 			"id":      0, // Will be overridden by actual request ID
