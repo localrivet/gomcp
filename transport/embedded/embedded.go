@@ -172,12 +172,10 @@ func (t *Transport) processMessages() {
 				continue
 			}
 
-			// Always try to process the message - if no handler is set, HandleMessage will return an error
-			// and that's perfectly fine for test scenarios
+			// Let the server's handleMessage method route requests vs responses properly
 			go func(msg []byte) {
 				response, err := t.HandleMessage(msg)
 				if err != nil {
-					// Send error back - this is normal if no handler is set
 					select {
 					case t.serverErrors <- err:
 					case <-t.done:
@@ -186,7 +184,6 @@ func (t *Transport) processMessages() {
 					return
 				}
 				if response != nil {
-					// Send response back
 					select {
 					case t.serverToClient <- response:
 					case <-t.done:
