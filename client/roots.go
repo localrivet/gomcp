@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/localrivet/gomcp/mcp"
 )
@@ -159,11 +160,24 @@ func (c *clientImpl) AddRoot(uri string, name string) error {
 		response:  make(chan rootsResponse, 1),
 	}
 
+	// Add timeout protection to prevent hanging if rootsManager is not responding
+	timeout := 5 * time.Second
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
 	case c.rootsManager.requests <- req:
-		// Wait for response
-		resp := <-req.response
-		return resp.err
+		// Wait for response with timeout
+		select {
+		case resp := <-req.response:
+			return resp.err
+		case <-timer.C:
+			return fmt.Errorf("timeout waiting for roots manager response after %v", timeout)
+		case <-c.ctx.Done():
+			return c.ctx.Err()
+		}
+	case <-timer.C:
+		return fmt.Errorf("timeout sending request to roots manager after %v", timeout)
 	case <-c.ctx.Done():
 		return c.ctx.Err()
 	}
@@ -178,11 +192,24 @@ func (c *clientImpl) RemoveRoot(uri string) error {
 		response:  make(chan rootsResponse, 1),
 	}
 
+	// Add timeout protection to prevent hanging if rootsManager is not responding
+	timeout := 5 * time.Second
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
 	case c.rootsManager.requests <- req:
-		// Wait for response
-		resp := <-req.response
-		return resp.err
+		// Wait for response with timeout
+		select {
+		case resp := <-req.response:
+			return resp.err
+		case <-timer.C:
+			return fmt.Errorf("timeout waiting for roots manager response after %v", timeout)
+		case <-c.ctx.Done():
+			return c.ctx.Err()
+		}
+	case <-timer.C:
+		return fmt.Errorf("timeout sending request to roots manager after %v", timeout)
 	case <-c.ctx.Done():
 		return c.ctx.Err()
 	}
@@ -197,11 +224,24 @@ func (c *clientImpl) GetRoots() ([]Root, error) {
 		response:  make(chan rootsResponse, 1),
 	}
 
+	// Add timeout protection to prevent hanging if rootsManager is not responding
+	timeout := 5 * time.Second
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	select {
 	case c.rootsManager.requests <- req:
-		// Wait for response
-		resp := <-req.response
-		return resp.roots, resp.err
+		// Wait for response with timeout
+		select {
+		case resp := <-req.response:
+			return resp.roots, resp.err
+		case <-timer.C:
+			return nil, fmt.Errorf("timeout waiting for roots manager response after %v", timeout)
+		case <-c.ctx.Done():
+			return nil, c.ctx.Err()
+		}
+	case <-timer.C:
+		return nil, fmt.Errorf("timeout sending request to roots manager after %v", timeout)
 	case <-c.ctx.Done():
 		return nil, c.ctx.Err()
 	}
