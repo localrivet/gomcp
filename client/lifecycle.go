@@ -41,7 +41,10 @@ func (c *clientImpl) Connect() error {
 		case len(url) > 8 && url[:8] == "unix:///":
 			WithUnixSocket(url[8:])(c)
 		default:
-			return errors.New("no transport configured, use WithTransport option")
+			// Default to stdio for non-URL patterns (client names, empty strings, etc.)
+			// This is the most common MCP transport and matches user expectations
+			WithStdio()(c)
+			c.logger.Debug("no explicit transport configured, defaulting to stdio", "url", url)
 		}
 	}
 

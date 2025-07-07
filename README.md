@@ -114,8 +114,9 @@ import (
 )
 
 func main() {
-	// Create a new client
-	c, err := client.NewClient("my-client",
+	// Create a new client with stdio transport
+	c, err := client.NewClient("stdio:///",
+		client.WithStdio(),
 		client.WithProtocolVersion("2025-03-26"),
 		client.WithProtocolNegotiation(true),
 	)
@@ -135,6 +136,8 @@ func main() {
 	log.Printf("Result: %v", result)
 }
 ```
+
+**Note**: This example uses stdio transport, which means the client expects to communicate with an MCP server via stdin/stdout. For a complete working example that automatically manages the server process, see the "Client with Automatic Server Management" section below.
 
 ### Client with Automatic Server Management
 

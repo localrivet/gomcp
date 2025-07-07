@@ -2,6 +2,10 @@
 
 This directory contains examples for using the GoMCP library.
 
+## Quickstart Test
+
+The [`quickstart_test`](quickstart_test/) directory contains a test that verifies the README quickstart example works correctly. This test ensures [GitHub issue #11](https://github.com/localrivet/gomcp/issues/11) (missing transport configuration) has been resolved.
+
 ## Server Example
 
 The server example demonstrates how to create and run an MCP server with stdio transport.
