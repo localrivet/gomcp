@@ -15,16 +15,17 @@ import (
 
 // PropertyDetail represents a JSON Schema property definition.
 type PropertyDetail struct {
-	Type        string        `json:"type"`
-	Description string        `json:"description,omitempty"`
-	Enum        []interface{} `json:"enum,omitempty"`
-	Format      string        `json:"format,omitempty"`
-	Minimum     *float64      `json:"minimum,omitempty"`
-	Maximum     *float64      `json:"maximum,omitempty"`
-	MinLength   *int          `json:"minLength,omitempty"`
-	MaxLength   *int          `json:"maxLength,omitempty"`
-	Pattern     string        `json:"pattern,omitempty"`
-	Default     interface{}   `json:"default,omitempty"`
+	Type        string          `json:"type"`
+	Description string          `json:"description,omitempty"`
+	Enum        []interface{}   `json:"enum,omitempty"`
+	Format      string          `json:"format,omitempty"`
+	Minimum     *float64        `json:"minimum,omitempty"`
+	Maximum     *float64        `json:"maximum,omitempty"`
+	MinLength   *int            `json:"minLength,omitempty"`
+	MaxLength   *int            `json:"maxLength,omitempty"`
+	Pattern     string          `json:"pattern,omitempty"`
+	Default     interface{}     `json:"default,omitempty"`
+	Items       *PropertyDetail `json:"items,omitempty"`
 }
 
 // ToolInputSchema represents a JSON Schema for tool input.
@@ -168,6 +169,24 @@ func FromStruct(v interface{}) ToolInputSchema {
 		propDetail := PropertyDetail{
 			Type:        schemaType,
 			Description: descTag,
+		}
+
+		// Handle array/slice types - generate items schema
+		if fieldType.Kind() == reflect.Slice || fieldType.Kind() == reflect.Array {
+			elemType := fieldType.Elem()
+			itemsDetail := &PropertyDetail{
+				Type: goTypeToJSONType(elemType.Kind()),
+			}
+
+			// Handle nested arrays
+			if elemType.Kind() == reflect.Slice || elemType.Kind() == reflect.Array {
+				nestedElemType := elemType.Elem()
+				itemsDetail.Items = &PropertyDetail{
+					Type: goTypeToJSONType(nestedElemType.Kind()),
+				}
+			}
+
+			propDetail.Items = itemsDetail
 		}
 
 		// Process enum tag

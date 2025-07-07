@@ -116,6 +116,20 @@ func TestFromStruct(t *testing.T) {
 		t.Errorf("Expected 'score' default to be 50, got %v", score.Default)
 	}
 
+	// Tags field (array with items)
+	tags, ok := schema.Properties["tags"]
+	if !ok {
+		t.Fatal("Expected 'tags' property to exist")
+	}
+	if tags.Type != "array" {
+		t.Errorf("Expected 'tags' type to be 'array', got '%s'", tags.Type)
+	}
+	if tags.Items == nil {
+		t.Error("Expected 'tags' to have items property")
+	} else if tags.Items.Type != "string" {
+		t.Errorf("Expected 'tags' items type to be 'string', got '%s'", tags.Items.Type)
+	}
+
 	// Check for unexported field
 	if _, ok := schema.Properties["unexportedField"]; ok {
 		t.Error("Unexported fields should not be included in schema")
@@ -513,4 +527,177 @@ func TestGenerateSchemaRequiredFieldNeverNull(t *testing.T) {
 	}
 
 	t.Logf("Generated schema JSON: %s", string(jsonBytes))
+}
+
+func TestArraySchemaGeneratesItems(t *testing.T) {
+	tests := []struct {
+		name           string
+		input          interface{}
+		expectedFields map[string]struct {
+			hasItems    bool
+			itemsType   string
+			nestedItems bool
+		}
+	}{
+		{
+			name: "simple string array",
+			input: struct {
+				Tags []string `json:"tags" description:"List of tags"`
+			}{},
+			expectedFields: map[string]struct {
+				hasItems    bool
+				itemsType   string
+				nestedItems bool
+			}{
+				"tags": {hasItems: true, itemsType: "string", nestedItems: false},
+			},
+		},
+		{
+			name: "integer array",
+			input: struct {
+				Numbers []int `json:"numbers" description:"List of numbers"`
+			}{},
+			expectedFields: map[string]struct {
+				hasItems    bool
+				itemsType   string
+				nestedItems bool
+			}{
+				"numbers": {hasItems: true, itemsType: "integer", nestedItems: false},
+			},
+		},
+		{
+			name: "array of arrays",
+			input: struct {
+				Matrix [][]float64 `json:"matrix" description:"2D matrix"`
+			}{},
+			expectedFields: map[string]struct {
+				hasItems    bool
+				itemsType   string
+				nestedItems bool
+			}{
+				"matrix": {hasItems: true, itemsType: "array", nestedItems: true},
+			},
+		},
+		{
+			name: "mixed types",
+			input: struct {
+				Name    string   `json:"name"`
+				Tags    []string `json:"tags"`
+				Numbers []int    `json:"numbers"`
+			}{},
+			expectedFields: map[string]struct {
+				hasItems    bool
+				itemsType   string
+				nestedItems bool
+			}{
+				"tags":    {hasItems: true, itemsType: "string", nestedItems: false},
+				"numbers": {hasItems: true, itemsType: "integer", nestedItems: false},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema := FromStruct(tt.input)
+
+			// Convert to JSON and back to verify JSON structure
+			jsonBytes, err := json.Marshal(schema)
+			if err != nil {
+				t.Fatalf("Failed to marshal schema: %v", err)
+			}
+
+			var schemaMap map[string]interface{}
+			if err := json.Unmarshal(jsonBytes, &schemaMap); err != nil {
+				t.Fatalf("Failed to unmarshal schema: %v", err)
+			}
+
+			properties, ok := schemaMap["properties"].(map[string]interface{})
+			if !ok {
+				t.Fatal("Properties not found in schema")
+			}
+
+			// Check each expected field
+			for fieldName, expected := range tt.expectedFields {
+				prop, exists := properties[fieldName].(map[string]interface{})
+				if !exists {
+					continue // Non-array fields might not be in expectedFields
+				}
+
+				// Verify type is array
+				propType, _ := prop["type"].(string)
+				if propType != "array" {
+					continue
+				}
+
+				// Check for items property
+				items, hasItems := prop["items"].(map[string]interface{})
+				if expected.hasItems && !hasItems {
+					t.Errorf("Field '%s' is type 'array' but missing 'items' property", fieldName)
+					t.Logf("Property content: %+v", prop)
+				}
+
+				if hasItems {
+					// Check items type
+					itemsType, _ := items["type"].(string)
+					if itemsType != expected.itemsType {
+						t.Errorf("Field '%s' items type: got '%s', expected '%s'", fieldName, itemsType, expected.itemsType)
+					}
+
+					// Check for nested items (array of arrays)
+					if expected.nestedItems {
+						nestedItems, hasNestedItems := items["items"].(map[string]interface{})
+						if !hasNestedItems {
+							t.Errorf("Field '%s' is array of arrays but missing nested 'items' property", fieldName)
+						} else {
+							nestedType, _ := nestedItems["type"].(string)
+							t.Logf("Nested items type for '%s': %s", fieldName, nestedType)
+						}
+					}
+				}
+			}
+
+			t.Logf("Generated schema JSON: %s", string(jsonBytes))
+		})
+	}
+}
+
+func TestArraySchemaValidation(t *testing.T) {
+	// Test that the generated schema can be used for validation
+	type TestArrayStruct struct {
+		Tags    []string `json:"tags" description:"List of tags"`
+		Numbers []int    `json:"numbers" description:"List of numbers"`
+	}
+
+	schema := FromStruct(TestArrayStruct{})
+
+	// The schema should properly define array types with items
+	tagsSchema, ok := schema.Properties["tags"]
+	if !ok {
+		t.Fatal("tags property not found")
+	}
+
+	if tagsSchema.Type != "array" {
+		t.Errorf("Expected tags type to be 'array', got '%s'", tagsSchema.Type)
+	}
+
+	if tagsSchema.Items == nil {
+		t.Error("Expected tags to have items property")
+	} else if tagsSchema.Items.Type != "string" {
+		t.Errorf("Expected tags items type to be 'string', got '%s'", tagsSchema.Items.Type)
+	}
+
+	numbersSchema, ok := schema.Properties["numbers"]
+	if !ok {
+		t.Fatal("numbers property not found")
+	}
+
+	if numbersSchema.Type != "array" {
+		t.Errorf("Expected numbers type to be 'array', got '%s'", numbersSchema.Type)
+	}
+
+	if numbersSchema.Items == nil {
+		t.Error("Expected numbers to have items property")
+	} else if numbersSchema.Items.Type != "integer" {
+		t.Errorf("Expected numbers items type to be 'integer', got '%s'", numbersSchema.Items.Type)
+	}
 }
