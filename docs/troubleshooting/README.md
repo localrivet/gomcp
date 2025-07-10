@@ -1,169 +1,52 @@
 # Troubleshooting Guide
 
-This guide helps you diagnose and solve common issues with GOMCP.
+This guide helps you diagnose and fix common issues when using GoMCP.
 
 ## Common Issues
 
-### Client Connection Issues
-
-#### Client cannot connect to server
+### Embedded Mode Timeout Errors
 
 **Symptoms:**
+- Repeated "context deadline exceeded" errors in logs
+- Error message: `failed to handle roots/list request`
+- Multiple agents or clients initializing simultaneously
 
-- `Failed to connect to MCP server` error message
-- Connection timeouts
-- `context deadline exceeded` errors
-
-**Possible Causes:**
-
-- Server is not running
-- Incorrect URL or path
-- Network connectivity issues
-- Transport incompatibility
-- Protocol version mismatch
+**Root Cause:**
+In embedded mode, when many clients initialize simultaneously (e.g., 34 agents), the `roots/list` requests can overwhelm the embedded transport, causing timeouts.
 
 **Solutions:**
 
-1. Verify server is running
-2. Check URL format (e.g., `ws://localhost:8080/mcp` for WebSocket)
-3. Check network connectivity
-4. Ensure client and server use compatible transport types
-5. Try specifying a protocol version: `client.WithProtocolVersion("2024-11-05")`
-
-### Tool Execution Issues
-
-#### Tool not found
-
-**Symptoms:**
-
-- `tool not found: <toolName>` error
-
-**Possible Causes:**
-
-- Tool name misspelled or not registered on server
-- Case sensitivity mismatch
-
-**Solutions:**
-
-1. Verify tool name spelling and case
-2. Check server logs for registered tools
-3. Use `tools/list` to get all available tools
-
-#### Invalid parameters
-
-**Symptoms:**
-
-- `invalid params` error
-- `required parameter missing` error
-
-**Possible Causes:**
-
-- Missing required parameters
-- Parameter type mismatch
-- Parameter case sensitivity
-
-**Solutions:**
-
-1. Check parameter names and types
-2. Ensure all required parameters are provided
-3. Verify parameter case matches tool definition
-
-### Resource Issues
-
-#### Resource not found
-
-**Symptoms:**
-
-- `resource not found` error
-- 404-like errors
-
-**Possible Causes:**
-
-- Incorrect resource path
-- Resource not registered
-- Root path not configured
-
-**Solutions:**
-
-1. Verify resource path format
-2. Check if resource is registered on server
-3. Ensure server has configured root paths
-
-### Transport Issues
-
-#### WebSocket connection issues
-
-**Symptoms:**
-
-- `failed to establish WebSocket connection` error
-- `unexpected EOF` errors
-
-**Possible Causes:**
-
-- Incorrect WebSocket URL
-- Server not configured for WebSocket
-- Proxy or firewall issues
-
-**Solutions:**
-
-1. Verify WebSocket URL (should start with `ws://` or `wss://`)
-2. Ensure server is configured with `AsWebsocket()`
-3. Check proxy or firewall settings
-
-## Advanced Troubleshooting
-
-### Enabling Debug Logging
-
-For more detailed logging, configure the logger with a debug level:
-
-```go
-// Client-side debugging
-logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-    Level: slog.LevelDebug,
-}))
-client, err := client.NewClient("ws://localhost:8080/mcp",
-    client.WithLogger(logger),
-)
-
-// Server-side debugging
-logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-    Level: slog.LevelDebug,
-}))
-server := server.NewServer("my-server",
-    server.WithLogger(logger),
-)
-```
-
-### Protocol Version Issues
-
-If you're experiencing protocol compatibility issues:
-
-1. Explicitly set the client protocol version:
-
+1. **Reduce Concurrent Initialization:**
    ```go
-   client, err := client.NewClient("ws://localhost:8080/mcp",
-       client.WithProtocolVersion("2024-11-05"),
-   )
+   // Stagger agent initialization
+   for i, agent := range agents {
+       go func(a Agent, delay time.Duration) {
+           time.Sleep(delay)
+           a.Initialize()
+       }(agent, time.Duration(i)*100*time.Millisecond)
+   }
    ```
 
-2. Check server logs for protocol negotiation messages
-
-3. Try disabling protocol negotiation if you know the server version:
+2. **Increase Timeout Values:**
    ```go
-   client, err := client.NewClient("ws://localhost:8080/mcp",
-       client.WithProtocolVersion("2024-11-05"),
-       client.WithProtocolNegotiation(false),
-   )
+   // Configure longer timeouts for embedded transport
+   client, err := client.NewClient("embedded://",
+       client.WithRequestTimeout(60*time.Second),
+       client.WithConnectionTimeout(30*time.Second))
    ```
 
-## Getting Help
+3. **Use Rate Limiting:**
+   The server now automatically limits concurrent `roots/list` requests to 5 to prevent overwhelming the embedded transport.
 
-If you're still experiencing issues:
+4. **Monitor Resource Usage:**
+   - Check CPU and memory usage during initialization
+   - Consider reducing the number of concurrent agents if resources are constrained
 
-1. Search the [GitHub issues](https://github.com/localrivet/gomcp/issues) for similar problems
-2. Check the [API reference](../api-reference/README.md) for correct usage
-3. File a new issue with detailed information:
-   - Go version
-   - GOMCP version
-   - Error messages
-   - Minimal code example reproducing the issue
+**Prevention:**
+- Initialize agents in batches rather than all at once
+- Use proper backoff strategies for retry logic
+- Monitor system resources during high-concurrency scenarios
+
+### Other Issues
+
+*Additional troubleshooting sections can be added here*

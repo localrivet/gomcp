@@ -467,6 +467,9 @@ type serverImpl struct {
 	// needsRootFetch indicates whether we should fetch workspace roots from the client
 	// after initialization is complete (similar to how we queue capability notifications)
 	needsRootFetch atomic.Bool
+
+	// rootsFetchSemaphore limits concurrent roots/list requests to prevent overwhelming embedded transport
+	rootsFetchSemaphore chan struct{}
 }
 
 // CapabilityCache manages the caching and change tracking of server capabilities
@@ -636,17 +639,17 @@ func NewServer(name string, options ...Option) Server {
 		tools:                make(map[string]*Tool),
 		resources:            make(map[string]*Resource),
 		prompts:              make(map[string]*Prompt),
-		roots:                []string{},
 		logger:               slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
 		versionDetector:      mcp.NewVersionDetector(),
-		sessionManager:       NewSessionManager(),
-		initialized:          false,
-		capabilityCache:      NewCapabilityCache(),
 		requestCanceller:     NewRequestCanceller(),
 		progressTokenManager: mcp.NewProgressTokenManager(),
+		sessionManager:       NewSessionManager(),
+		capabilityCache:      NewCapabilityCache(),
+		events:               events.NewSubject(),
+		rootsFetchSemaphore:  make(chan struct{}, 5), // Limit to 5 concurrent roots/list requests
 	}
 
-	// Initialize progress notification handler
+	// Initialize progress notification handler with server reference
 	s.progressNotificationHandler = NewProgressNotificationHandler(s)
 
 	// Set the default transport to stdio
@@ -1166,8 +1169,34 @@ func (s *serverImpl) handleInitializedNotification() {
 
 	if needsRootFetch {
 		go func() {
-			time.Sleep(50 * time.Millisecond) // Small delay for client readiness
-			s.fetchWorkspaceRoots()
+			// Add exponential backoff retry logic for roots/list requests
+			maxRetries := 3
+			baseDelay := 50 * time.Millisecond
+
+			for attempt := 0; attempt < maxRetries; attempt++ {
+				// Calculate delay with exponential backoff
+				delay := baseDelay * time.Duration(1<<attempt) // 50ms, 100ms, 200ms
+				time.Sleep(delay)
+
+				// Attempt to fetch roots
+				s.fetchWorkspaceRoots()
+
+				// Check if we successfully got roots (simple check)
+				s.mu.RLock()
+				hasRoots := s.defaultSession != nil && len(s.defaultSession.ClientInfo.Roots) > 0
+				s.mu.RUnlock()
+
+				if hasRoots {
+					s.logger.Debug("successfully fetched workspace roots", "attempt", attempt+1)
+					break
+				}
+
+				if attempt < maxRetries-1 {
+					s.logger.Debug("retrying roots/list request", "attempt", attempt+1, "nextDelay", delay*2)
+				} else {
+					s.logger.Warn("failed to fetch workspace roots after all retries", "attempts", maxRetries)
+				}
+			}
 		}()
 	}
 }
@@ -1498,12 +1527,26 @@ func (s *serverImpl) fetchWorkspaceRoots() {
 		return
 	}
 
+	// Rate limit concurrent roots/list requests to prevent overwhelming embedded transport
+	select {
+	case s.rootsFetchSemaphore <- struct{}{}:
+		// Got semaphore, proceed with request
+		defer func() { <-s.rootsFetchSemaphore }()
+	default:
+		// Too many concurrent requests, skip this one
+		s.logger.Debug("skipping roots/list request due to rate limiting")
+		return
+	}
+
 	// Generate a unique request ID
 	requestID := int(time.Now().UnixNano())
 
 	// Track the request for response handling
 	if s.requestTracker != nil {
 		responseChan := s.requestTracker.addRequest(requestID)
+
+		// Set up timeout for the request (30 seconds default)
+		s.requestTracker.setupTimeout(requestID, 30*time.Second)
 
 		// Handle the response in a goroutine to avoid blocking
 		go s.handleRootsListResponse(requestID, responseChan)
@@ -1538,55 +1581,64 @@ func (s *serverImpl) fetchWorkspaceRoots() {
 // handleRootsListResponse processes the response to a roots/list request
 // and updates the default session with the workspace roots
 func (s *serverImpl) handleRootsListResponse(requestID int, responseChan chan json.RawMessage) {
-	// Wait for the response - no timeout, just wait for the actual response
-	responseData, ok := <-responseChan
-	if !ok {
-		// Channel was closed, request was removed
-		s.logger.Debug("roots/list request channel closed", "requestId", requestID)
-		return
-	}
+	// Wait for the response with timeout handling
+	select {
+	case responseData, ok := <-responseChan:
+		if !ok {
+			// Channel was closed, request was removed (likely due to timeout)
+			s.logger.Debug("roots/list request channel closed", "requestId", requestID)
+			return
+		}
 
-	// Parse the response
-	var response struct {
-		JSONRPC string `json:"jsonrpc"`
-		ID      int    `json:"id"`
-		Result  struct {
-			Roots []struct {
-				URI  string `json:"uri"`
-				Name string `json:"name,omitempty"`
-			} `json:"roots"`
-		} `json:"result,omitempty"`
-		Error *struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error,omitempty"`
-	}
+		// Parse the response
+		var response struct {
+			JSONRPC string `json:"jsonrpc"`
+			ID      int    `json:"id"`
+			Result  struct {
+				Roots []struct {
+					URI  string `json:"uri"`
+					Name string `json:"name,omitempty"`
+				} `json:"roots"`
+			} `json:"result,omitempty"`
+			Error *struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"error,omitempty"`
+		}
 
-	if err := json.Unmarshal(responseData, &response); err != nil {
-		s.logger.Error("failed to parse roots/list response", "error", err)
-		return
-	}
+		if err := json.Unmarshal(responseData, &response); err != nil {
+			s.logger.Error("failed to parse roots/list response", "error", err)
+			return
+		}
 
-	// Check for error in response
-	if response.Error != nil {
-		s.logger.Error("received error in roots/list response",
-			"code", response.Error.Code,
-			"message", response.Error.Message)
-		return
-	}
+		// Check for error in response
+		if response.Error != nil {
+			s.logger.Error("received error in roots/list response",
+				"code", response.Error.Code,
+				"message", response.Error.Message)
+			return
+		}
 
-	// Extract root URIs from the response
-	var rootPaths []string
-	for _, root := range response.Result.Roots {
-		// Convert URI to path if needed (e.g., file:///path/to/dir -> /path/to/dir)
-		if path := uriToPath(root.URI); path != "" {
-			rootPaths = append(rootPaths, path)
+		// Extract root URIs from the response
+		var rootPaths []string
+		for _, root := range response.Result.Roots {
+			// Convert URI to path if needed (e.g., file:///path/to/dir -> /path/to/dir)
+			if path := uriToPath(root.URI); path != "" {
+				rootPaths = append(rootPaths, path)
+			}
+		}
+
+		// Update the default session with the workspace roots using minimal locking
+		// Only lock the specific field we need to update, not the entire server
+		s.updateSessionRoots(rootPaths)
+
+	case <-time.After(35 * time.Second):
+		// Additional safety timeout (slightly longer than the request timeout)
+		s.logger.Warn("roots/list request handler timed out", "requestId", requestID)
+		if s.requestTracker != nil {
+			s.requestTracker.removeRequest(requestID)
 		}
 	}
-
-	// Update the default session with the workspace roots using minimal locking
-	// Only lock the specific field we need to update, not the entire server
-	s.updateSessionRoots(rootPaths)
 }
 
 // updateSessionRoots updates the session roots with minimal locking
