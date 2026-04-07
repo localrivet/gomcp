@@ -12,11 +12,13 @@ const (
 	Version20241105 = "2024-11-05"
 	Version20250326 = "2025-03-26"
 	Version20250618 = "2025-06-18"
+	Version20251125 = "2025-11-25"
 )
 
 // SupportedVersions is a list of all supported MCP specification versions in order of preference (newest first)
 var SupportedVersions = []string{
-	Version20250618, // Latest stable version - default for better interoperability
+	Version20251125, // Latest stable version - default for better interoperability
+	Version20250618, // Previous stable version
 	Version20250326, // Previous stable version
 	VersionDraft,    // Draft has newest features but limited compatibility
 	Version20241105, // Previous stable version
